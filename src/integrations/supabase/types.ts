@@ -14,7 +14,180 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      custom_departments: {
+        Row: {
+          badge_bg: string
+          badge_text: string
+          border_color: string
+          code: string
+          color: string
+          created_at: string
+          description: string
+          full_name: string
+          icon_name: string
+          id: string
+          name: string
+          shift: string | null
+          target_count: number
+          updated_at: string
+        }
+        Insert: {
+          badge_bg?: string
+          badge_text?: string
+          border_color?: string
+          code?: string
+          color?: string
+          created_at?: string
+          description?: string
+          full_name?: string
+          icon_name?: string
+          id: string
+          name: string
+          shift?: string | null
+          target_count?: number
+          updated_at?: string
+        }
+        Update: {
+          badge_bg?: string
+          badge_text?: string
+          border_color?: string
+          code?: string
+          color?: string
+          created_at?: string
+          description?: string
+          full_name?: string
+          icon_name?: string
+          id?: string
+          name?: string
+          shift?: string | null
+          target_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      move_history: {
+        Row: {
+          created_at: string
+          from_dept: string
+          id: string
+          machine_type: string
+          operator_id: string
+          operator_name: string
+          reason: string | null
+          shift: string | null
+          timestamp: string
+          to_dept: string
+        }
+        Insert: {
+          created_at?: string
+          from_dept: string
+          id: string
+          machine_type?: string
+          operator_id: string
+          operator_name: string
+          reason?: string | null
+          shift?: string | null
+          timestamp?: string
+          to_dept: string
+        }
+        Update: {
+          created_at?: string
+          from_dept?: string
+          id?: string
+          machine_type?: string
+          operator_id?: string
+          operator_name?: string
+          reason?: string | null
+          shift?: string | null
+          timestamp?: string
+          to_dept?: string
+        }
+        Relationships: []
+      }
+      operators: {
+        Row: {
+          absence_reason: string | null
+          created_at: string
+          department_id: string
+          id: string
+          is_vna_only: boolean
+          last_moved_at: string
+          machine_type: string
+          name: string
+          notes: string | null
+          shift: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          absence_reason?: string | null
+          created_at?: string
+          department_id?: string
+          id: string
+          is_vna_only?: boolean
+          last_moved_at?: string
+          machine_type?: string
+          name: string
+          notes?: string | null
+          shift?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          absence_reason?: string | null
+          created_at?: string
+          department_id?: string
+          id?: string
+          is_vna_only?: boolean
+          last_moved_at?: string
+          machine_type?: string
+          name?: string
+          notes?: string | null
+          shift?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      shift_templates: {
+        Row: {
+          active_count: number
+          assignments: Json
+          created_at: string
+          description: string | null
+          id: string
+          is_built_in: boolean
+          name: string
+          operator_count: number
+          shift: string | null
+          updated_at: string
+        }
+        Insert: {
+          active_count?: number
+          assignments?: Json
+          created_at?: string
+          description?: string | null
+          id: string
+          is_built_in?: boolean
+          name: string
+          operator_count?: number
+          shift?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active_count?: number
+          assignments?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_built_in?: boolean
+          name?: string
+          operator_count?: number
+          shift?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
