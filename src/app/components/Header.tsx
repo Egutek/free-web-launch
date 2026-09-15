@@ -16,15 +16,13 @@ import {
   Bookmark,
   Cloud,
   CloudOff,
-  LogOut,
-  LogIn,
-  ShieldCheck,
   RefreshCw,
+  Users,
   Wrench,
 } from 'lucide-react';
 import { ShiftCode, UndoOperation } from '../types';
 import { getDepartmentById } from '../data/departments';
-import { User } from 'firebase/auth';
+
 
 interface HeaderProps {
   totalCount?: number;
@@ -51,12 +49,9 @@ interface HeaderProps {
   onOpenReportModal?: () => void;
   onOpenHistoryModal: () => void;
   onResetData: () => void;
-  currentUser?: User | null;
   isCloudConnected?: boolean;
   isCloudSyncing?: boolean;
-  isGoogleSigningIn?: boolean;
-  onGoogleSignIn?: () => void;
-  onSignOut?: () => void;
+
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -80,12 +75,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenTemplatesModal,
   onOpenHistoryModal,
   onResetData,
-  currentUser,
   isCloudConnected = false,
   isCloudSyncing = false,
-  isGoogleSigningIn = false,
-  onGoogleSignIn,
-  onSignOut,
+
 }) => {
   const [isUndoOpen, setIsUndoOpen] = useState(false);
   const undoDropdownRef = useRef<HTMLDivElement>(null);
