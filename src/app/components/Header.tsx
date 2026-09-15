@@ -100,20 +100,14 @@ export const Header: React.FC<HeaderProps> = ({
       ) {
         setIsUndoOpen(false);
       }
-      if (
-        userMenuRef.current &&
-        !userMenuRef.current.contains(e.target as Node)
-      ) {
-        setIsUserMenuOpen(false);
-      }
     };
-    if (isUndoOpen || isUserMenuOpen) {
+    if (isUndoOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isUndoOpen, isUserMenuOpen]);
+
 
   const hasUndo = undoOperations.length > 0;
   const undoCount = Math.min(undoOperations.length, 5);
