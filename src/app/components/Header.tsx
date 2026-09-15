@@ -88,9 +88,8 @@ export const Header: React.FC<HeaderProps> = ({
   onSignOut,
 }) => {
   const [isUndoOpen, setIsUndoOpen] = useState(false);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const undoDropdownRef = useRef<HTMLDivElement>(null);
-  const userMenuRef = useRef<HTMLDivElement>(null);
+
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -140,11 +139,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {isCloudConnected ? (
                   <span
                     className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/60 shadow-2xs"
-                    title={
-                      currentUser
-                        ? `Přihlášen jako ${currentUser.email} • Živá online synchronizace se všemi zařízeními`
-                        : 'Živá online synchronizace aktivní • Jakákoliv změna se ihned projeví na všech zařízeních s odkazem'
-                    }
+                    title="Živá online synchronizace aktivní • Jakákoliv změna se ihned projeví na všech zařízeních s odkazem"
                   >
                     {isCloudSyncing ? (
                       <RefreshCw className="w-2.5 h-2.5 text-emerald-600 animate-spin" />
@@ -153,13 +148,7 @@ export const Header: React.FC<HeaderProps> = ({
                     )}
                     <Cloud className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
                     <span className="font-bold">Online:</span>
-                    <span>
-                      {currentUser
-                        ? currentUser.email === 'hemzacekl@gmail.com'
-                          ? 'Admin'
-                          : currentUser.displayName || 'Přihlášen'
-                        : 'Živě synchronizováno'}
-                    </span>
+                    <span>Živě synchronizováno</span>
                   </span>
                 ) : (
                   <span
@@ -170,6 +159,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>Připojování k online směně...</span>
                   </span>
                 )}
+
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 hidden sm:block">
                 Operační řízení směn a přesuny operátorů
@@ -382,118 +372,15 @@ export const Header: React.FC<HeaderProps> = ({
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
 
-            {/* Firebase Auth Profile or Sign-In Button */}
-            {currentUser ? (
-              <div className="relative" ref={userMenuRef}>
-                <button
-                  id="header-user-profile-btn"
-                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700 transition-all cursor-pointer shadow-2xs"
-                  title={`Přihlášený uživatel: ${currentUser.displayName || currentUser.email}`}
-                >
-                  {currentUser.photoURL ? (
-                    <img
-                      src={currentUser.photoURL}
-                      alt={currentUser.displayName || 'Uživatel'}
-                      referrerPolicy="no-referrer"
-                      className="w-4 h-4 rounded-full object-cover shrink-0"
-                    />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center shrink-0">
-                      {(currentUser.displayName || currentUser.email || 'U').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <span className="max-w-[75px] sm:max-w-[110px] truncate text-[11px]">
-                    {currentUser.displayName?.split(' ')[0] || currentUser.email?.split('@')[0]}
-                  </span>
-                  {currentUser.email === 'hemzacekl@gmail.com' && (
-                    <span className="text-[9px] px-1 py-0.2 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 font-bold">
-                      Admin
-                    </span>
-                  )}
-                  <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
+            {/* Sdílený odkaz — bez přihlašování, každý může upravovat */}
+            <span
+              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700"
+              title="Aplikace je otevřená všem s odkazem — přihlášení není potřeba"
+            >
+              <Users className="w-3.5 h-3.5 text-slate-400" />
+              <span>Sdílená směna</span>
+            </span>
 
-                {isUserMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 p-3 animate-in fade-in zoom-in-95 duration-150 space-y-2.5">
-                    <div className="flex items-center gap-2.5 pb-2 border-b border-slate-100 dark:border-slate-800">
-                      {currentUser.photoURL ? (
-                        <img
-                          src={currentUser.photoURL}
-                          alt="Avatar"
-                          referrerPolicy="no-referrer"
-                          className="w-8 h-8 rounded-full object-cover shrink-0"
-                        />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                          {(currentUser.displayName || currentUser.email || 'U').charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="font-bold text-xs text-slate-900 dark:text-white truncate">
-                          {currentUser.displayName || 'Přihlášený dispečer'}
-                        </p>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate font-mono">
-                          {currentUser.email}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] text-slate-600 dark:text-slate-300 space-y-1 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 text-[10px]">Cloud Firestore:</span>
-                        <span className="font-semibold text-emerald-600 dark:text-emerald-400 text-[10px] flex items-center gap-1">
-                          <Cloud className="w-2.5 h-2.5" />
-                          Živá synchronizace
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 text-[10px]">Role:</span>
-                        <span className="font-bold text-[10px] text-slate-700 dark:text-slate-200">
-                          {currentUser.email === 'hemzacekl@gmail.com' ? 'Správce (Admin)' : 'Dispečer'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      id="header-sign-out-btn"
-                      onClick={() => {
-                        setIsUserMenuOpen(false);
-                        onSignOut?.();
-                      }}
-                      className="w-full py-1.5 px-2 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <LogOut className="w-3.5 h-3.5" />
-                      <span>Odhlásit z Firebase</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <button
-                id="header-google-signin-btn"
-                onClick={onGoogleSignIn}
-                disabled={isGoogleSigningIn}
-                className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                  isGoogleSigningIn
-                    ? 'opacity-70 cursor-not-allowed bg-amber-100 dark:bg-amber-900/60 text-amber-800'
-                    : 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800/80 shadow-2xs active:scale-95 cursor-pointer'
-                }`}
-                title="Přihlásit se přes Google pro sdílení operátorů a změn v reálném čase"
-              >
-                {isGoogleSigningIn ? (
-                  <RefreshCw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 animate-spin" />
-                ) : (
-                  <LogIn className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                )}
-                <span className="hidden sm:inline">
-                  {isGoogleSigningIn ? 'Přihlašování...' : 'Google Přihlášení'}
-                </span>
-                <span className="sm:hidden">
-                  {isGoogleSigningIn ? '...' : 'Přihlásit'}
-                </span>
-              </button>
-            )}
           </div>
         </div>
 
