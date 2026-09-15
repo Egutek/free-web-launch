@@ -107,6 +107,9 @@ export const Header: React.FC<HeaderProps> = ({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
+  }, [isUndoOpen]);
+
+
 
 
   const hasUndo = undoOperations.length > 0;
