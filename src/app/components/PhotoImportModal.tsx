@@ -249,36 +249,38 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         );
       }
 
-      const drafts: DraftOperator[] = data.operators.map((op: any, index: number) => {
-        const deptId = (op.departmentId as DepartmentId) || "hovc";
-        const rawMachine = String(op.machineType ?? "").toUpperCase();
-        const combined = `${op.name || ""} ${op.notes || ""}`.toUpperCase();
-        const hasExplicitLL =
-          combined.includes(" LL") ||
-          combined.includes("(LL)") ||
-          combined.includes("-LL") ||
-          combined.includes("NÍZKOZDVIH");
-        const hasExplicitRTR = combined.includes("RTR") || combined.includes("RETRAK");
+      const drafts: DraftOperator[] = data.operators.map(
+        (op: Record<string, unknown>, index: number) => {
+          const deptId = (op.departmentId as DepartmentId) || "hovc";
+          const rawMachine = String(op.machineType ?? "").toUpperCase();
+          const combined = `${String(op.name || "")} ${String(op.notes || "")}`.toUpperCase();
+          const hasExplicitLL =
+            combined.includes(" LL") ||
+            combined.includes("(LL)") ||
+            combined.includes("-LL") ||
+            combined.includes("NÍZKOZDVIH");
+          const hasExplicitRTR = combined.includes("RTR") || combined.includes("RETRAK");
 
-        let mType: "LL" | "RTR" | "NONE" = "LL";
-        if (deptId === "vna" || deptId === "unassigned") {
-          mType = "NONE";
-        } else if (deptId === "hovc" || deptId === "obwi" || deptId === "hovs") {
-          mType = hasExplicitLL ? "LL" : "RTR";
-        } else if (deptId === "putaway") {
-          mType = hasExplicitRTR ? "RTR" : "LL";
-        } else {
-          mType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
-        }
+          let mType: "LL" | "RTR" | "NONE" = "LL";
+          if (deptId === "vna" || deptId === "unassigned") {
+            mType = "NONE";
+          } else if (deptId === "hovc" || deptId === "obwi" || deptId === "hovs") {
+            mType = hasExplicitLL ? "LL" : "RTR";
+          } else if (deptId === "putaway") {
+            mType = hasExplicitRTR ? "RTR" : "LL";
+          } else {
+            mType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
+          }
 
-        return {
-          tempId: `draft-${Date.now()}-${index}`,
-          name: op.name || `Operátor ${index + 1}`,
-          machineType: mType,
-          departmentId: deptId,
-          notes: op.notes || "Extrahováno ze snímku ZF",
-        };
-      });
+          return {
+            tempId: `draft-${Date.now()}-${index}`,
+            name: op.name || `Operátor ${index + 1}`,
+            machineType: mType,
+            departmentId: deptId,
+            notes: op.notes || "Extrahováno ze snímku ZF",
+          };
+        },
+      );
 
       setExtractedList(drafts);
     } catch (err: unknown) {

@@ -250,7 +250,13 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
           continue; // Try next fallback model
         }
 
-        const payload = (await aiResponse.json()) as any;
+        const payload = (await aiResponse.json()) as {
+          candidates?: Array<{
+            content?: {
+              parts?: Array<{ text?: string }>;
+            };
+          }>;
+        };
         const content = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
 
         const parsed = JSON.parse(
@@ -264,7 +270,7 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
           operators = extracted;
           break; // Successfully extracted
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn(`Attempt with ${model} failed:`, err);
         lastError = err instanceof Error ? err : new Error(String(err));
         // If it's a definitive credential or rate limit error, don't keep polling 404s

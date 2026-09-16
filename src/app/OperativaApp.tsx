@@ -1348,7 +1348,14 @@ export default function App() {
 
   // Combined built-in and custom departments for current active shift
   const allDepartments = useMemo(() => {
-    return [...DEPARTMENTS, ...shiftCustomDepartments];
+    const deptMap = new Map<string, Department>();
+    for (const d of DEPARTMENTS) {
+      deptMap.set(d.id, d);
+    }
+    for (const d of shiftCustomDepartments) {
+      deptMap.set(d.id, d);
+    }
+    return Array.from(deptMap.values());
   }, [shiftCustomDepartments]);
 
   // Key metrics - accurate calculations for floor operation and absence

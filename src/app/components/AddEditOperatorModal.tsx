@@ -232,7 +232,7 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
             <div className="grid grid-cols-3 gap-2">
               {(["A", "B", "C"] as ShiftCode[]).map((sc) => (
                 <button
-                  key={sc}
+                  key={`edit-op-shift-${sc}`}
                   type="button"
                   onClick={() => setShift(sc)}
                   className={`py-1.5 px-3 rounded-xl border text-center transition-all cursor-pointer font-bold text-xs ${

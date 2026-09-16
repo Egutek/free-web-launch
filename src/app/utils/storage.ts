@@ -32,7 +32,16 @@ export const saveActiveShift = (shift: ShiftCode): void => {
 };
 
 export const getAllDefaultOperators = (): Operator[] => {
-  return [...INITIAL_OPERATORS_SHIFT_A, ...INITIAL_OPERATORS_SHIFT_B, ...INITIAL_OPERATORS_SHIFT_C];
+  const all = [
+    ...INITIAL_OPERATORS_SHIFT_A,
+    ...INITIAL_OPERATORS_SHIFT_B,
+    ...INITIAL_OPERATORS_SHIFT_C,
+  ];
+  const uniqueMap = new Map<string, Operator>();
+  for (const op of all) {
+    uniqueMap.set(op.id, op);
+  }
+  return Array.from(uniqueMap.values());
 };
 
 export const loadOperators = (): Operator[] => {
@@ -41,13 +50,22 @@ export const loadOperators = (): Operator[] => {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((op: Operator) => ({
-          ...op,
-          shift: op.shift || "A",
-          machineType: op.machineType || "NONE",
-          absenceReason:
-            op.absenceReason || (op.departmentId === "unassigned" ? "Absence" : undefined),
-        }));
+        const uniqueMap = new Map<string, Operator>();
+        for (const rawOp of parsed) {
+          if (rawOp && rawOp.id) {
+            uniqueMap.set(rawOp.id, {
+              ...rawOp,
+              shift: rawOp.shift || "A",
+              machineType: rawOp.machineType || "NONE",
+              absenceReason:
+                rawOp.absenceReason ||
+                (rawOp.departmentId === "unassigned" ? "Absence" : undefined),
+            });
+          }
+        }
+        if (uniqueMap.size > 0) {
+          return Array.from(uniqueMap.values());
+        }
       }
     }
   } catch (e) {

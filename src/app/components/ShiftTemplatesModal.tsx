@@ -284,7 +284,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                 <div className="flex items-center gap-1 shrink-0 bg-white dark:bg-slate-800 p-1 border border-slate-300 dark:border-slate-700 rounded-xl">
                   {(["A", "B", "C", "all"] as const).map((sc) => (
                     <button
-                      key={sc}
+                      key={`template-target-shift-${sc}`}
                       type="button"
                       onClick={() => setTargetShift(sc)}
                       className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
@@ -335,16 +335,15 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                 Zobrazit pro:
               </span>
               {[
-                { id: activeShift, label: `Moje směna (${activeShift})`, isCurrent: true },
-                { id: "A", label: "Směna A" },
-                { id: "B", label: "Směna B" },
-                { id: "C", label: "Směna C" },
                 { id: "all", label: "Všechny směny" },
+                { id: "A", label: activeShift === "A" ? "Směna A (moje)" : "Směna A" },
+                { id: "B", label: activeShift === "B" ? "Směna B (moje)" : "Směna B" },
+                { id: "C", label: activeShift === "C" ? "Směna C (moje)" : "Směna C" },
               ].map((item) => {
                 const isActive = shiftFilter === item.id;
                 return (
                   <button
-                    key={item.id}
+                    key={`template-filter-tab-${item.id}`}
                     type="button"
                     onClick={() => setShiftFilter(item.id)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
@@ -508,7 +507,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                         <div className="flex items-center gap-1.5 mt-3 flex-wrap">
                           {deptCounts.map((dc) => (
                             <span
-                              key={dc.id}
+                              key={`tmpl-${tmpl.id}-dept-${dc.id}`}
                               className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-lg border shadow-2xs flex items-center gap-1 transition-colors ${
                                 dc.badgeBg ||
                                 (dc.id === "unassigned"

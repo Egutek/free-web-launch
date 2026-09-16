@@ -222,7 +222,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                       return (
                         <div
-                          key={op.id}
+                          key={op.id || `header-undo-${idx}`}
                           className={`p-2 rounded-lg border text-xs transition-all ${
                             isLatest
                               ? "bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/60"
@@ -386,7 +386,7 @@ export const Header: React.FC<HeaderProps> = ({
                 const isActive = activeShift === shift;
                 return (
                   <button
-                    key={shift}
+                    key={`header-shift-btn-${shift}`}
                     type="button"
                     id={`header-shift-${shift.toLowerCase()}-btn`}
                     onClick={() => onShiftChange?.(shift)}

@@ -38,7 +38,11 @@ interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
-  authInfo: any;
+  authInfo: {
+    userId?: string;
+    email?: string | null;
+    emailVerified?: boolean;
+  };
 }
 
 export function handleFirestoreError(
@@ -81,7 +85,7 @@ export function subscribeToOperators(
 
 export async function syncOperatorToCloud(operator: Operator): Promise<void> {
   try {
-    const cleanOp: any = { ...operator };
+    const cleanOp: Record<string, unknown> = { ...operator };
     Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
     await setDoc(getDocRef("operators", operator.id), cleanOp);
   } catch (error) {
@@ -100,7 +104,7 @@ export async function deleteOperatorFromCloud(operatorId: string): Promise<void>
 export async function bulkSyncOperatorsToCloud(operators: Operator[]): Promise<void> {
   const batch = writeBatch(db);
   for (const op of operators) {
-    const cleanOp: any = { ...op, shift: op.shift || "A" };
+    const cleanOp: Record<string, unknown> = { ...op, shift: op.shift || "A" };
     Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
     batch.set(getDocRef("operators", op.id), cleanOp);
   }
@@ -146,7 +150,7 @@ export async function replaceOperatorsInCloud(
 
     // 2. Save all current operators
     for (const op of allCurrentOperators) {
-      const cleanOp: any = { ...op, shift: op.shift || "A" };
+      const cleanOp: Record<string, unknown> = { ...op, shift: op.shift || "A" };
       Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
       batch.set(getDocRef("operators", op.id), cleanOp);
       opCount++;
@@ -186,7 +190,7 @@ export function subscribeToHistory(
 
 export async function syncHistoryRecordToCloud(record: MoveHistoryRecord): Promise<void> {
   try {
-    const cleanRecord: any = { ...record };
+    const cleanRecord: Record<string, unknown> = { ...record };
     Object.keys(cleanRecord).forEach(
       (key) => cleanRecord[key] === undefined && delete cleanRecord[key],
     );
@@ -217,7 +221,7 @@ export function subscribeToTemplates(
 
 export async function syncTemplateToCloud(template: ShiftTemplate): Promise<void> {
   try {
-    const cleanTemplate: any = { ...template };
+    const cleanTemplate: Record<string, unknown> = { ...template };
     Object.keys(cleanTemplate).forEach(
       (key) => cleanTemplate[key] === undefined && delete cleanTemplate[key],
     );
@@ -256,7 +260,7 @@ export function subscribeToCustomDepartments(
 
 export async function syncCustomDepartmentToCloud(dept: Department): Promise<void> {
   try {
-    const cleanDept: any = { ...dept };
+    const cleanDept: Record<string, unknown> = { ...dept };
     Object.keys(cleanDept).forEach((key) => cleanDept[key] === undefined && delete cleanDept[key]);
     await setDoc(getDocRef("custom_departments", dept.id), cleanDept);
   } catch (error) {

@@ -329,7 +329,7 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
           <div className="flex items-center gap-1">
             {(["A", "B", "C"] as ShiftType[]).map((shift) => (
               <button
-                key={shift}
+                key={`widget-shift-btn-${shift}`}
                 type="button"
                 onClick={() => onShiftChange(shift)}
                 className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer active:scale-95 ${
