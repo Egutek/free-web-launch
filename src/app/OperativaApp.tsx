@@ -237,15 +237,7 @@ export default function App() {
     saveUndoStack(undoStack);
   }, [undoStack]);
 
-  // Listen to Firebase Auth state (optional sign in)
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-    });
-    return () => unsub();
-  }, []);
-
-  // Real-time Firestore sync for Operators for everyone with the link
+  // Real-time sync for Operators for everyone with the link
   useEffect(() => {
     setIsCloudSyncing(true);
     const unsub = subscribeToOperators(
