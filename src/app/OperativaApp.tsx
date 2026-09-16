@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   DEPARTMENTS,
   getDepartmentById,
@@ -6,7 +6,7 @@ import {
   saveCustomDepartments,
   addCustomDepartment,
   removeCustomDepartment,
-} from './data/departments';
+} from "./data/departments";
 import {
   AbsenceReason,
   Department,
@@ -16,7 +16,7 @@ import {
   OperatorStatus,
   ShiftCode,
   UndoOperation,
-} from './types';
+} from "./types";
 import {
   loadOperators,
   saveOperators,
@@ -27,22 +27,22 @@ import {
   resetToInitialOperators,
   loadActiveShift,
   saveActiveShift,
-} from './utils/storage';
-import { Header } from './components/Header';
-import { BossAnswerCard } from './components/BossAnswerCard';
-import { DepartmentColumn } from './components/DepartmentColumn';
-import { TableView } from './components/TableView';
-import { WidgetView } from './components/WidgetView';
-import { QuickMoveModal } from './components/QuickMoveModal';
-import { BossReportModal } from './components/BossReportModal';
-import { AddEditOperatorModal } from './components/AddEditOperatorModal';
-import { AddCustomDepartmentModal } from './components/AddCustomDepartmentModal';
-import { ConfirmDialogModal } from './components/ConfirmDialogModal';
-import { HistoryModal } from './components/HistoryModal';
-import { PhotoImportModal } from './components/PhotoImportModal';
-import { ShiftTemplatesModal } from './components/ShiftTemplatesModal';
-import { ShiftTemplate } from './types';
-import { applyTemplateToOperators } from './data/templates';
+} from "./utils/storage";
+import { Header } from "./components/Header";
+import { BossAnswerCard } from "./components/BossAnswerCard";
+import { DepartmentColumn } from "./components/DepartmentColumn";
+import { TableView } from "./components/TableView";
+import { WidgetView } from "./components/WidgetView";
+import { QuickMoveModal } from "./components/QuickMoveModal";
+import { BossReportModal } from "./components/BossReportModal";
+import { AddEditOperatorModal } from "./components/AddEditOperatorModal";
+import { AddCustomDepartmentModal } from "./components/AddCustomDepartmentModal";
+import { ConfirmDialogModal } from "./components/ConfirmDialogModal";
+import { HistoryModal } from "./components/HistoryModal";
+import { PhotoImportModal } from "./components/PhotoImportModal";
+import { ShiftTemplatesModal } from "./components/ShiftTemplatesModal";
+import { ShiftTemplate } from "./types";
+import { applyTemplateToOperators } from "./data/templates";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -54,12 +54,12 @@ import {
   Wrench,
   Users,
   CheckSquare,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   resolveOperatorFromDrop,
   resolveOperatorIdsFromDrop,
   getGlobalDragState,
-} from './utils/dragState';
+} from "./utils/dragState";
 import {
   subscribeToOperators,
   syncOperatorToCloud,
@@ -70,7 +70,7 @@ import {
   subscribeToCustomDepartments,
   syncCustomDepartmentToCloud,
   deleteCustomDepartmentFromCloud,
-} from './services/firestoreSync';
+} from "./services/firestoreSync";
 
 const JUMP_THEMES: Record<
   DepartmentId,
@@ -84,78 +84,78 @@ const JUMP_THEMES: Record<
   }
 > = {
   hovc: {
-    border: 'hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/30',
-    activeBorder: 'border-blue-500 ring-4 ring-blue-500/30',
-    activeBg: 'bg-blue-600 text-white',
-    dragHoverBg: 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-400 border-dashed',
-    badgeBg: 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300',
-    badgeActive: 'bg-white/25 text-white',
+    border: "hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/30",
+    activeBorder: "border-blue-500 ring-4 ring-blue-500/30",
+    activeBg: "bg-blue-600 text-white",
+    dragHoverBg: "bg-blue-50/80 dark:bg-blue-950/40 border-blue-400 border-dashed",
+    badgeBg: "bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300",
+    badgeActive: "bg-white/25 text-white",
   },
   hovs: {
-    border: 'hover:border-sky-400 hover:bg-sky-50/50 dark:hover:bg-sky-950/30',
-    activeBorder: 'border-sky-500 ring-4 ring-sky-500/30',
-    activeBg: 'bg-sky-600 text-white',
-    dragHoverBg: 'bg-sky-50/80 dark:bg-sky-950/40 border-sky-400 border-dashed',
-    badgeBg: 'bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300',
-    badgeActive: 'bg-white/25 text-white',
+    border: "hover:border-sky-400 hover:bg-sky-50/50 dark:hover:bg-sky-950/30",
+    activeBorder: "border-sky-500 ring-4 ring-sky-500/30",
+    activeBg: "bg-sky-600 text-white",
+    dragHoverBg: "bg-sky-50/80 dark:bg-sky-950/40 border-sky-400 border-dashed",
+    badgeBg: "bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300",
+    badgeActive: "bg-white/25 text-white",
   },
   putaway: {
-    border: 'hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30',
-    activeBorder: 'border-indigo-500 ring-4 ring-indigo-500/30',
-    activeBg: 'bg-indigo-600 text-white',
-    dragHoverBg: 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-400 border-dashed',
-    badgeBg: 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300',
-    badgeActive: 'bg-white/25 text-white',
+    border: "hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30",
+    activeBorder: "border-indigo-500 ring-4 ring-indigo-500/30",
+    activeBg: "bg-indigo-600 text-white",
+    dragHoverBg: "bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-400 border-dashed",
+    badgeBg: "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300",
+    badgeActive: "bg-white/25 text-white",
   },
   vas: {
-    border: 'hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-950/30',
-    activeBorder: 'border-amber-500 ring-4 ring-amber-500/30',
-    activeBg: 'bg-amber-600 text-white',
-    dragHoverBg: 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-400 border-dashed',
-    badgeBg: 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300',
-    badgeActive: 'bg-white/25 text-white',
+    border: "hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-950/30",
+    activeBorder: "border-amber-500 ring-4 ring-amber-500/30",
+    activeBg: "bg-amber-600 text-white",
+    dragHoverBg: "bg-amber-50/80 dark:bg-amber-950/40 border-amber-400 border-dashed",
+    badgeBg: "bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300",
+    badgeActive: "bg-white/25 text-white",
   },
   obwf: {
-    border: 'hover:border-purple-400 hover:bg-purple-50/50 dark:hover:bg-purple-950/30',
-    activeBorder: 'border-purple-500 ring-4 ring-purple-500/30',
-    activeBg: 'bg-purple-600 text-white',
-    dragHoverBg: 'bg-purple-50/80 dark:bg-purple-950/40 border-purple-400 border-dashed',
-    badgeBg: 'bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300',
-    badgeActive: 'bg-white/25 text-white',
+    border: "hover:border-purple-400 hover:bg-purple-50/50 dark:hover:bg-purple-950/30",
+    activeBorder: "border-purple-500 ring-4 ring-purple-500/30",
+    activeBg: "bg-purple-600 text-white",
+    dragHoverBg: "bg-purple-50/80 dark:bg-purple-950/40 border-purple-400 border-dashed",
+    badgeBg: "bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300",
+    badgeActive: "bg-white/25 text-white",
   },
   vna: {
-    border: 'hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30',
-    activeBorder: 'border-emerald-500 ring-4 ring-emerald-500/30',
-    activeBg: 'bg-emerald-600 text-white',
-    dragHoverBg: 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-400 border-dashed',
-    badgeBg: 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300',
-    badgeActive: 'bg-white/25 text-white',
+    border: "hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30",
+    activeBorder: "border-emerald-500 ring-4 ring-emerald-500/30",
+    activeBg: "bg-emerald-600 text-white",
+    dragHoverBg: "bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-400 border-dashed",
+    badgeBg: "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300",
+    badgeActive: "bg-white/25 text-white",
   },
   obwi: {
-    border: 'hover:border-rose-400 hover:bg-rose-50/50 dark:hover:bg-rose-950/30',
-    activeBorder: 'border-rose-500 ring-4 ring-rose-500/30',
-    activeBg: 'bg-rose-600 text-white',
-    dragHoverBg: 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-400 border-dashed',
-    badgeBg: 'bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300',
-    badgeActive: 'bg-white/25 text-white',
+    border: "hover:border-rose-400 hover:bg-rose-50/50 dark:hover:bg-rose-950/30",
+    activeBorder: "border-rose-500 ring-4 ring-rose-500/30",
+    activeBg: "bg-rose-600 text-white",
+    dragHoverBg: "bg-rose-50/80 dark:bg-rose-950/40 border-rose-400 border-dashed",
+    badgeBg: "bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300",
+    badgeActive: "bg-white/25 text-white",
   },
   unassigned: {
-    border: 'hover:border-rose-400 hover:bg-rose-50/50 dark:hover:bg-rose-950/30',
-    activeBorder: 'border-rose-600 ring-4 ring-rose-600/30',
-    activeBg: 'bg-rose-700 text-white',
-    dragHoverBg: 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-400 border-dashed',
-    badgeBg: 'bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-300',
-    badgeActive: 'bg-white/25 text-white',
+    border: "hover:border-rose-400 hover:bg-rose-50/50 dark:hover:bg-rose-950/30",
+    activeBorder: "border-rose-600 ring-4 ring-rose-600/30",
+    activeBg: "bg-rose-700 text-white",
+    dragHoverBg: "bg-rose-50/80 dark:bg-rose-950/40 border-rose-400 border-dashed",
+    badgeBg: "bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-300",
+    badgeActive: "bg-white/25 text-white",
   },
 };
 
 const DEFAULT_CUSTOM_JUMP_THEME = {
-  border: 'hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-950/30 border-dashed',
-  activeBorder: 'border-amber-500 ring-4 ring-amber-500/30',
-  activeBg: 'bg-amber-600 text-white',
-  dragHoverBg: 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-400 border-dashed',
-  badgeBg: 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300',
-  badgeActive: 'bg-white/25 text-white',
+  border: "hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-950/30 border-dashed",
+  activeBorder: "border-amber-500 ring-4 ring-amber-500/30",
+  activeBg: "bg-amber-600 text-white",
+  dragHoverBg: "bg-amber-50/80 dark:bg-amber-950/40 border-amber-400 border-dashed",
+  badgeBg: "bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300",
+  badgeActive: "bg-white/25 text-white",
 };
 
 export default function App() {
@@ -163,7 +163,9 @@ export default function App() {
   const [operators, setOperators] = useState<Operator[]>(() => loadOperators());
   const [history, setHistory] = useState<MoveHistoryRecord[]>(() => loadHistory());
   const [undoStack, setUndoStack] = useState<UndoOperation[]>(() => loadUndoStack());
-  const [customDepartments, setCustomDepartments] = useState<Department[]>(() => loadCustomDepartments());
+  const [customDepartments, setCustomDepartments] = useState<Department[]>(() =>
+    loadCustomDepartments(),
+  );
 
   const handleShiftChange = useCallback((shift: ShiftCode) => {
     setActiveShift(shift);
@@ -181,12 +183,14 @@ export default function App() {
   const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
 
   // Search & View Mode (persisted across sessions)
-  const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'board' | 'widget' | 'table'>(() => {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"board" | "widget" | "table">(() => {
     try {
-      return (localStorage.getItem('zf_ostrov_view_mode') as 'board' | 'widget' | 'table') || 'board';
+      return (
+        (localStorage.getItem("zf_ostrov_view_mode") as "board" | "widget" | "table") || "board"
+      );
     } catch {
-      return 'board';
+      return "board";
     }
   });
 
@@ -247,14 +251,14 @@ export default function App() {
         } else {
           // If cloud is empty on first setup, seed initial operators
           bulkSyncOperatorsToCloud(operatorsRef.current).catch((err) =>
-            console.warn('Initial cloud seed failed:', err)
+            console.warn("Initial cloud seed failed:", err),
           );
         }
       },
       (err) => {
         setIsCloudSyncing(false);
-        console.warn('Firestore subscription error:', err);
-      }
+        console.warn("Firestore subscription error:", err);
+      },
     );
     return () => unsub();
   }, []);
@@ -282,7 +286,7 @@ export default function App() {
   // Persist view mode
   useEffect(() => {
     try {
-      localStorage.setItem('zf_ostrov_view_mode', viewMode);
+      localStorage.setItem("zf_ostrov_view_mode", viewMode);
     } catch {
       // ignore
     }
@@ -295,20 +299,20 @@ export default function App() {
       saveHistory(historyRef.current);
       saveUndoStack(undoStackRef.current);
     };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
   // Keyboard shortcut listener (Esc deselects everything)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         setSelectedOperatorId(null);
         setBulkSelectedIds(new Set());
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   // Show auto-dismissing toast
@@ -323,10 +327,16 @@ export default function App() {
   const scrollToDepartment = useCallback((deptId: DepartmentId) => {
     const el = document.getElementById(`dept-col-${deptId}`);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-      el.classList.add('ring-4', 'ring-amber-400', 'dark:ring-amber-400', 'transition-all', 'duration-300');
+      el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      el.classList.add(
+        "ring-4",
+        "ring-amber-400",
+        "dark:ring-amber-400",
+        "transition-all",
+        "duration-300",
+      );
       setTimeout(() => {
-        el.classList.remove('ring-4', 'ring-amber-400', 'dark:ring-amber-400');
+        el.classList.remove("ring-4", "ring-amber-400", "dark:ring-amber-400");
       }, 1600);
     }
   }, []);
@@ -344,12 +354,11 @@ export default function App() {
                 ...o,
                 departmentId: lastOp.fromDept,
                 status:
-                  lastOp.fromStatus ??
-                  (lastOp.fromDept === 'unassigned' ? 'absence' : 'active'),
+                  lastOp.fromStatus ?? (lastOp.fromDept === "unassigned" ? "absence" : "active"),
                 lastMovedAt: new Date().toISOString(),
               }
-            : o
-        )
+            : o,
+        ),
       );
 
       const fromDept = getDepartmentById(lastOp.fromDept);
@@ -373,13 +382,13 @@ export default function App() {
         syncOperatorToCloud({
           ...revertedOp,
           departmentId: lastOp.fromDept,
-          status:
-            lastOp.fromStatus ??
-            (lastOp.fromDept === 'unassigned' ? 'absence' : 'active'),
+          status: lastOp.fromStatus ?? (lastOp.fromDept === "unassigned" ? "absence" : "active"),
           lastMovedAt: new Date().toISOString(),
-        }).catch((e) => console.warn('Cloud undo sync error:', e));
+        }).catch((e) => console.warn("Cloud undo sync error:", e));
       }
-      syncHistoryRecordToCloud(historyItem).catch((e) => console.warn('Cloud history sync error:', e));
+      syncHistoryRecordToCloud(historyItem).catch((e) =>
+        console.warn("Cloud history sync error:", e),
+      );
 
       scrollToDepartment(lastOp.fromDept);
       showToast(`Krok vrácen: ${lastOp.operatorName} je zpět v ${fromDept.name}`);
@@ -389,92 +398,95 @@ export default function App() {
   }, [scrollToDepartment]);
 
   // Bulk Undo operation (reverts the last count operations, up to 5)
-  const handleUndoBulk = useCallback((count: number) => {
-    setUndoStack((currentStack) => {
-      if (currentStack.length === 0) return currentStack;
-      const countToRevert = Math.min(count, currentStack.length);
-      const opsToRevert = currentStack.slice(0, countToRevert);
-      const remainingStack = currentStack.slice(countToRevert);
+  const handleUndoBulk = useCallback(
+    (count: number) => {
+      setUndoStack((currentStack) => {
+        if (currentStack.length === 0) return currentStack;
+        const countToRevert = Math.min(count, currentStack.length);
+        const opsToRevert = currentStack.slice(0, countToRevert);
+        const remainingStack = currentStack.slice(countToRevert);
 
-      // Apply reversions in order from newest to oldest
-      setOperators((prevOperators) => {
-        let updated = [...prevOperators];
+        // Apply reversions in order from newest to oldest
+        setOperators((prevOperators) => {
+          let updated = [...prevOperators];
+          for (const op of opsToRevert) {
+            updated = updated.map((o) =>
+              o.id === op.operatorId
+                ? {
+                    ...o,
+                    departmentId: op.fromDept,
+                    status: op.fromStatus ?? (op.fromDept === "unassigned" ? "absence" : "active"),
+                    lastMovedAt: new Date().toISOString(),
+                  }
+                : o,
+            );
+          }
+          return updated;
+        });
+
+        // Record bulk undo in history
+        const historyEntries: MoveHistoryRecord[] = opsToRevert.map((op, i) => ({
+          id: `hist-bulk-undo-${Date.now()}-${i}`,
+          operatorId: op.operatorId,
+          operatorName: op.operatorName,
+          machineType: op.machineType,
+          fromDept: op.toDept,
+          toDept: op.fromDept,
+          timestamp: new Date().toISOString(),
+          reason: `Hromadné vrácení: obnoveno zpět do ${getDepartmentById(op.fromDept).name}`,
+        }));
+        setHistory((prev) => [...historyEntries, ...prev]);
+
+        // Cloud synchronization for bulk undo
+        const revertedOps: Operator[] = [];
         for (const op of opsToRevert) {
-          updated = updated.map((o) =>
-            o.id === op.operatorId
-              ? {
-                  ...o,
-                  departmentId: op.fromDept,
-                  status:
-                    op.fromStatus ??
-                    (op.fromDept === 'unassigned' ? 'absence' : 'active'),
-                  lastMovedAt: new Date().toISOString(),
-                }
-              : o
+          const found = operatorsRef.current.find((o) => o.id === op.operatorId);
+          if (found) {
+            revertedOps.push({
+              ...found,
+              departmentId: op.fromDept,
+              status: op.fromStatus ?? (op.fromDept === "unassigned" ? "absence" : "active"),
+              lastMovedAt: new Date().toISOString(),
+            });
+          }
+        }
+        if (revertedOps.length > 0) {
+          bulkSyncOperatorsToCloud(revertedOps).catch((e) =>
+            console.warn("Cloud bulk undo sync error:", e),
           );
         }
-        return updated;
-      });
+        historyEntries.forEach((h) =>
+          syncHistoryRecordToCloud(h).catch((e) =>
+            console.warn("Cloud history undo sync error:", e),
+          ),
+        );
 
-      // Record bulk undo in history
-      const historyEntries: MoveHistoryRecord[] = opsToRevert.map((op, i) => ({
-        id: `hist-bulk-undo-${Date.now()}-${i}`,
-        operatorId: op.operatorId,
-        operatorName: op.operatorName,
-        machineType: op.machineType,
-        fromDept: op.toDept,
-        toDept: op.fromDept,
-        timestamp: new Date().toISOString(),
-        reason: `Hromadné vrácení: obnoveno zpět do ${getDepartmentById(op.fromDept).name}`,
-      }));
-      setHistory((prev) => [...historyEntries, ...prev]);
-
-      // Cloud synchronization for bulk undo
-      const revertedOps: Operator[] = [];
-      for (const op of opsToRevert) {
-        const found = operatorsRef.current.find((o) => o.id === op.operatorId);
-        if (found) {
-          revertedOps.push({
-            ...found,
-            departmentId: op.fromDept,
-            status:
-              op.fromStatus ??
-              (op.fromDept === 'unassigned' ? 'absence' : 'active'),
-            lastMovedAt: new Date().toISOString(),
-          });
+        if (opsToRevert.length > 0) {
+          scrollToDepartment(opsToRevert[0].fromDept);
         }
-      }
-      if (revertedOps.length > 0) {
-        bulkSyncOperatorsToCloud(revertedOps).catch((e) => console.warn('Cloud bulk undo sync error:', e));
-      }
-      historyEntries.forEach((h) =>
-        syncHistoryRecordToCloud(h).catch((e) => console.warn('Cloud history undo sync error:', e))
-      );
 
-      if (opsToRevert.length > 0) {
-        scrollToDepartment(opsToRevert[0].fromDept);
-      }
+        showToast(
+          `Hromadné vrácení dokončeno: ${countToRevert} operací vráceno zpět do původních oddělení.`,
+        );
 
-      showToast(`Hromadné vrácení dokončeno: ${countToRevert} operací vráceno zpět do původních oddělení.`);
-
-      return remainingStack;
-    });
-  }, [scrollToDepartment]);
+        return remainingStack;
+      });
+    },
+    [scrollToDepartment],
+  );
 
   // Keyboard shortcut: Ctrl+Z / Cmd+Z for quick undo, Escape to deselect
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         setSelectedOperatorId(null);
         setBulkSelectedIds(new Set());
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
         const target = e.target as HTMLElement | null;
         if (
           target &&
-          (target.tagName === 'INPUT' ||
-            target.tagName === 'TEXTAREA' ||
-            target.isContentEditable)
+          (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
         ) {
           return;
         }
@@ -482,8 +494,8 @@ export default function App() {
         handleUndoSingle();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleUndoSingle]);
 
   // Bulk selection toggle handler
@@ -501,7 +513,9 @@ export default function App() {
 
   // Select all operators
   const handleSelectAll = useCallback(() => {
-    setBulkSelectedIds(new Set(operators.filter(o => (o.shift || 'A') === activeShift).map((o) => o.id)));
+    setBulkSelectedIds(
+      new Set(operators.filter((o) => (o.shift || "A") === activeShift).map((o) => o.id)),
+    );
   }, [operators, activeShift]);
 
   // Clear bulk selection
@@ -513,7 +527,7 @@ export default function App() {
   const handleMoveMultipleOperators = (
     operatorIds: string[],
     targetDeptId: DepartmentId,
-    absenceReason?: AbsenceReason
+    absenceReason?: AbsenceReason,
   ) => {
     if (operatorIds.length === 0) return;
     if (operatorIds.length === 1) {
@@ -528,7 +542,7 @@ export default function App() {
     if (toMove.length === 0) return;
 
     const count = toMove.length;
-    const newStatus: OperatorStatus = targetDeptId === 'unassigned' ? 'absence' : 'active';
+    const newStatus: OperatorStatus = targetDeptId === "unassigned" ? "absence" : "active";
     const now = new Date().toISOString();
 
     const updatedOperators = operators.map((o) => {
@@ -538,7 +552,9 @@ export default function App() {
           departmentId: targetDeptId,
           status: newStatus,
           absenceReason:
-            targetDeptId === 'unassigned' ? absenceReason || o.absenceReason || 'Absence' : undefined,
+            targetDeptId === "unassigned"
+              ? absenceReason || o.absenceReason || "Absence"
+              : undefined,
           isVnaOnly: false,
           lastMovedAt: now,
         };
@@ -566,10 +582,10 @@ export default function App() {
     // Append to audit history
     const historyItem: MoveHistoryRecord = {
       id: `hist-bulk-${Date.now()}`,
-      operatorId: 'bulk',
+      operatorId: "bulk",
       operatorName: `${count} operátorů`,
-      machineType: 'NONE',
-      fromDept: toMove[0]?.departmentId || 'unassigned',
+      machineType: "NONE",
+      fromDept: toMove[0]?.departmentId || "unassigned",
       toDept: targetDeptId,
       timestamp: now,
       reason: `Hromadný přesun: ${count} operátorů přesunuto do ${targetDept.name}`,
@@ -578,8 +594,10 @@ export default function App() {
 
     // Cloud synchronization
     const movedOps = updatedOperators.filter((o) => idSet.has(o.id));
-    bulkSyncOperatorsToCloud(movedOps).catch((e) => console.warn('Cloud bulk sync error:', e));
-    syncHistoryRecordToCloud(historyItem).catch((e) => console.warn('Cloud history sync error:', e));
+    bulkSyncOperatorsToCloud(movedOps).catch((e) => console.warn("Cloud bulk sync error:", e));
+    syncHistoryRecordToCloud(historyItem).catch((e) =>
+      console.warn("Cloud history sync error:", e),
+    );
 
     // Clear selection
     setBulkSelectedIds(new Set());
@@ -597,7 +615,7 @@ export default function App() {
   const handleMoveOperator = (
     operatorId: string,
     targetDeptId: DepartmentId,
-    absenceReason?: AbsenceReason
+    absenceReason?: AbsenceReason,
   ) => {
     setSelectedOperatorId(null);
     // Robust find: by id or full name
@@ -610,13 +628,18 @@ export default function App() {
 
     // Auto-update status when moving to/from Absence department
     const newStatus: OperatorStatus =
-      targetDeptId === 'unassigned'
-        ? 'absence'
-        : targetOp.departmentId === 'unassigned' || targetOp.status === 'absence'
-        ? 'active'
-        : targetOp.status;
+      targetDeptId === "unassigned"
+        ? "absence"
+        : targetOp.departmentId === "unassigned" || targetOp.status === "absence"
+          ? "active"
+          : targetOp.status;
 
-    if (targetOp.departmentId === targetDeptId && targetOp.status === newStatus && targetOp.absenceReason === absenceReason) return;
+    if (
+      targetOp.departmentId === targetDeptId &&
+      targetOp.status === newStatus &&
+      targetOp.absenceReason === absenceReason
+    )
+      return;
 
     const previousDeptId = targetOp.departmentId;
     const fromDept = getDepartmentById(previousDeptId, customDepartments);
@@ -629,7 +652,10 @@ export default function App() {
           ...op,
           departmentId: targetDeptId,
           status: newStatus,
-          absenceReason: targetDeptId === 'unassigned' ? absenceReason || op.absenceReason || 'Absence' : undefined,
+          absenceReason:
+            targetDeptId === "unassigned"
+              ? absenceReason || op.absenceReason || "Absence"
+              : undefined,
           isVnaOnly: false,
           lastMovedAt: new Date().toISOString(),
         };
@@ -663,16 +689,18 @@ export default function App() {
       fromDept: previousDeptId,
       toDept: targetDeptId,
       timestamp: new Date().toISOString(),
-      reason: `Přesun z ${fromDept.name} do ${toDept.name}${absenceReason ? ` (Důvod: ${absenceReason})` : ''}`,
+      reason: `Přesun z ${fromDept.name} do ${toDept.name}${absenceReason ? ` (Důvod: ${absenceReason})` : ""}`,
     };
     setHistory((prev) => [historyItem, ...prev]);
 
     // Cloud synchronization for everyone with the link
     const movedOp = updatedOperators.find((o) => o.id === resolvedId);
     if (movedOp) {
-      syncOperatorToCloud(movedOp).catch((e) => console.warn('Cloud sync error:', e));
+      syncOperatorToCloud(movedOp).catch((e) => console.warn("Cloud sync error:", e));
     }
-    syncHistoryRecordToCloud(historyItem).catch((e) => console.warn('Cloud history sync error:', e));
+    syncHistoryRecordToCloud(historyItem).catch((e) =>
+      console.warn("Cloud history sync error:", e),
+    );
 
     // Auto scroll to target department
     scrollToDepartment(targetDeptId);
@@ -687,7 +715,7 @@ export default function App() {
   // Jump bar drag-and-drop quick-move handlers
   const handleJumpPillDragOver = (e: React.DragEvent, deptId: DepartmentId) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = "move";
     if (dragOverJumpDept !== deptId) {
       setDragOverJumpDept(deptId);
     }
@@ -710,10 +738,10 @@ export default function App() {
       resolvedIds.length > 0
         ? resolvedIds
         : getGlobalDragState().operatorIds.length > 0
-        ? getGlobalDragState().operatorIds
-        : getGlobalDragState().operatorId
-        ? [getGlobalDragState().operatorId!]
-        : [];
+          ? getGlobalDragState().operatorIds
+          : getGlobalDragState().operatorId
+            ? [getGlobalDragState().operatorId!]
+            : [];
 
     if (operatorIds.length > 0) {
       handleMoveMultipleOperators(operatorIds, targetDeptId);
@@ -745,11 +773,11 @@ export default function App() {
     // Moving to absence also moves to unassigned (Absence) department
     // Moving from absence to active/break moves back to previous department or hovc
     const targetDeptId: DepartmentId =
-      newStatus === 'absence'
-        ? 'unassigned'
-        : targetOp.departmentId === 'unassigned'
-        ? 'hovc'
-        : targetOp.departmentId;
+      newStatus === "absence"
+        ? "unassigned"
+        : targetOp.departmentId === "unassigned"
+          ? "hovc"
+          : targetOp.departmentId;
 
     const previousDeptId = targetOp.departmentId;
     const previousStatus = targetOp.status;
@@ -771,7 +799,7 @@ export default function App() {
 
     const changedOp = updated.find((o) => o.id === operatorId);
     if (changedOp) {
-      syncOperatorToCloud(changedOp).catch((e) => console.warn('Cloud status sync error:', e));
+      syncOperatorToCloud(changedOp).catch((e) => console.warn("Cloud status sync error:", e));
     }
 
     if (previousDeptId !== targetDeptId || previousStatus !== newStatus) {
@@ -790,11 +818,11 @@ export default function App() {
     }
 
     const statusLabel =
-      newStatus === 'active'
-        ? 'aktivní v provozu na hale'
-        : newStatus === 'break'
-        ? 'na pauze'
-        : 'v absenci / doma (odečteno z provozu)';
+      newStatus === "active"
+        ? "aktivní v provozu na hale"
+        : newStatus === "break"
+          ? "na pauze"
+          : "v absenci / doma (odečteno z provozu)";
     showToast(`Stav operátora ${targetOp.name} byl změněn na: ${statusLabel}`);
   };
 
@@ -814,7 +842,7 @@ export default function App() {
 
     const changedOp = updated.find((o) => o.id === operatorId);
     if (changedOp) {
-      syncOperatorToCloud(changedOp).catch((e) => console.warn('Cloud sync error:', e));
+      syncOperatorToCloud(changedOp).catch((e) => console.warn("Cloud sync error:", e));
     }
   };
 
@@ -823,7 +851,7 @@ export default function App() {
     const updated = applyTemplateToOperators(template, operators);
     setOperators(updated);
     saveOperators(updated);
-    bulkSyncOperatorsToCloud(updated).catch((e) => console.warn('Cloud template sync error:', e));
+    bulkSyncOperatorsToCloud(updated).catch((e) => console.warn("Cloud template sync error:", e));
     showToast(`Šablona „${template.name}“ byla načtena do směny (${updated.length} lidí).`);
   };
 
@@ -832,15 +860,13 @@ export default function App() {
     if (!opData.id) return;
 
     const finalStatus: OperatorStatus =
-      opData.departmentId === 'unassigned'
-        ? 'absence'
-        : opData.status || 'active';
+      opData.departmentId === "unassigned" ? "absence" : opData.status || "active";
     const finalDeptId: DepartmentId =
-      finalStatus === 'absence'
-        ? 'unassigned'
-        : opData.departmentId === 'unassigned'
-        ? 'hovc'
-        : (opData.departmentId || 'hovc');
+      finalStatus === "absence"
+        ? "unassigned"
+        : opData.departmentId === "unassigned"
+          ? "hovc"
+          : opData.departmentId || "hovc";
 
     const sanitizedOpData = {
       ...opData,
@@ -851,7 +877,9 @@ export default function App() {
     const isNew = !operators.some((o) => o.id === sanitizedOpData.id);
 
     const updated = operators.some((o) => o.id === sanitizedOpData.id)
-      ? operators.map((o) => (o.id === sanitizedOpData.id ? ({ ...o, ...sanitizedOpData } as Operator) : o))
+      ? operators.map((o) =>
+          o.id === sanitizedOpData.id ? ({ ...o, ...sanitizedOpData } as Operator) : o,
+        )
       : [sanitizedOpData as Operator, ...operators];
 
     setOperators(updated);
@@ -859,7 +887,7 @@ export default function App() {
 
     const savedOp = updated.find((o) => o.id === sanitizedOpData.id);
     if (savedOp) {
-      syncOperatorToCloud(savedOp).catch((e) => console.warn('Cloud operator save error:', e));
+      syncOperatorToCloud(savedOp).catch((e) => console.warn("Cloud operator save error:", e));
     }
 
     if (sanitizedOpData.departmentId) {
@@ -877,18 +905,24 @@ export default function App() {
   const handleImportOperators = (newOps: Operator[], replaceAll: boolean) => {
     // Ensure all new operators are assigned to the current shift
     const shiftedOps = newOps.map((op) => ({ ...op, shift: op.shift || activeShift }));
-    
+
     // If replaceAll is true, ONLY replace operators for the current shift. Keep other shifts intact.
-    const otherShiftsOps = replaceAll ? operators.filter(o => o.shift !== activeShift) : operators;
+    const otherShiftsOps = replaceAll
+      ? operators.filter((o) => o.shift !== activeShift)
+      : operators;
     const updated = [...shiftedOps, ...otherShiftsOps];
-    
+
     setOperators(updated);
     saveOperators(updated);
-    bulkSyncOperatorsToCloud(updated).catch((e) => console.warn('Cloud import sync error:', e));
+    bulkSyncOperatorsToCloud(updated).catch((e) => console.warn("Cloud import sync error:", e));
     if (replaceAll) {
-      showToast(`Načteno ${newOps.length} operátorů ze snímku. Seznam směny ${activeShift} byl přepsán.`);
+      showToast(
+        `Načteno ${newOps.length} operátorů ze snímku. Seznam směny ${activeShift} byl přepsán.`,
+      );
     } else {
-      showToast(`Přidáno ${newOps.length} operátorů ze snímku k existujícímu týmu (Směna ${activeShift}).`);
+      showToast(
+        `Přidáno ${newOps.length} operátorů ze snímku k existujícímu týmu (Směna ${activeShift}).`,
+      );
     }
     setIsPhotoImportOpen(false);
   };
@@ -899,7 +933,9 @@ export default function App() {
     const updated = operators.filter((o) => o.id !== operatorId);
     setOperators(updated);
     saveOperators(updated);
-    deleteOperatorFromCloud(operatorId).catch((e) => console.warn('Cloud operator delete error:', e));
+    deleteOperatorFromCloud(operatorId).catch((e) =>
+      console.warn("Cloud operator delete error:", e),
+    );
     if (op) {
       showToast(`Operátor ${op.name} byl odebrán.`);
     }
@@ -913,13 +949,15 @@ export default function App() {
     };
     const updated = addCustomDepartment(deptWithShift);
     setCustomDepartments(updated);
-    showToast(`Vytvořeno oddělení pro vícepráce (Směna ${activeShift}): ${newDept.name} (${newDept.code})`);
+    showToast(
+      `Vytvořeno oddělení pro vícepráce (Směna ${activeShift}): ${newDept.name} (${newDept.code})`,
+    );
 
     // Sync to cloud for real-time collaboration
     try {
       await syncCustomDepartmentToCloud(deptWithShift);
     } catch (err) {
-      console.warn('Failed to sync custom department to cloud:', err);
+      console.warn("Failed to sync custom department to cloud:", err);
     }
   };
 
@@ -930,7 +968,7 @@ export default function App() {
       setDeptToDeleteConfirm(deptToDelete);
     } else {
       // Force remove if found only by ID
-      handleConfirmDeleteCustomDepartmentById(deptId, 'Vícepráce');
+      handleConfirmDeleteCustomDepartmentById(deptId, "Vícepráce");
     }
   };
 
@@ -944,14 +982,16 @@ export default function App() {
 
   const handleConfirmDeleteCustomDepartmentById = async (deptId: string, deptName: string) => {
     // Move any operators currently assigned to this custom department IN THIS SHIFT to 'hovc' (Outbound)
-    const affectedOps = operators.filter((o) => (o.shift || 'A') === activeShift && o.departmentId === deptId);
+    const affectedOps = operators.filter(
+      (o) => (o.shift || "A") === activeShift && o.departmentId === deptId,
+    );
     if (affectedOps.length > 0) {
       const now = new Date().toISOString();
       const updatedOperators = operators.map((o) => {
-        if ((o.shift || 'A') === activeShift && o.departmentId === deptId) {
+        if ((o.shift || "A") === activeShift && o.departmentId === deptId) {
           return {
             ...o,
-            departmentId: 'hovc' as DepartmentId,
+            departmentId: "hovc" as DepartmentId,
             lastMovedAt: now,
           };
         }
@@ -960,7 +1000,7 @@ export default function App() {
       setOperators(updatedOperators);
       saveOperators(updatedOperators);
       for (const op of affectedOps) {
-        syncOperatorToCloud({ ...op, departmentId: 'hovc', lastMovedAt: now }).catch(() => {});
+        syncOperatorToCloud({ ...op, departmentId: "hovc", lastMovedAt: now }).catch(() => {});
       }
     }
 
@@ -971,7 +1011,7 @@ export default function App() {
     try {
       await deleteCustomDepartmentFromCloud(deptId);
     } catch (err) {
-      console.warn('Failed to delete custom department from cloud:', err);
+      console.warn("Failed to delete custom department from cloud:", err);
     }
   };
 
@@ -988,13 +1028,13 @@ export default function App() {
     setHistory([]);
     saveHistory([]);
     setUndoStack([]);
-    bulkSyncOperatorsToCloud(reset).catch((e) => console.warn('Cloud reset sync error:', e));
-    showToast('Data obnovena na 65 operátorů oddělení PICK.');
+    bulkSyncOperatorsToCloud(reset).catch((e) => console.warn("Cloud reset sync error:", e));
+    showToast("Data obnovena na 65 operátorů oddělení PICK.");
   };
 
   // Drag-and-drop auto-scroll: automatically scrolls horizontal columns when dragging near edge
   useEffect(() => {
-    if (viewMode !== 'board') return;
+    if (viewMode !== "board") return;
 
     const container = boardContainerRef.current;
     if (!container) return;
@@ -1045,21 +1085,21 @@ export default function App() {
       }
     };
 
-    window.addEventListener('dragover', handleDragOver);
-    window.addEventListener('dragend', stopScroll);
-    window.addEventListener('drop', stopScroll);
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("dragend", stopScroll);
+    window.addEventListener("drop", stopScroll);
 
     return () => {
-      window.removeEventListener('dragover', handleDragOver);
-      window.removeEventListener('dragend', stopScroll);
-      window.removeEventListener('drop', stopScroll);
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("dragend", stopScroll);
+      window.removeEventListener("drop", stopScroll);
       stopScroll();
     };
   }, [viewMode]);
 
   // Continuous hands-free auto-scroll (e.g. for TV display or warehouse dashboard wallboards)
   useEffect(() => {
-    if (!isAutoScrolling || viewMode !== 'board') return;
+    if (!isAutoScrolling || viewMode !== "board") return;
 
     const container = boardContainerRef.current;
     if (!container) return;
@@ -1101,7 +1141,7 @@ export default function App() {
 
   // 1. Filter operators by the currently selected shift
   const shiftOperators = useMemo(() => {
-    return operators.filter((op) => (op.shift || 'A') === activeShift);
+    return operators.filter((op) => (op.shift || "A") === activeShift);
   }, [operators, activeShift]);
 
   // 2. Filtered operators by search (name, machineType, department, notes)
@@ -1122,7 +1162,7 @@ export default function App() {
 
   // Custom departments for current active shift
   const shiftCustomDepartments = useMemo(() => {
-    return customDepartments.filter((d) => (d.shift || 'A') === activeShift);
+    return customDepartments.filter((d) => (d.shift || "A") === activeShift);
   }, [customDepartments, activeShift]);
 
   // Combined built-in and custom departments for current active shift
@@ -1133,19 +1173,25 @@ export default function App() {
   // Key metrics - accurate calculations for floor operation and absence
   const selectedOperator = shiftOperators.find((o) => o.id === selectedOperatorId) || null;
   const isOperatorInOperation = (o: Operator) =>
-    o.departmentId !== 'unassigned' && o.status === 'active';
+    o.departmentId !== "unassigned" && o.status === "active";
   const isOperatorInAbsence = (o: Operator) =>
-    o.departmentId === 'unassigned' || o.status === 'absence';
+    o.departmentId === "unassigned" || o.status === "absence";
 
   const totalCount = shiftOperators.length;
   const activeCount = shiftOperators.filter(isOperatorInOperation).length;
   const absenceCount = shiftOperators.filter(isOperatorInAbsence).length;
   const breakCount = shiftOperators.filter(
-    (o) => o.departmentId !== 'unassigned' && o.status === 'break'
+    (o) => o.departmentId !== "unassigned" && o.status === "break",
   ).length;
-  const llCount = shiftOperators.filter((o) => o.machineType === 'LL' && isOperatorInOperation(o)).length;
-  const rtrCount = shiftOperators.filter((o) => o.machineType === 'RTR' && isOperatorInOperation(o)).length;
-  const vnaCount = shiftOperators.filter((o) => o.departmentId === 'vna' && isOperatorInOperation(o)).length;
+  const llCount = shiftOperators.filter(
+    (o) => o.machineType === "LL" && isOperatorInOperation(o),
+  ).length;
+  const rtrCount = shiftOperators.filter(
+    (o) => o.machineType === "RTR" && isOperatorInOperation(o),
+  ).length;
+  const vnaCount = shiftOperators.filter(
+    (o) => o.departmentId === "vna" && isOperatorInOperation(o),
+  ).length;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100/70 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans selection:bg-blue-500 selection:text-white">
@@ -1168,7 +1214,7 @@ export default function App() {
         onToggleAutoScroll={() => setIsAutoScrolling((prev) => !prev)}
         onSearchChange={setSearchQuery}
         onViewModeChange={setViewMode}
-        onOpenAddModal={() => setAddEditOperator({ operator: null, defaultDeptId: 'hovc' })}
+        onOpenAddModal={() => setAddEditOperator({ operator: null, defaultDeptId: "hovc" })}
         onOpenAddCustomDept={() => setIsAddCustomDeptOpen(true)}
         onOpenPhotoImport={() => setIsPhotoImportOpen(true)}
         onOpenTemplatesModal={() => setIsTemplatesModalOpen(true)}
@@ -1189,16 +1235,16 @@ export default function App() {
         />
 
         {/* View Mode 1: Department Columns (Board) */}
-        {viewMode === 'board' && (
+        {viewMode === "board" && (
           <div className="space-y-2.5">
             {/* Quick jump & Drag-to-move pills bar (Non-sticky, clean drop target) */}
             <div
               className={`relative transition-all rounded-xl py-1.5 px-2.5 border shadow-2xs backdrop-blur-md ${
                 dragOverJumpDept
-                  ? 'bg-blue-50/95 dark:bg-slate-900/95 border-blue-400 dark:border-blue-600 ring-2 ring-blue-400/30 shadow-md'
+                  ? "bg-blue-50/95 dark:bg-slate-900/95 border-blue-400 dark:border-blue-600 ring-2 ring-blue-400/30 shadow-md"
                   : bulkSelectedIds.size > 0
-                  ? 'bg-blue-50/70 dark:bg-slate-900/90 border-blue-300 dark:border-blue-700 shadow-sm'
-                  : 'bg-white/95 dark:bg-slate-900/95 border-slate-200/80 dark:border-slate-800/80'
+                    ? "bg-blue-50/70 dark:bg-slate-900/90 border-blue-300 dark:border-blue-700 shadow-sm"
+                    : "bg-white/95 dark:bg-slate-900/95 border-slate-200/80 dark:border-slate-800/80"
               }`}
             >
               <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-0.5 scrollbar-none">
@@ -1241,17 +1287,17 @@ export default function App() {
                         isHovered
                           ? `${theme.activeBg} ${theme.activeBorder} scale-110 shadow-lg z-30 ring-4`
                           : isBulkActive
-                          ? `ring-2 ring-blue-500 border-blue-400 bg-blue-50 dark:bg-blue-950/80 text-blue-800 dark:text-blue-200 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 shadow-sm active:scale-95`
-                          : selectedOperatorId
-                          ? `${theme.border} ring-2 ring-blue-400 bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 animate-pulse`
-                          : `bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700/80 ${theme.border} active:scale-95`
+                            ? `ring-2 ring-blue-500 border-blue-400 bg-blue-50 dark:bg-blue-950/80 text-blue-800 dark:text-blue-200 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 shadow-sm active:scale-95`
+                            : selectedOperatorId
+                              ? `${theme.border} ring-2 ring-blue-400 bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 animate-pulse`
+                              : `bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700/80 ${theme.border} active:scale-95`
                       }`}
                       title={
                         isBulkActive
                           ? `Kliknutím sem okamžitě přesunete všech ${bulkSelectedIds.size} označených lidí do ${dept.name}`
                           : selectedOperatorId
-                          ? `Kliknutím sem okamžitě přesunete ${selectedOperator?.name || 'vybraného člověka'} do ${dept.name}`
-                          : `Kliknutím přeskočit na ${dept.name} • Přetažením operátora sem jej okamžitě přesunete`
+                            ? `Kliknutím sem okamžitě přesunete ${selectedOperator?.name || "vybraného člověka"} do ${dept.name}`
+                            : `Kliknutím přeskočit na ${dept.name} • Přetažením operátora sem jej okamžitě přesunete`
                       }
                     >
                       <span className="pointer-events-none flex items-center gap-1">
@@ -1306,15 +1352,15 @@ export default function App() {
                 <button
                   id="jump-bar-autoscroll-btn"
                   onClick={() => setIsAutoScrolling((prev) => !prev)}
-                  className={`${bulkSelectedIds.size > 0 ? '' : 'ml-auto'} px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1.5 active:scale-95 ${
+                  className={`${bulkSelectedIds.size > 0 ? "" : "ml-auto"} px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1.5 active:scale-95 ${
                     isAutoScrolling
-                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm animate-pulse'
-                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                      ? "bg-emerald-600 text-white border-emerald-500 shadow-sm animate-pulse"
+                      : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
                   }`}
                   title={
                     isAutoScrolling
-                      ? 'Zastavit plynulý posuv sloupců'
-                      : 'Plynulý automatický posuv sloupců (hands-free pro TV/nástěnku)'
+                      ? "Zastavit plynulý posuv sloupců"
+                      : "Plynulý automatický posuv sloupců (hands-free pro TV/nástěnku)"
                   }
                 >
                   {isAutoScrolling ? (
@@ -1339,7 +1385,9 @@ export default function App() {
                   Pododdělení PICK:
                 </span>
                 <span>
-                  Přetáhněte kartu operátora na jakýkoliv sloupec nebo klikněte na tlačítko <strong>Přesun</strong>. Kliknutím mimo kartu nebo klávesou <strong>Esc</strong> výběr kdykoliv zrušíte.
+                  Přetáhněte kartu operátora na jakýkoliv sloupec nebo klikněte na tlačítko{" "}
+                  <strong>Přesun</strong>. Kliknutím mimo kartu nebo klávesou <strong>Esc</strong>{" "}
+                  výběr kdykoliv zrušíte.
                 </span>
               </div>
               {searchQuery && (
@@ -1361,10 +1409,13 @@ export default function App() {
                   </span>
                   <div>
                     <span>
-                      Hromadný výběr: <span className="font-black text-amber-200">{bulkSelectedIds.size}</span> operátorů
+                      Hromadný výběr:{" "}
+                      <span className="font-black text-amber-200">{bulkSelectedIds.size}</span>{" "}
+                      operátorů
                     </span>
                     <span className="text-[11px] font-normal text-blue-100 ml-2 hidden sm:inline">
-                      (Klikněte na další operátory pro přidání/odebrání • Přetáhněte myší nebo klikněte na horní zkratku)
+                      (Klikněte na další operátory pro přidání/odebrání • Přetáhněte myší nebo
+                      klikněte na horní zkratku)
                     </span>
                   </div>
                 </div>
@@ -1402,10 +1453,15 @@ export default function App() {
                   </span>
                   <div>
                     <span>
-                      Vybrán operátor: <span className="underline decoration-white/60 font-black text-amber-200">{selectedOperator.name}</span> ({selectedOperator.machineType})
+                      Vybrán operátor:{" "}
+                      <span className="underline decoration-white/60 font-black text-amber-200">
+                        {selectedOperator.name}
+                      </span>{" "}
+                      ({selectedOperator.machineType})
                     </span>
                     <p className="text-[11px] font-normal text-blue-100 mt-0.5">
-                      Pro přesun použijte tlačítko Přesun na kartě, přetažení myší nebo horní zkratky
+                      Pro přesun použijte tlačítko Přesun na kartě, přetažení myší nebo horní
+                      zkratky
                     </p>
                   </div>
                 </div>
@@ -1435,7 +1491,11 @@ export default function App() {
               onDragOver={handleBoardContainerDragOver}
               onClick={(e) => {
                 const target = e.target as HTMLElement;
-                if (!target.closest('[id^="operator-card-"]') && !target.closest('button') && !target.closest('input')) {
+                if (
+                  !target.closest('[id^="operator-card-"]') &&
+                  !target.closest("button") &&
+                  !target.closest("input")
+                ) {
                   if (selectedOperatorId) {
                     setSelectedOperatorId(null);
                   }
@@ -1506,18 +1566,18 @@ export default function App() {
         )}
 
         {/* View Mode 2: Phone Wallpaper Widget View */}
-        {viewMode === 'widget' && (
+        {viewMode === "widget" && (
           <WidgetView
             operators={filteredOperators}
             customDepartments={shiftCustomDepartments}
             onSelectDepartment={() => {
-              setViewMode('board');
+              setViewMode("board");
             }}
           />
         )}
 
         {/* View Mode 3: Table View */}
-        {viewMode === 'table' && (
+        {viewMode === "table" && (
           <TableView
             operators={filteredOperators}
             customDepartments={shiftCustomDepartments}
@@ -1542,8 +1602,8 @@ export default function App() {
           <div
             className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border text-sm font-medium ${
               toastMessage.isWarning
-                ? 'bg-amber-50 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800'
-                : 'bg-slate-900/95 dark:bg-white text-white dark:text-slate-900 border-slate-700/60 dark:border-slate-300'
+                ? "bg-amber-50 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800"
+                : "bg-slate-900/95 dark:bg-white text-white dark:text-slate-900 border-slate-700/60 dark:border-slate-300"
             }`}
           >
             {toastMessage.isWarning ? (

@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   X,
   ArrowRightLeft,
@@ -11,9 +11,9 @@ import {
   Globe,
   UserX,
   Check,
-} from 'lucide-react';
-import { DEPARTMENTS } from '../data/departments';
-import { AbsenceReason, Department, DepartmentId, Operator } from '../types';
+} from "lucide-react";
+import { DEPARTMENTS } from "../data/departments";
+import { AbsenceReason, Department, DepartmentId, Operator } from "../types";
 
 interface QuickMoveModalProps {
   operator: Operator | null;
@@ -42,19 +42,19 @@ export const QuickMoveModal: React.FC<QuickMoveModalProps> = ({
       return <Wrench className="w-5 h-5 text-amber-500" />;
     }
     switch (id) {
-      case 'hovc':
+      case "hovc":
         return <PackageCheck className="w-5 h-5 text-blue-500" />;
-      case 'hovs':
+      case "hovs":
         return <Boxes className="w-5 h-5 text-sky-500" />;
-      case 'putaway':
+      case "putaway":
         return <ArrowDownToLine className="w-5 h-5 text-indigo-500" />;
-      case 'vas':
+      case "vas":
         return <Wrench className="w-5 h-5 text-amber-500" />;
-      case 'obwf':
+      case "obwf":
         return <Layers className="w-5 h-5 text-purple-500" />;
-      case 'vna':
+      case "vna":
         return <GitCommitVertical className="w-5 h-5 text-emerald-500" />;
-      case 'obwi':
+      case "obwi":
         return <Globe className="w-5 h-5 text-rose-500" />;
       default:
         return <UserX className="w-5 h-5 text-slate-500" />;
@@ -86,9 +86,7 @@ export const QuickMoveModal: React.FC<QuickMoveModalProps> = ({
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Přesun operátora v rámci PICK
               </span>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                {operator.name}
-              </h2>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">{operator.name}</h2>
             </div>
           </div>
           <button
@@ -104,16 +102,16 @@ export const QuickMoveModal: React.FC<QuickMoveModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-slate-500 dark:text-slate-400">Aktuálně:</span>
             <span className="font-bold text-blue-700 dark:text-blue-300">
-              {currentDept?.name || 'Nezařazeno'}
+              {currentDept?.name || "Nezařazeno"}
             </span>
           </div>
 
-          {operator.machineType && operator.machineType !== 'NONE' && (
+          {operator.machineType && operator.machineType !== "NONE" && (
             <span
               className={`font-black text-xs px-2.5 py-0.5 rounded-md ${
-                operator.machineType === 'RTR'
-                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200'
-                  : 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200'
+                operator.machineType === "RTR"
+                  ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
+                  : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
               }`}
             >
               {operator.machineType}
@@ -132,14 +130,14 @@ export const QuickMoveModal: React.FC<QuickMoveModalProps> = ({
               const isCurrent = dept.id === operator.departmentId;
               const count = getCountForDept(dept.id);
 
-              if (dept.id === 'unassigned') {
+              if (dept.id === "unassigned") {
                 return (
                   <div
                     key={dept.id}
                     className={`sm:col-span-2 p-3 rounded-xl border transition-all ${
                       isCurrent
-                        ? 'bg-slate-50 dark:bg-slate-800/60 border-slate-300 dark:border-slate-700'
-                        : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700'
+                        ? "bg-slate-50 dark:bg-slate-800/60 border-slate-300 dark:border-slate-700"
+                        : "bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -165,23 +163,23 @@ export const QuickMoveModal: React.FC<QuickMoveModalProps> = ({
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 mt-2">
-                      {(['Absence', 'Dovolená', 'PN'] as AbsenceReason[]).map((reason) => {
+                      {(["Absence", "Dovolená", "PN"] as AbsenceReason[]).map((reason) => {
                         const isReasonCurrent = isCurrent && operator.absenceReason === reason;
                         return (
                           <button
                             key={reason}
                             type="button"
                             onClick={() => {
-                              onMove('unassigned', reason);
+                              onMove("unassigned", reason);
                               onClose();
                             }}
                             className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer text-xs font-bold ${
                               isReasonCurrent
-                                ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 ring-2 ring-blue-500/30'
-                                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-400 text-slate-700 dark:text-slate-200'
+                                ? "border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 ring-2 ring-blue-500/30"
+                                : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-400 text-slate-700 dark:text-slate-200"
                             }`}
                           >
-                            {isReasonCurrent && '✓ '}
+                            {isReasonCurrent && "✓ "}
                             {reason}
                           </button>
                         );
@@ -202,8 +200,8 @@ export const QuickMoveModal: React.FC<QuickMoveModalProps> = ({
                   }}
                   className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all ${
                     isCurrent
-                      ? 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/50 opacity-60 cursor-not-allowed'
-                      : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-md hover:scale-[1.01] active:scale-[0.99]'
+                      ? "bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/50 opacity-60 cursor-not-allowed"
+                      : "bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-md hover:scale-[1.01] active:scale-[0.99]"
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -256,8 +254,8 @@ export const QuickMoveModal: React.FC<QuickMoveModalProps> = ({
                       }}
                       className={`flex items-center justify-between p-3 rounded-xl border border-dashed text-left transition-all ${
                         isCurrent
-                          ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800/60 opacity-60 cursor-not-allowed'
-                          : 'bg-amber-50/30 dark:bg-amber-950/10 border-amber-300 dark:border-amber-700/60 hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30 hover:shadow-md hover:scale-[1.01] active:scale-[0.99]'
+                          ? "bg-amber-50/50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800/60 opacity-60 cursor-not-allowed"
+                          : "bg-amber-50/30 dark:bg-amber-950/10 border-amber-300 dark:border-amber-700/60 hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30 hover:shadow-md hover:scale-[1.01] active:scale-[0.99]"
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">

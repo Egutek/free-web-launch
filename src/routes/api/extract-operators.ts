@@ -62,7 +62,7 @@ function parseTextFallback(textInput: string): ExtractedOperator[] {
 
       const name = line
         .replace(/\b(LL|RTR|HOVC|HOVS|VAS|OBWF|OBWI|VNA|PUTAWAY)\b/gi, "")
-        .replace(/[\-–|;,]+/g, " ")
+        .replace(/[-–|;,]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
 
@@ -76,16 +76,14 @@ function normalize(list: unknown): ExtractedOperator[] {
   return list
     .map((raw) => {
       const op = raw as Record<string, unknown>;
-      const name = typeof op['name'] === "string" ? op['name'].trim() : "";
-      const machine = String(op['machineType'] ?? "LL").toUpperCase();
+      const name = typeof op["name"] === "string" ? op["name"].trim() : "";
+      const machine = String(op["machineType"] ?? "LL").toUpperCase();
       return {
         name,
         machineType: (machine === "RTR" ? "RTR" : machine === "NONE" ? "NONE" : "LL") as
-          | "LL"
-          | "RTR"
-          | "NONE",
-        departmentId: typeof op['departmentId'] === "string" ? op['departmentId'] : "hovc",
-        notes: typeof op['notes'] === "string" ? op['notes'] : undefined,
+          "LL" | "RTR" | "NONE",
+        departmentId: typeof op["departmentId"] === "string" ? op["departmentId"] : "hovc",
+        notes: typeof op["notes"] === "string" ? op["notes"] : undefined,
       };
     })
     .filter((op) => op.name.length > 1);
@@ -109,13 +107,74 @@ export const Route = createFileRoute("/api/extract-operators")({
           );
         }
 
-        const apiKey = process.env['LOVABLE_API_KEY'];
-        if (!apiKey) {
+        const geminiKey = process.env["GEMINI_API_KEY"];
+        const lovableKey = process.env["LOVABLE_API_KEY"];
+
+        if (geminiKey) {
+          try {
+            const parts: Array<Record<string, unknown>> = [
+              {
+                text: `${EXTRACTION_PROMPT}\nVytáhni všechny operátory z přiloženého materiálu. Vrať striktně JSON objekt {"operators": [...]}.`,
+              },
+            ];
+            if (imageBase64) {
+              const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/, "");
+              parts.push({
+                inlineData: {
+                  mimeType,
+                  data: cleanBase64,
+                },
+              });
+            }
+            if (textInput) {
+              parts.push({ text: `Zdrojový text:\n${textInput}` });
+            }
+
+            const geminiRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{ parts }],
+                  generationConfig: {
+                    responseMimeType: "application/json",
+                  },
+                }),
+              },
+            );
+
+            if (geminiRes.ok) {
+              const payload = (await geminiRes.json()) as {
+                candidates?: Array<{
+                  content?: { parts?: Array<{ text?: string }> };
+                }>;
+              };
+              const content = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+              const parsed = JSON.parse(
+                content
+                  .replace(/```json/g, "")
+                  .replace(/```/g, "")
+                  .trim(),
+              );
+              const ops = normalize(Array.isArray(parsed) ? parsed : parsed?.operators);
+              if (ops.length > 0) {
+                return Response.json({ operators: ops });
+              }
+            }
+          } catch (e) {
+            console.error("Gemini extraction error:", e);
+          }
+        }
+
+        if (!lovableKey) {
           if (textInput) {
             return Response.json({ operators: parseTextFallback(textInput) });
           }
           return Response.json(
-            { error: "Rozpoznávání z fotky není momentálně dostupné. Zadejte prosím jména textem." },
+            {
+              error: "Rozpoznávání z fotky není momentálně dostupné. Zadejte prosím jména textem.",
+            },
             { status: 503 },
           );
         }
@@ -210,7 +269,12 @@ export const Route = createFileRoute("/api/extract-operators")({
         const content = payload.choices?.[0]?.message?.content ?? "{}";
         let operators: ExtractedOperator[] = [];
         try {
-          const parsed = JSON.parse(content.replace(/```json/g, "").replace(/```/g, "").trim());
+          const parsed = JSON.parse(
+            content
+              .replace(/```json/g, "")
+              .replace(/```/g, "")
+              .trim(),
+          );
           operators = normalize(Array.isArray(parsed) ? parsed : parsed?.operators);
         } catch (error) {
           console.error("Nepodařilo se přečíst odpověď AI", error);

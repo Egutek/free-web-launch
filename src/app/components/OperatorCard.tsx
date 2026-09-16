@@ -1,18 +1,12 @@
-import React, { useState } from 'react';
-import {
-  ArrowRightLeft,
-  Clock,
-  Edit2,
-  GripVertical,
-  Users,
-} from 'lucide-react';
-import { Operator, OperatorStatus, DepartmentId, AbsenceReason } from '../types';
+import React, { useState } from "react";
+import { ArrowRightLeft, Clock, Edit2, GripVertical, Users } from "lucide-react";
+import { Operator, OperatorStatus, DepartmentId, AbsenceReason } from "../types";
 import {
   startGlobalDrag,
   endGlobalDrag,
   resolveOperatorIdsFromDrop,
   getGlobalDragState,
-} from '../utils/dragState';
+} from "../utils/dragState";
 
 interface OperatorCardProps {
   operator: Operator;
@@ -55,11 +49,11 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
       const hours = Math.floor(mins / 60);
       return `${hours} hod`;
     } catch {
-      return '';
+      return "";
     }
   };
 
-  const isAbsence = operator.departmentId === 'unassigned' || operator.status === 'absence';
+  const isAbsence = operator.departmentId === "unassigned" || operator.status === "absence";
   const isMultiDragCandidate = isBulkSelected && bulkSelectedIds.length > 1;
 
   return (
@@ -69,7 +63,7 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
       onClick={(e) => {
         // Only select if not clicking an interactive button
         const target = e.target as HTMLElement;
-        if (target.closest('button')) return;
+        if (target.closest("button")) return;
 
         // If bulk mode is active, clicking anywhere on the card toggles bulk selection!
         if (isAnyBulkActive || isBulkSelected) {
@@ -83,12 +77,12 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
         const dragIds = isMultiDragCandidate ? bulkSelectedIds : [operator.id];
         startGlobalDrag(operator, dragIds);
         try {
-          e.dataTransfer.setData('application/x-operator-id', operator.id);
+          e.dataTransfer.setData("application/x-operator-id", operator.id);
           if (isMultiDragCandidate) {
-            e.dataTransfer.setData('application/x-bulk-operator-ids', JSON.stringify(dragIds));
+            e.dataTransfer.setData("application/x-bulk-operator-ids", JSON.stringify(dragIds));
           }
-          e.dataTransfer.setData('text/plain', operator.id);
-          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData("text/plain", operator.id);
+          e.dataTransfer.effectAllowed = "move";
         } catch {
           // In some restricted browser modes setData may be prevented
         }
@@ -99,7 +93,7 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
       }}
       onDragOver={(e) => {
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
+        e.dataTransfer.dropEffect = "move";
       }}
       onDrop={(e) => {
         e.preventDefault();
@@ -110,10 +104,10 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
             resolvedIds.length > 0
               ? resolvedIds
               : getGlobalDragState().operatorIds.length > 0
-              ? getGlobalDragState().operatorIds
-              : getGlobalDragState().operatorId
-              ? [getGlobalDragState().operatorId!]
-              : [];
+                ? getGlobalDragState().operatorIds
+                : getGlobalDragState().operatorId
+                  ? [getGlobalDragState().operatorId!]
+                  : [];
 
           if (droppedIds.length > 0) {
             onDropOperator(droppedIds, operator.departmentId);
@@ -122,14 +116,14 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
       }}
       className={`group relative rounded-xl border px-2 py-1.5 shadow-2xs transition-all cursor-grab active:cursor-grabbing select-none ${
         isDragging
-          ? 'opacity-35 ring-2 ring-blue-500 border-dashed border-blue-500 bg-blue-50/50 dark:bg-blue-950/40 shadow-none'
+          ? "opacity-35 ring-2 ring-blue-500 border-dashed border-blue-500 bg-blue-50/50 dark:bg-blue-950/40 shadow-none"
           : isBulkSelected
-          ? 'ring-2 ring-blue-500 border-blue-400 bg-blue-50/70 dark:bg-blue-950/50 shadow-xs'
-          : isSelected
-          ? 'ring-2 ring-blue-600 dark:ring-blue-400 border-blue-500 bg-blue-50/70 dark:bg-blue-950/60 shadow-md'
-          : isAbsence
-          ? 'bg-slate-50/80 dark:bg-slate-900/40 border-slate-300 dark:border-slate-800 opacity-80 hover:opacity-100'
-          : 'bg-white dark:bg-slate-800/95 border-slate-200/80 dark:border-slate-700/80 hover:shadow-sm hover:border-blue-400 dark:hover:border-blue-500'
+            ? "ring-2 ring-blue-500 border-blue-400 bg-blue-50/70 dark:bg-blue-950/50 shadow-xs"
+            : isSelected
+              ? "ring-2 ring-blue-600 dark:ring-blue-400 border-blue-500 bg-blue-50/70 dark:bg-blue-950/60 shadow-md"
+              : isAbsence
+                ? "bg-slate-50/80 dark:bg-slate-900/40 border-slate-300 dark:border-slate-800 opacity-80 hover:opacity-100"
+                : "bg-white dark:bg-slate-800/95 border-slate-200/80 dark:border-slate-700/80 hover:shadow-sm hover:border-blue-400 dark:hover:border-blue-500"
       }`}
     >
       {/* Visual pill when multi-selected */}
@@ -162,29 +156,29 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
           {/* Department status indicator */}
           <span
             className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-              isAbsence ? 'bg-slate-400 dark:bg-slate-500' : 'bg-emerald-500'
+              isAbsence ? "bg-slate-400 dark:bg-slate-500" : "bg-emerald-500"
             }`}
           />
 
           <h4
             className={`font-bold text-xs sm:text-[13px] truncate pointer-events-none ${
               isAbsence
-                ? 'text-slate-600 dark:text-slate-400 line-through decoration-slate-300 dark:decoration-slate-600'
-                : 'text-slate-900 dark:text-white'
+                ? "text-slate-600 dark:text-slate-400 line-through decoration-slate-300 dark:decoration-slate-600"
+                : "text-slate-900 dark:text-white"
             }`}
           >
             {operator.name}
           </h4>
 
           {/* Machine qualification tag: ONLY IF LL or RTR (ignored if NONE) */}
-          {operator.machineType && operator.machineType !== 'NONE' && (
+          {operator.machineType && operator.machineType !== "NONE" && (
             <span
               className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-black tracking-wider pointer-events-none shrink-0 ${
-                operator.machineType === 'RTR'
-                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 border border-blue-200 dark:border-blue-700'
-                  : 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-200 dark:border-amber-700'
+                operator.machineType === "RTR"
+                  ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 border border-blue-200 dark:border-blue-700"
+                  : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-200 dark:border-amber-700"
               }`}
-              title={operator.machineType === 'RTR' ? 'Retrak (vysokozdvih)' : 'LL (nízkozdvih)'}
+              title={operator.machineType === "RTR" ? "Retrak (vysokozdvih)" : "LL (nízkozdvih)"}
             >
               {operator.machineType}
             </span>
@@ -199,26 +193,22 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 if (onChangeAbsenceReason) {
-                  const current = operator.absenceReason || 'Absence';
+                  const current = operator.absenceReason || "Absence";
                   const next: AbsenceReason =
-                    current === 'Dovolená'
-                      ? 'PN'
-                      : current === 'PN'
-                      ? 'Absence'
-                      : 'Dovolená';
+                    current === "Dovolená" ? "PN" : current === "PN" ? "Absence" : "Dovolená";
                   onChangeAbsenceReason(operator.id, next);
                 }
               }}
               className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold tracking-tight transition-colors cursor-pointer shrink-0 border ${
-                operator.absenceReason === 'Dovolená'
-                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700/60 hover:bg-amber-100'
-                  : operator.absenceReason === 'PN'
-                  ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-700/60 hover:bg-rose-100'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200'
+                operator.absenceReason === "Dovolená"
+                  ? "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700/60 hover:bg-amber-100"
+                  : operator.absenceReason === "PN"
+                    ? "bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-700/60 hover:bg-rose-100"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200"
               }`}
-              title={`Důvod: ${operator.absenceReason || 'Absence'}. Kliknutím přepnout na další.`}
+              title={`Důvod: ${operator.absenceReason || "Absence"}. Kliknutím přepnout na další.`}
             >
-              <span>{operator.absenceReason || 'Absence'}</span>
+              <span>{operator.absenceReason || "Absence"}</span>
             </button>
           )}
         </div>

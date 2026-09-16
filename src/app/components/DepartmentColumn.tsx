@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef } from "react";
 import {
   PackageCheck,
   Boxes,
@@ -12,19 +12,10 @@ import {
   Users,
   CheckSquare,
   Trash2,
-} from 'lucide-react';
-import {
-  Department,
-  DepartmentId,
-  Operator,
-  OperatorStatus,
-  AbsenceReason,
-} from '../types';
-import { OperatorCard } from './OperatorCard';
-import {
-  resolveOperatorIdsFromDrop,
-  getGlobalDragState,
-} from '../utils/dragState';
+} from "lucide-react";
+import { Department, DepartmentId, Operator, OperatorStatus, AbsenceReason } from "../types";
+import { OperatorCard } from "./OperatorCard";
+import { resolveOperatorIdsFromDrop, getGlobalDragState } from "../utils/dragState";
 
 interface DepartmentColumnProps {
   department: Department;
@@ -58,68 +49,68 @@ const DEPT_HEADER_THEMES: Record<
   }
 > = {
   hovc: {
-    headerBg: 'bg-gradient-to-r from-blue-700 via-blue-600 to-blue-800 text-white',
-    border: 'border-blue-300/80 dark:border-blue-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-blue-700 via-blue-600 to-blue-800 text-white",
+    border: "border-blue-300/80 dark:border-blue-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   hovs: {
-    headerBg: 'bg-gradient-to-r from-sky-600 via-cyan-600 to-sky-700 text-white',
-    border: 'border-sky-300/80 dark:border-sky-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-sky-600 via-cyan-600 to-sky-700 text-white",
+    border: "border-sky-300/80 dark:border-sky-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   putaway: {
-    headerBg: 'bg-gradient-to-r from-indigo-700 via-indigo-600 to-violet-800 text-white',
-    border: 'border-indigo-300/80 dark:border-indigo-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-indigo-700 via-indigo-600 to-violet-800 text-white",
+    border: "border-indigo-300/80 dark:border-indigo-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   vas: {
-    headerBg: 'bg-gradient-to-r from-amber-600 via-amber-500 to-orange-600 text-white',
-    border: 'border-amber-300/80 dark:border-amber-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-amber-600 via-amber-500 to-orange-600 text-white",
+    border: "border-amber-300/80 dark:border-amber-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   obwf: {
-    headerBg: 'bg-gradient-to-r from-purple-700 via-purple-600 to-fuchsia-800 text-white',
-    border: 'border-purple-300/80 dark:border-purple-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-purple-700 via-purple-600 to-fuchsia-800 text-white",
+    border: "border-purple-300/80 dark:border-purple-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   vna: {
-    headerBg: 'bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-800 text-white',
-    border: 'border-emerald-300/80 dark:border-emerald-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-800 text-white",
+    border: "border-emerald-300/80 dark:border-emerald-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   obwi: {
-    headerBg: 'bg-gradient-to-r from-rose-600 via-rose-500 to-pink-700 text-white',
-    border: 'border-rose-300/80 dark:border-rose-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-rose-600 via-rose-500 to-pink-700 text-white",
+    border: "border-rose-300/80 dark:border-rose-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   unassigned: {
-    headerBg: 'bg-gradient-to-r from-slate-700 via-slate-600 to-slate-800 text-white',
-    border: 'border-slate-300 dark:border-slate-700',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-slate-700 via-slate-600 to-slate-800 text-white",
+    border: "border-slate-300 dark:border-slate-700",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
 };
 
@@ -135,52 +126,52 @@ const CUSTOM_THEMES_BY_COLOR: Record<
   }
 > = {
   amber: {
-    headerBg: 'bg-gradient-to-r from-amber-700/90 via-amber-600/90 to-amber-800/90 text-white',
-    border: 'border-dashed border-amber-300/90 dark:border-amber-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-amber-700/90 via-amber-600/90 to-amber-800/90 text-white",
+    border: "border-dashed border-amber-300/90 dark:border-amber-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   orange: {
-    headerBg: 'bg-gradient-to-r from-orange-700/90 via-orange-600/90 to-orange-800/90 text-white',
-    border: 'border-dashed border-orange-300/90 dark:border-orange-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-orange-700/90 via-orange-600/90 to-orange-800/90 text-white",
+    border: "border-dashed border-orange-300/90 dark:border-orange-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   teal: {
-    headerBg: 'bg-gradient-to-r from-teal-700/90 via-teal-600/90 to-teal-800/90 text-white',
-    border: 'border-dashed border-teal-300/90 dark:border-teal-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-teal-700/90 via-teal-600/90 to-teal-800/90 text-white",
+    border: "border-dashed border-teal-300/90 dark:border-teal-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   cyan: {
-    headerBg: 'bg-gradient-to-r from-cyan-700/90 via-cyan-600/90 to-cyan-800/90 text-white',
-    border: 'border-dashed border-cyan-300/90 dark:border-cyan-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-cyan-700/90 via-cyan-600/90 to-cyan-800/90 text-white",
+    border: "border-dashed border-cyan-300/90 dark:border-cyan-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   indigo: {
-    headerBg: 'bg-gradient-to-r from-indigo-700/90 via-indigo-600/90 to-indigo-800/90 text-white',
-    border: 'border-dashed border-indigo-300/90 dark:border-indigo-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-indigo-700/90 via-indigo-600/90 to-indigo-800/90 text-white",
+    border: "border-dashed border-indigo-300/90 dark:border-indigo-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
   slate: {
-    headerBg: 'bg-gradient-to-r from-slate-700/90 via-slate-600/90 to-slate-800/90 text-white',
-    border: 'border-dashed border-slate-300/90 dark:border-slate-700/80',
-    iconBg: 'bg-white/20 text-white shadow-xs',
-    addBtnHover: 'hover:bg-white/20 text-white',
-    chipBgLL: 'bg-white/20 text-white border border-white/30',
-    chipBgRTR: 'bg-white/30 text-white font-extrabold border border-white/40',
+    headerBg: "bg-gradient-to-r from-slate-700/90 via-slate-600/90 to-slate-800/90 text-white",
+    border: "border-dashed border-slate-300/90 dark:border-slate-700/80",
+    iconBg: "bg-white/20 text-white shadow-xs",
+    addBtnHover: "hover:bg-white/20 text-white",
+    chipBgLL: "bg-white/20 text-white border border-white/30",
+    chipBgRTR: "bg-white/30 text-white font-extrabold border border-white/40",
   },
 };
 
@@ -203,7 +194,7 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
   onDeleteDepartment,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [absenceFilter, setAbsenceFilter] = useState<'ALL' | AbsenceReason>('ALL');
+  const [absenceFilter, setAbsenceFilter] = useState<"ALL" | AbsenceReason>("ALL");
   const dragCounter = useRef(0);
 
   const getDeptIcon = (id: DepartmentId) => {
@@ -211,19 +202,19 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
       return <Wrench className="w-5 h-5 text-white" />;
     }
     switch (id) {
-      case 'hovc':
+      case "hovc":
         return <PackageCheck className="w-5 h-5 text-white" />;
-      case 'hovs':
+      case "hovs":
         return <Boxes className="w-5 h-5 text-white" />;
-      case 'putaway':
+      case "putaway":
         return <ArrowDownToLine className="w-5 h-5 text-white" />;
-      case 'vas':
+      case "vas":
         return <Wrench className="w-5 h-5 text-white" />;
-      case 'obwf':
+      case "obwf":
         return <Layers className="w-5 h-5 text-white" />;
-      case 'vna':
+      case "vna":
         return <GitCommitVertical className="w-5 h-5 text-white" />;
-      case 'obwi':
+      case "obwi":
         return <Globe className="w-5 h-5 text-white" />;
       default:
         return <UserX className="w-5 h-5 text-white" />;
@@ -240,7 +231,7 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = "move";
     if (!isDragOver) {
       setIsDragOver(true);
     }
@@ -264,49 +255,45 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
     // Use robust multi-strategy operator resolver for single or multi-drag
     const resolvedIds = resolveOperatorIdsFromDrop(
       e,
-      allOperators.length > 0 ? allOperators : operators
+      allOperators.length > 0 ? allOperators : operators,
     );
     const operatorIds =
       resolvedIds.length > 0
         ? resolvedIds
         : getGlobalDragState().operatorIds.length > 0
-        ? getGlobalDragState().operatorIds
-        : getGlobalDragState().operatorId
-        ? [getGlobalDragState().operatorId!]
-        : [];
+          ? getGlobalDragState().operatorIds
+          : getGlobalDragState().operatorId
+            ? [getGlobalDragState().operatorId!]
+            : [];
 
     if (operatorIds.length > 0) {
       onDropOperator(operatorIds, department.id);
     }
   };
 
-  const isAbsence = department.id === 'unassigned';
-  const dovoOps = operators.filter((o) => o.absenceReason === 'Dovolená');
-  const pnOps = operators.filter((o) => o.absenceReason === 'PN');
-  const absenceOps = operators.filter((o) => !o.absenceReason || o.absenceReason === 'Absence');
+  const isAbsence = department.id === "unassigned";
+  const dovoOps = operators.filter((o) => o.absenceReason === "Dovolená");
+  const pnOps = operators.filter((o) => o.absenceReason === "PN");
+  const absenceOps = operators.filter((o) => !o.absenceReason || o.absenceReason === "Absence");
 
-  const activeCount = isAbsence
-    ? 0
-    : operators.filter((o) => o.status === 'active').length;
+  const activeCount = isAbsence ? 0 : operators.filter((o) => o.status === "active").length;
   const llCount = isAbsence
-    ? operators.filter((o) => o.machineType === 'LL').length
-    : operators.filter((o) => o.machineType === 'LL' && o.status === 'active').length;
+    ? operators.filter((o) => o.machineType === "LL").length
+    : operators.filter((o) => o.machineType === "LL" && o.status === "active").length;
   const rtrCount = isAbsence
-    ? operators.filter((o) => o.machineType === 'RTR').length
-    : operators.filter((o) => o.machineType === 'RTR' && o.status === 'active').length;
+    ? operators.filter((o) => o.machineType === "RTR").length
+    : operators.filter((o) => o.machineType === "RTR" && o.status === "active").length;
   const percentage =
-    totalOperatorsCount > 0
-      ? Math.round((operators.length / totalOperatorsCount) * 100)
-      : 0;
+    totalOperatorsCount > 0 ? Math.round((operators.length / totalOperatorsCount) * 100) : 0;
 
   const displayedOperators =
-    isAbsence && absenceFilter !== 'ALL'
-      ? operators.filter((o) => (o.absenceReason || 'Absence') === absenceFilter)
+    isAbsence && absenceFilter !== "ALL"
+      ? operators.filter((o) => (o.absenceReason || "Absence") === absenceFilter)
       : operators;
 
   const theme = department.isCustom
-    ? CUSTOM_THEMES_BY_COLOR[department.color] || CUSTOM_THEMES_BY_COLOR['amber']
-    : DEPT_HEADER_THEMES[department.id] || DEPT_HEADER_THEMES['hovc'];
+    ? CUSTOM_THEMES_BY_COLOR[department.color] || CUSTOM_THEMES_BY_COLOR["amber"]
+    : DEPT_HEADER_THEMES[department.id] || DEPT_HEADER_THEMES["hovc"];
 
   return (
     <div
@@ -318,7 +305,11 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
       onClick={(e) => {
         const target = e.target as HTMLElement;
         // If clicked on column background/header outside any card or button, deselect active operator selection
-        if (!target.closest('button') && !target.closest('input') && !target.closest('[id^="operator-card-"]')) {
+        if (
+          !target.closest("button") &&
+          !target.closest("input") &&
+          !target.closest('[id^="operator-card-"]')
+        ) {
           if (selectedOperatorId && onDeselectOperator) {
             onDeselectOperator();
           }
@@ -326,7 +317,7 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
       }}
       className={`flex flex-col rounded-2xl border transition-all duration-200 min-w-[280px] sm:min-w-[290px] max-w-[350px] 2xl:max-w-[380px] flex-1 shrink-0 bg-slate-50/90 dark:bg-slate-900/60 shadow-xs ${
         isDragOver
-          ? 'ring-4 ring-blue-500/80 border-blue-500 bg-blue-50/60 dark:bg-blue-950/50 scale-[1.01] shadow-xl'
+          ? "ring-4 ring-blue-500/80 border-blue-500 bg-blue-50/60 dark:bg-blue-950/50 scale-[1.01] shadow-xl"
           : theme.border
       }`}
     >
@@ -349,7 +340,10 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
                 )}
               </div>
               {department.description && (
-                <p className="text-[11px] text-white/80 line-clamp-1 mt-0.5" title={department.description}>
+                <p
+                  className="text-[11px] text-white/80 line-clamp-1 mt-0.5"
+                  title={department.description}
+                >
                   {department.description}
                 </p>
               )}
@@ -373,8 +367,8 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
                 className={`p-1.5 rounded-lg text-white/80 hover:text-white transition-all ${theme.addBtnHover}`}
                 title={
                   operators.every((o) => bulkSelectedIds?.has(o.id))
-                    ? 'Zrušit označení operátorů v oddělení'
-                    : 'Označit všechny operátory v tomto oddělení'
+                    ? "Zrušit označení operátorů v oddělení"
+                    : "Označit všechny operátory v tomto oddělení"
                 }
               >
                 <CheckSquare className="w-4 h-4" />
@@ -419,11 +413,17 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
             {/* Menší text pod tím: v provozu nebo rozdělení absence */}
             {isAbsence ? (
               <span className="text-[10.5px] font-medium text-slate-200/95 flex items-center gap-1.5 mt-0.5 flex-wrap">
-                <span>Dovolená: <strong className="text-amber-300 font-bold">{dovoOps.length}</strong></span>
+                <span>
+                  Dovolená: <strong className="text-amber-300 font-bold">{dovoOps.length}</strong>
+                </span>
                 <span>•</span>
-                <span>PN: <strong className="text-rose-300 font-bold">{pnOps.length}</strong></span>
+                <span>
+                  PN: <strong className="text-rose-300 font-bold">{pnOps.length}</strong>
+                </span>
                 <span>•</span>
-                <span>Absence: <strong className="text-white font-bold">{absenceOps.length}</strong></span>
+                <span>
+                  Absence: <strong className="text-white font-bold">{absenceOps.length}</strong>
+                </span>
               </span>
             ) : (
               <span className="text-[10px] font-bold text-emerald-200 flex items-center gap-1 mt-0.5">
@@ -435,18 +435,14 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
 
           <div className="flex items-center gap-1.5 text-[11px] font-bold self-start mt-0.5">
             {llCount > 0 && (
-              <span className={`px-2 py-0.5 rounded-md ${theme.chipBgLL}`}>
-                {llCount}× LL
-              </span>
+              <span className={`px-2 py-0.5 rounded-md ${theme.chipBgLL}`}>{llCount}× LL</span>
             )}
             {rtrCount > 0 && (
-              <span className={`px-2 py-0.5 rounded-md ${theme.chipBgRTR}`}>
-                {rtrCount}× RTR
-              </span>
+              <span className={`px-2 py-0.5 rounded-md ${theme.chipBgRTR}`}>{rtrCount}× RTR</span>
             )}
             {llCount === 0 && rtrCount === 0 && (
               <span className="text-[10px] text-white/60 font-normal">
-                {operators.length > 0 ? `${operators.length} op` : '—'}
+                {operators.length > 0 ? `${operators.length} op` : "—"}
               </span>
             )}
           </div>
@@ -460,11 +456,11 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
             <button
               type="button"
               id="absence-filter-all"
-              onClick={() => setAbsenceFilter('ALL')}
+              onClick={() => setAbsenceFilter("ALL")}
               className={`flex-1 py-1 rounded-lg transition-all text-center cursor-pointer select-none ${
-                absenceFilter === 'ALL'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-black'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                absenceFilter === "ALL"
+                  ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-black"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
               Vše ({operators.length})
@@ -472,11 +468,11 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
             <button
               type="button"
               id="absence-filter-dovolena"
-              onClick={() => setAbsenceFilter('Dovolená')}
+              onClick={() => setAbsenceFilter("Dovolená")}
               className={`flex-1 py-1 rounded-lg transition-all text-center cursor-pointer select-none ${
-                absenceFilter === 'Dovolená'
-                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 shadow-2xs font-black border border-amber-300 dark:border-amber-700'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                absenceFilter === "Dovolená"
+                  ? "bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 shadow-2xs font-black border border-amber-300 dark:border-amber-700"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
               Dovolená ({dovoOps.length})
@@ -484,11 +480,11 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
             <button
               type="button"
               id="absence-filter-pn"
-              onClick={() => setAbsenceFilter('PN')}
+              onClick={() => setAbsenceFilter("PN")}
               className={`flex-1 py-1 rounded-lg transition-all text-center cursor-pointer select-none ${
-                absenceFilter === 'PN'
-                  ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-900 dark:text-rose-200 shadow-2xs font-black border border-rose-300 dark:border-rose-700'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                absenceFilter === "PN"
+                  ? "bg-rose-100 dark:bg-rose-950/60 text-rose-900 dark:text-rose-200 shadow-2xs font-black border border-rose-300 dark:border-rose-700"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
               PN ({pnOps.length})
@@ -496,11 +492,11 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
             <button
               type="button"
               id="absence-filter-absence"
-              onClick={() => setAbsenceFilter('Absence')}
+              onClick={() => setAbsenceFilter("Absence")}
               className={`flex-1 py-1 rounded-lg transition-all text-center cursor-pointer select-none ${
-                absenceFilter === 'Absence'
-                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-black'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                absenceFilter === "Absence"
+                  ? "bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-black"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
               Absence ({absenceOps.length})
@@ -523,9 +519,9 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
           >
             <Users className="w-7 h-7 mb-2 opacity-40" />
             <p className="text-xs font-medium">
-              {isAbsence && absenceFilter !== 'ALL'
+              {isAbsence && absenceFilter !== "ALL"
                 ? `Žádný operátor v kategorii "${absenceFilter}"`
-                : 'Žádný operátor'}
+                : "Žádný operátor"}
             </p>
             <p className="text-[11px] text-slate-400 mt-0.5">
               Přetáhněte sem člověka nebo klikněte na "Přesunout".

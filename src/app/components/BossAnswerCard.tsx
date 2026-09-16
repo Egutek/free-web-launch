@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Copy, Check, MessageSquare, Layers, ChevronDown, ChevronUp } from 'lucide-react';
-import { Department, Operator } from '../types';
-import { DEPARTMENTS } from '../data/departments';
+import React, { useState, useEffect } from "react";
+import { Copy, Check, MessageSquare, Layers, ChevronDown, ChevronUp } from "lucide-react";
+import { Department, Operator } from "../types";
+import { DEPARTMENTS } from "../data/departments";
 
 interface BossAnswerCardProps {
   operators: Operator[];
@@ -18,7 +18,7 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   const [copied, setCopied] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('zf_boss_card_collapsed') === 'true';
+      return localStorage.getItem("zf_boss_card_collapsed") === "true";
     } catch {
       return false;
     }
@@ -28,7 +28,7 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
     setIsCollapsed((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem('zf_boss_card_collapsed', String(next));
+        localStorage.setItem("zf_boss_card_collapsed", String(next));
       } catch {
         // ignore
       }
@@ -37,33 +37,34 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   };
 
   const activeOps = operators.filter(
-    (op) => op.departmentId !== 'unassigned' && op.status === 'active'
+    (op) => op.departmentId !== "unassigned" && op.status === "active",
   );
   const absenceOps = operators.filter(
-    (op) => op.departmentId === 'unassigned' || op.status === 'absence'
+    (op) => op.departmentId === "unassigned" || op.status === "absence",
   );
   const breakOps = operators.filter(
-    (op) => op.departmentId !== 'unassigned' && op.status === 'break'
+    (op) => op.departmentId !== "unassigned" && op.status === "break",
   );
-  const activeLL = activeOps.filter((op) => op.machineType === 'LL').length;
-  const activeRTR = activeOps.filter((op) => op.machineType === 'RTR').length;
-  const activeVNA = activeOps.filter((op) => op.departmentId === 'vna').length;
+  const activeLL = activeOps.filter((op) => op.machineType === "LL").length;
+  const activeRTR = activeOps.filter((op) => op.machineType === "RTR").length;
+  const activeVNA = activeOps.filter((op) => op.departmentId === "vna").length;
   const customDeptIds = new Set(customDepartments.map((d) => d.id));
   const activeExtraOps = activeOps.filter((op) => customDeptIds.has(op.departmentId));
 
   const copyPickSummary = () => {
-    const lines = DEPARTMENTS.filter((d) => d.id !== 'unassigned').map((d) => {
-      const opsInDept = operators.filter((o) => o.departmentId === d.id && o.status !== 'absence');
+    const lines = DEPARTMENTS.filter((d) => d.id !== "unassigned").map((d) => {
+      const opsInDept = operators.filter((o) => o.departmentId === d.id && o.status !== "absence");
       return `${d.name}: ${opsInDept.length}`;
     });
     const extraLines = customDepartments.map((d) => {
-      const opsInDept = operators.filter((o) => o.departmentId === d.id && o.status !== 'absence');
+      const opsInDept = operators.filter((o) => o.departmentId === d.id && o.status !== "absence");
       return `${d.name}: ${opsInDept.length}`;
     });
     const combined = [...lines, ...extraLines];
 
-    const extraNote = activeExtraOps.length > 0 ? `, z toho ${activeExtraOps.length} na vícepracích` : '';
-    const text = `Ahoj, aktuální stav oddělení PICK: ${activeOps.length} lidí právě v provozu na hale (z ${operators.length} na směně${extraNote}, ${absenceOps.length} v absenci / doma, ${activeLL}× LL, ${activeRTR}× RTR):\n${combined.join(' | ')}.`;
+    const extraNote =
+      activeExtraOps.length > 0 ? `, z toho ${activeExtraOps.length} na vícepracích` : "";
+    const text = `Ahoj, aktuální stav oddělení PICK: ${activeOps.length} lidí právě v provozu na hale (z ${operators.length} na směně${extraNote}, ${absenceOps.length} v absenci / doma, ${activeLL}× LL, ${activeRTR}× RTR):\n${combined.join(" | ")}.`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
@@ -114,8 +115,12 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/30 transition-colors"
             title="Zkopírovat stav pro WhatsApp / SMS"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">{copied ? 'Zkopírováno' : 'Zkopírovat'}</span>
+            {copied ? (
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" />
+            )}
+            <span className="hidden sm:inline">{copied ? "Zkopírováno" : "Zkopírovat"}</span>
           </button>
 
           <button
@@ -180,7 +185,10 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
                   {absenceOps.length > 0 ? (
                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-rose-500/25 text-rose-300 border border-rose-500/40 font-bold text-xs">
                       <span className="w-1.5 h-1.5 rounded-full bg-rose-400 inline-block animate-pulse" />
-                      <span>Absence: <strong className="text-white font-extrabold">{absenceOps.length}</strong></span>
+                      <span>
+                        Absence:{" "}
+                        <strong className="text-white font-extrabold">{absenceOps.length}</strong>
+                      </span>
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 font-semibold text-[11px]">
@@ -198,17 +206,29 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
               </div>
 
               <div className="flex items-center gap-1.5 text-xs font-bold self-start sm:self-center mt-1 sm:mt-0">
-                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-md text-[11px]" title="Aktivní řidiči LL na hale">
+                <span
+                  className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-md text-[11px]"
+                  title="Aktivní řidiči LL na hale"
+                >
                   {activeLL}× LL
                 </span>
-                <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-md text-[11px]" title="Aktivní řidiči RTR na hale">
+                <span
+                  className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-md text-[11px]"
+                  title="Aktivní řidiči RTR na hale"
+                >
                   {activeRTR}× RTR
                 </span>
-                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md text-[11px]" title="Aktivní VNA operátoři">
+                <span
+                  className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md text-[11px]"
+                  title="Aktivní VNA operátoři"
+                >
                   {activeVNA}× VNA
                 </span>
                 {activeExtraOps.length > 0 && (
-                  <span className="bg-amber-600/30 text-amber-200 border border-amber-500/40 px-2 py-0.5 rounded-md text-[11px] font-bold" title="Operátoři na vícepracích / mimořádných úkolech">
+                  <span
+                    className="bg-amber-600/30 text-amber-200 border border-amber-500/40 px-2 py-0.5 rounded-md text-[11px] font-bold"
+                    title="Operátoři na vícepracích / mimořádných úkolech"
+                  >
                     {activeExtraOps.length}× Vícepráce
                   </span>
                 )}
@@ -225,8 +245,12 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
             className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/40 transition-colors shadow-2xs"
             title="Zkopíruje rychlý přehled pro WhatsApp nebo SMS"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copied ? 'Zkopírováno!' : 'Zkopírovat pro šéfa'}</span>
+            {copied ? (
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" />
+            )}
+            <span>{copied ? "Zkopírováno!" : "Zkopírovat pro šéfa"}</span>
           </button>
 
           <button
@@ -252,4 +276,3 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
     </div>
   );
 };
-

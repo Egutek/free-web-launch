@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from "react";
 import {
   Search,
   Smartphone,
@@ -19,10 +19,9 @@ import {
   RefreshCw,
   Users,
   Wrench,
-} from 'lucide-react';
-import { ShiftCode, UndoOperation } from '../types';
-import { getDepartmentById } from '../data/departments';
-
+} from "lucide-react";
+import { ShiftCode, UndoOperation } from "../types";
+import { getDepartmentById } from "../data/departments";
 
 interface HeaderProps {
   totalCount?: number;
@@ -34,14 +33,14 @@ interface HeaderProps {
   activeShift?: ShiftCode;
   onShiftChange?: (shift: ShiftCode) => void;
   searchQuery: string;
-  viewMode: 'board' | 'widget' | 'table';
+  viewMode: "board" | "widget" | "table";
   undoOperations?: UndoOperation[];
   onUndoSingle?: () => void;
   onUndoBulk?: (count: number) => void;
   isAutoScrolling?: boolean;
   onToggleAutoScroll?: () => void;
   onSearchChange: (query: string) => void;
-  onViewModeChange: (mode: 'board' | 'widget' | 'table') => void;
+  onViewModeChange: (mode: "board" | "widget" | "table") => void;
   onOpenAddModal: () => void;
   onOpenAddCustomDept?: () => void;
   onOpenPhotoImport: () => void;
@@ -51,14 +50,13 @@ interface HeaderProps {
   onResetData: () => void;
   isCloudConnected?: boolean;
   isCloudSyncing?: boolean;
-
 }
 
 export const Header: React.FC<HeaderProps> = ({
   totalCount = 65,
   activeCount = 0,
   absenceCount = 0,
-  activeShift = 'A',
+  activeShift = "A",
   onShiftChange,
   searchQuery,
   viewMode,
@@ -77,32 +75,24 @@ export const Header: React.FC<HeaderProps> = ({
   onResetData,
   isCloudConnected = false,
   isCloudSyncing = false,
-
 }) => {
   const [isUndoOpen, setIsUndoOpen] = useState(false);
   const undoDropdownRef = useRef<HTMLDivElement>(null);
 
-
   // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (
-        undoDropdownRef.current &&
-        !undoDropdownRef.current.contains(e.target as Node)
-      ) {
+      if (undoDropdownRef.current && !undoDropdownRef.current.contains(e.target as Node)) {
         setIsUndoOpen(false);
       }
     };
     if (isUndoOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
     }
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isUndoOpen]);
-
-
-
 
   const hasUndo = undoOperations.length > 0;
   const undoCount = Math.min(undoOperations.length, 5);
@@ -148,7 +138,6 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>Připojování k online směně...</span>
                   </span>
                 )}
-
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 hidden sm:block">
                 Operační řízení směn a přesuny operátorů
@@ -163,8 +152,8 @@ export const Header: React.FC<HeaderProps> = ({
               <div
                 className={`inline-flex items-center rounded-lg border text-xs transition-colors ${
                   hasUndo
-                    ? 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    : 'border-slate-200 dark:border-slate-800 bg-transparent text-slate-400 dark:text-slate-600 opacity-50'
+                    ? "border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    : "border-slate-200 dark:border-slate-800 bg-transparent text-slate-400 dark:text-slate-600 opacity-50"
                 }`}
               >
                 {/* Main Undo Button: 1-click revert */}
@@ -174,21 +163,19 @@ export const Header: React.FC<HeaderProps> = ({
                   onClick={() => onUndoSingle?.()}
                   className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium transition-all ${
                     hasUndo
-                      ? 'hover:text-slate-950 dark:hover:text-white cursor-pointer active:scale-95'
-                      : 'cursor-not-allowed'
+                      ? "hover:text-slate-950 dark:hover:text-white cursor-pointer active:scale-95"
+                      : "cursor-not-allowed"
                   }`}
                   title={
                     hasUndo
                       ? `Vrátit poslední přesun: ${undoOperations[0]?.operatorName} (${undoCount}/5 kroků)`
-                      : 'Žádné operace k vrácení'
+                      : "Žádné operace k vrácení"
                   }
                 >
                   <Undo2 className="w-3 h-3 text-slate-400" />
                   <span>Zpět</span>
                   {hasUndo && (
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      ({undoCount})
-                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">({undoCount})</span>
                   )}
                 </button>
 
@@ -202,7 +189,7 @@ export const Header: React.FC<HeaderProps> = ({
                   >
                     <ChevronDown
                       className={`w-3 h-3 transition-transform duration-150 ${
-                        isUndoOpen ? 'rotate-180' : ''
+                        isUndoOpen ? "rotate-180" : ""
                       }`}
                     />
                   </button>
@@ -238,8 +225,8 @@ export const Header: React.FC<HeaderProps> = ({
                           key={op.id}
                           className={`p-2 rounded-lg border text-xs transition-all ${
                             isLatest
-                              ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/60'
-                              : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200/80 dark:border-slate-700/60'
+                              ? "bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/60"
+                              : "bg-slate-50 dark:bg-slate-800/40 border-slate-200/80 dark:border-slate-700/60"
                           }`}
                         >
                           <div className="flex items-center justify-between gap-2">
@@ -250,7 +237,7 @@ export const Header: React.FC<HeaderProps> = ({
                               <span className="font-semibold text-slate-900 dark:text-white truncate">
                                 {op.operatorName}
                               </span>
-                              {op.machineType && op.machineType !== 'NONE' && (
+                              {op.machineType && op.machineType !== "NONE" && (
                                 <span className="text-[9px] px-1 py-0.2 rounded font-mono font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 shrink-0">
                                   {op.machineType}
                                 </span>
@@ -265,13 +252,15 @@ export const Header: React.FC<HeaderProps> = ({
                               className="px-2 py-0.5 rounded text-[10px] font-semibold bg-white dark:bg-slate-700 hover:bg-blue-600 hover:text-white text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-colors shrink-0 shadow-2xs"
                               title={`Vrátit operaci ${idx + 1}`}
                             >
-                              {idx === 0 ? 'Vrátit' : `Vrátit ${idx + 1}`}
+                              {idx === 0 ? "Vrátit" : `Vrátit ${idx + 1}`}
                             </button>
                           </div>
 
                           <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
                             <span>Z:</span>
-                            <span className="font-medium text-slate-700 dark:text-slate-300">{fromDept.name}</span>
+                            <span className="font-medium text-slate-700 dark:text-slate-300">
+                              {fromDept.name}
+                            </span>
                             <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
                             <span>Do:</span>
                             <span className="font-medium text-blue-600 dark:text-blue-400">
@@ -369,7 +358,6 @@ export const Header: React.FC<HeaderProps> = ({
               <Users className="w-3.5 h-3.5 text-slate-400" />
               <span>Sdílená směna</span>
             </span>
-
           </div>
         </div>
 
@@ -394,7 +382,7 @@ export const Header: React.FC<HeaderProps> = ({
               id="header-shift-switcher"
               className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200/70 dark:border-slate-700 text-xs"
             >
-              {(['A', 'B', 'C'] as const).map((shift) => {
+              {(["A", "B", "C"] as const).map((shift) => {
                 const isActive = activeShift === shift;
                 return (
                   <button
@@ -404,8 +392,8 @@ export const Header: React.FC<HeaderProps> = ({
                     onClick={() => onShiftChange?.(shift)}
                     className={`px-2.5 sm:px-3 py-1 rounded-lg font-bold transition-all cursor-pointer select-none ${
                       isActive
-                        ? 'bg-blue-600 text-white shadow-2xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                     title={`Přepnout na Směnu ${shift}`}
                   >
@@ -416,19 +404,19 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
 
             {/* Auto-scroll toggle button for hands-free warehouse monitoring */}
-            {viewMode === 'board' && (
+            {viewMode === "board" && (
               <button
                 id="header-auto-scroll-btn"
                 onClick={onToggleAutoScroll}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-2xs ${
                   isAutoScrolling
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 animate-pulse'
-                    : 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    ? "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 animate-pulse"
+                    : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700"
                 }`}
                 title={
                   isAutoScrolling
-                    ? 'Zastavit automatický posuv sloupců'
-                    : 'Spustit plynulý automatický posuv sloupců (ideální pro nástěnné monitory a TV)'
+                    ? "Zastavit automatický posuv sloupců"
+                    : "Spustit plynulý automatický posuv sloupců (ideální pro nástěnné monitory a TV)"
                 }
               >
                 {isAutoScrolling ? (
@@ -449,11 +437,11 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200/70 dark:border-slate-700 text-xs">
               <button
                 id="view-mode-board-btn"
-                onClick={() => onViewModeChange('board')}
+                onClick={() => onViewModeChange("board")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all ${
-                  viewMode === 'board'
-                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-white font-bold shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  viewMode === "board"
+                    ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-white font-bold shadow-2xs"
+                    : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
                 }`}
                 title="Sloupcové rozložení oddělení PICK"
               >
@@ -463,11 +451,11 @@ export const Header: React.FC<HeaderProps> = ({
 
               <button
                 id="view-mode-widget-btn"
-                onClick={() => onViewModeChange('widget')}
+                onClick={() => onViewModeChange("widget")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all ${
-                  viewMode === 'widget'
-                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-white font-bold shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  viewMode === "widget"
+                    ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-white font-bold shadow-2xs"
+                    : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
                 }`}
                 title="Widget na tapetu & rychlý přehled pro šéfa"
               >
@@ -477,11 +465,11 @@ export const Header: React.FC<HeaderProps> = ({
 
               <button
                 id="view-mode-table-btn"
-                onClick={() => onViewModeChange('table')}
+                onClick={() => onViewModeChange("table")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all ${
-                  viewMode === 'table'
-                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-white font-bold shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  viewMode === "table"
+                    ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-white font-bold shadow-2xs"
+                    : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
                 }`}
                 title="Seznam všech operátorů v tabulce"
               >

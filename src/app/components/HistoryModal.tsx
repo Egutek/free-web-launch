@@ -1,7 +1,7 @@
-import React from 'react';
-import { X, History, ArrowRight, Clock, Trash2 } from 'lucide-react';
-import { getDepartmentById } from '../data/departments';
-import { MoveHistoryRecord } from '../types';
+import React from "react";
+import { X, History, ArrowRight, Clock, Trash2 } from "lucide-react";
+import { getDepartmentById } from "../data/departments";
+import { MoveHistoryRecord } from "../types";
 
 interface HistoryModalProps {
   history: MoveHistoryRecord[];
@@ -21,9 +21,9 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const formatTime = (ts: string) => {
     try {
       const d = new Date(ts);
-      return d.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
     } catch {
-      return '';
+      return "";
     }
   };
 
@@ -84,9 +84,9 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                       {item.machineType && (
                         <span
                           className={`text-[10px] font-black px-1.5 py-0.2 rounded ${
-                            item.machineType === 'RTR'
-                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200'
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200'
+                            item.machineType === "RTR"
+                              ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
+                              : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
                           }`}
                         >
                           {item.machineType}

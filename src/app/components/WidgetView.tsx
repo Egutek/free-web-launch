@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Smartphone,
   PackageCheck,
@@ -14,9 +14,9 @@ import {
   Minimize2,
   Users,
   Lock,
-} from 'lucide-react';
-import { DEPARTMENTS } from '../data/departments';
-import { Department, Operator } from '../types';
+} from "lucide-react";
+import { DEPARTMENTS } from "../data/departments";
+import { Department, Operator } from "../types";
 
 interface WidgetViewProps {
   operators: Operator[];
@@ -32,46 +32,46 @@ export const WidgetView: React.FC<WidgetViewProps> = ({ operators, customDepartm
 
   const total = operators.length;
   const activeOps = operators.filter(
-    (o) => o.departmentId !== 'unassigned' && o.status === 'active'
+    (o) => o.departmentId !== "unassigned" && o.status === "active",
   );
   const activeTotal = activeOps.length;
   const breakTotal = operators.filter(
-    (o) => o.departmentId !== 'unassigned' && o.status === 'break'
+    (o) => o.departmentId !== "unassigned" && o.status === "break",
   ).length;
   const absenceTotal = operators.filter(
-    (o) => o.departmentId === 'unassigned' || o.status === 'absence'
+    (o) => o.departmentId === "unassigned" || o.status === "absence",
   ).length;
 
-  const llTotal = activeOps.filter((o) => o.machineType === 'LL').length;
-  const rtrTotal = activeOps.filter((o) => o.machineType === 'RTR').length;
-  const vnaTotal = activeOps.filter((o) => o.departmentId === 'vna').length;
+  const llTotal = activeOps.filter((o) => o.machineType === "LL").length;
+  const rtrTotal = activeOps.filter((o) => o.machineType === "RTR").length;
+  const vnaTotal = activeOps.filter((o) => o.departmentId === "vna").length;
 
-  const hovcOps = getDeptOps('hovc');
-  const hovsOps = getDeptOps('hovs');
-  const putawayOps = getDeptOps('putaway');
-  const vasOps = getDeptOps('vas');
-  const obwfOps = getDeptOps('obwf');
-  const vnaOps = getDeptOps('vna');
-  const obwiOps = getDeptOps('obwi');
+  const hovcOps = getDeptOps("hovc");
+  const hovsOps = getDeptOps("hovs");
+  const putawayOps = getDeptOps("putaway");
+  const vasOps = getDeptOps("vas");
+  const obwfOps = getDeptOps("obwf");
+  const vnaOps = getDeptOps("vna");
+  const obwiOps = getDeptOps("obwi");
 
   const now = new Date();
-  const timeStr = now.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
-  const dateStr = now.toLocaleDateString('cs-CZ', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'numeric',
+  const timeStr = now.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+  const dateStr = now.toLocaleDateString("cs-CZ", {
+    weekday: "short",
+    day: "numeric",
+    month: "numeric",
   });
 
   const copyWidgetText = () => {
     const text = `📊 ZF OSTROV - ODDĚLENÍ PICK (${dateStr} ${timeStr})
 👥 Celkem PICK: ${total} lidí (${llTotal}× LL, ${rtrTotal}× RTR)
-📦 Outbound: ${hovcOps.length} (${hovcOps.filter((o) => o.machineType === 'LL').length} LL / ${hovcOps.filter((o) => o.machineType === 'RTR').length} RTR)
-🏢 HOVS: ${hovsOps.length} (${hovsOps.filter((o) => o.machineType === 'LL').length} LL / ${hovsOps.filter((o) => o.machineType === 'RTR').length} RTR)
-📥 Putaway: ${putawayOps.length} (${putawayOps.filter((o) => o.machineType === 'LL').length} LL / ${putawayOps.filter((o) => o.machineType === 'RTR').length} RTR)
-🔧 VAS: ${vasOps.length} (${vasOps.filter((o) => o.machineType === 'LL').length} LL / ${vasOps.filter((o) => o.machineType === 'RTR').length} RTR)
-🌊 OBWF: ${obwfOps.length} (${obwfOps.filter((o) => o.machineType === 'LL').length} LL / ${obwfOps.filter((o) => o.machineType === 'RTR').length} RTR)
-⚡ VNA: ${vnaOps.length} (${vnaOps.filter((o) => o.machineType === 'LL').length} LL / ${vnaOps.filter((o) => o.machineType === 'RTR').length} RTR)
-🌐 OBWI: ${obwiOps.length} (${obwiOps.filter((o) => o.machineType === 'LL').length} LL / ${obwiOps.filter((o) => o.machineType === 'RTR').length} RTR)
+📦 Outbound: ${hovcOps.length} (${hovcOps.filter((o) => o.machineType === "LL").length} LL / ${hovcOps.filter((o) => o.machineType === "RTR").length} RTR)
+🏢 HOVS: ${hovsOps.length} (${hovsOps.filter((o) => o.machineType === "LL").length} LL / ${hovsOps.filter((o) => o.machineType === "RTR").length} RTR)
+📥 Putaway: ${putawayOps.length} (${putawayOps.filter((o) => o.machineType === "LL").length} LL / ${putawayOps.filter((o) => o.machineType === "RTR").length} RTR)
+🔧 VAS: ${vasOps.length} (${vasOps.filter((o) => o.machineType === "LL").length} LL / ${vasOps.filter((o) => o.machineType === "RTR").length} RTR)
+🌊 OBWF: ${obwfOps.length} (${obwfOps.filter((o) => o.machineType === "LL").length} LL / ${obwfOps.filter((o) => o.machineType === "RTR").length} RTR)
+⚡ VNA: ${vnaOps.length} (${vnaOps.filter((o) => o.machineType === "LL").length} LL / ${vnaOps.filter((o) => o.machineType === "RTR").length} RTR)
+🌐 OBWI: ${obwiOps.length} (${obwiOps.filter((o) => o.machineType === "LL").length} LL / ${obwiOps.filter((o) => o.machineType === "RTR").length} RTR)
 Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -112,7 +112,7 @@ Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-white transition-colors"
           >
             {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-            <span>{copied ? 'Zkopírováno!' : 'Zkopírovat stav'}</span>
+            <span>{copied ? "Zkopírováno!" : "Zkopírovat stav"}</span>
           </button>
 
           <button
@@ -120,7 +120,7 @@ Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            <span>{isFullscreen ? 'Odejít' : 'Režim celé obrazovky'}</span>
+            <span>{isFullscreen ? "Odejít" : "Režim celé obrazovky"}</span>
           </button>
         </div>
       </div>
@@ -167,23 +167,26 @@ Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
               </div>
               <div className="text-right">
                 <div>
-                  <span className="text-4xl font-black text-blue-400 tracking-tight">
-                    {total}
-                  </span>
+                  <span className="text-4xl font-black text-blue-400 tracking-tight">{total}</span>
                   <span className="text-xs text-blue-200/80 ml-1 font-medium">lidí</span>
                 </div>
                 {/* Menší číslo pod tím: v provozu */}
                 <div className="text-[11px] font-bold text-emerald-300 flex items-center justify-end gap-1 mt-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>v provozu: <strong className="text-white text-xs">{activeTotal}</strong></span>
+                  <span>
+                    v provozu: <strong className="text-white text-xs">{activeTotal}</strong>
+                  </span>
                 </div>
               </div>
             </div>
 
             <div className="mt-2.5 pt-2 border-t border-blue-500/20 flex items-center justify-between text-[11px] text-slate-300">
-              <span className="text-emerald-300 font-semibold">● {activeTotal} aktivních na hale</span>
+              <span className="text-emerald-300 font-semibold">
+                ● {activeTotal} aktivních na hale
+              </span>
               <span className="text-slate-400 font-mono">
-                {breakTotal > 0 ? `${breakTotal} pauza` : ''} {absenceTotal > 0 ? `• ${absenceTotal} absence` : ''}
+                {breakTotal > 0 ? `${breakTotal} pauza` : ""}{" "}
+                {absenceTotal > 0 ? `• ${absenceTotal} absence` : ""}
               </span>
             </div>
           </div>
@@ -200,9 +203,9 @@ Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
                 <span className="text-2xl font-black text-blue-400">{hovcOps.length}</span>
               </div>
               <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-mono">
-                <span>{hovcOps.filter((o) => o.machineType === 'LL').length} LL</span>
+                <span>{hovcOps.filter((o) => o.machineType === "LL").length} LL</span>
                 <span>•</span>
-                <span>{hovcOps.filter((o) => o.machineType === 'RTR').length} RTR</span>
+                <span>{hovcOps.filter((o) => o.machineType === "RTR").length} RTR</span>
               </div>
             </div>
 
@@ -216,9 +219,9 @@ Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
                 <span className="text-2xl font-black text-sky-400">{hovsOps.length}</span>
               </div>
               <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-mono">
-                <span>{hovsOps.filter((o) => o.machineType === 'LL').length} LL</span>
+                <span>{hovsOps.filter((o) => o.machineType === "LL").length} LL</span>
                 <span>•</span>
-                <span>{hovsOps.filter((o) => o.machineType === 'RTR').length} RTR</span>
+                <span>{hovsOps.filter((o) => o.machineType === "RTR").length} RTR</span>
               </div>
             </div>
 
@@ -232,9 +235,9 @@ Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
                 <span className="text-2xl font-black text-indigo-400">{putawayOps.length}</span>
               </div>
               <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-mono">
-                <span>{putawayOps.filter((o) => o.machineType === 'LL').length} LL</span>
+                <span>{putawayOps.filter((o) => o.machineType === "LL").length} LL</span>
                 <span>•</span>
-                <span>{putawayOps.filter((o) => o.machineType === 'RTR').length} RTR</span>
+                <span>{putawayOps.filter((o) => o.machineType === "RTR").length} RTR</span>
               </div>
             </div>
 
@@ -248,9 +251,9 @@ Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
                 <span className="text-2xl font-black text-amber-400">{vasOps.length}</span>
               </div>
               <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-mono">
-                <span>{vasOps.filter((o) => o.machineType === 'LL').length} LL</span>
+                <span>{vasOps.filter((o) => o.machineType === "LL").length} LL</span>
                 <span>•</span>
-                <span>{vasOps.filter((o) => o.machineType === 'RTR').length} RTR</span>
+                <span>{vasOps.filter((o) => o.machineType === "RTR").length} RTR</span>
               </div>
             </div>
 
@@ -264,9 +267,9 @@ Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
                 <span className="text-2xl font-black text-purple-400">{obwfOps.length}</span>
               </div>
               <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-mono">
-                <span>{obwfOps.filter((o) => o.machineType === 'LL').length} LL</span>
+                <span>{obwfOps.filter((o) => o.machineType === "LL").length} LL</span>
                 <span>•</span>
-                <span>{obwfOps.filter((o) => o.machineType === 'RTR').length} RTR</span>
+                <span>{obwfOps.filter((o) => o.machineType === "RTR").length} RTR</span>
               </div>
             </div>
 
@@ -280,9 +283,9 @@ Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
                 <span className="text-2xl font-black text-emerald-400">{vnaOps.length}</span>
               </div>
               <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-mono">
-                <span>{vnaOps.filter((o) => o.machineType === 'LL').length} LL</span>
+                <span>{vnaOps.filter((o) => o.machineType === "LL").length} LL</span>
                 <span>•</span>
-                <span>{vnaOps.filter((o) => o.machineType === 'RTR').length} RTR</span>
+                <span>{vnaOps.filter((o) => o.machineType === "RTR").length} RTR</span>
               </div>
             </div>
           </div>
@@ -296,7 +299,8 @@ Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
               <div>
                 <div className="font-extrabold text-sm text-white">OBWI</div>
                 <div className="text-[10px] text-slate-400">
-                  {obwiOps.filter((o) => o.machineType === 'LL').length}× LL • {obwiOps.filter((o) => o.machineType === 'RTR').length}× RTR
+                  {obwiOps.filter((o) => o.machineType === "LL").length}× LL •{" "}
+                  {obwiOps.filter((o) => o.machineType === "RTR").length}× RTR
                 </div>
               </div>
             </div>
@@ -323,16 +327,15 @@ Aktivně: ${activeTotal} | Pauza: ${breakTotal} | Absence: ${absenceTotal}`;
                           <span className="font-bold text-xs text-white truncate block">
                             {dept.name}
                           </span>
-                          <span className="text-[10px] text-amber-400 font-mono">
-                            {dept.code}
-                          </span>
+                          <span className="text-[10px] text-amber-400 font-mono">{dept.code}</span>
                         </div>
                         <span className="text-xl font-black text-amber-400 shrink-0">
                           {ops.length}
                         </span>
                       </div>
                       <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                        {ops.filter((o) => o.machineType === 'LL').length} LL • {ops.filter((o) => o.machineType === 'RTR').length} RTR
+                        {ops.filter((o) => o.machineType === "LL").length} LL •{" "}
+                        {ops.filter((o) => o.machineType === "RTR").length} RTR
                       </div>
                     </div>
                   );

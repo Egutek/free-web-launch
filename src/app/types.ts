@@ -1,22 +1,15 @@
 export type BuiltinDepartmentId =
-  | 'hovc'
-  | 'hovs'
-  | 'putaway'
-  | 'vas'
-  | 'obwf'
-  | 'vna'
-  | 'obwi'
-  | 'unassigned';
+  "hovc" | "hovs" | "putaway" | "vas" | "obwf" | "vna" | "obwi" | "unassigned";
 
 export type DepartmentId = BuiltinDepartmentId | (string & {});
 
-export type MachineType = 'LL' | 'RTR' | 'NONE';
+export type MachineType = "LL" | "RTR" | "NONE";
 
-export type OperatorStatus = 'active' | 'break' | 'absence';
+export type OperatorStatus = "active" | "break" | "absence";
 
-export type ShiftCode = 'A' | 'B' | 'C';
+export type ShiftCode = "A" | "B" | "C";
 
-export type AbsenceReason = 'Absence' | 'Dovolená' | 'PN';
+export type AbsenceReason = "Absence" | "Dovolená" | "PN";
 
 export interface Department {
   id: DepartmentId;
@@ -92,7 +85,6 @@ export interface ShiftTemplate {
   isBuiltIn?: boolean;
   operatorCount: number;
   activeCount: number;
-  shift?: ShiftCode | 'all';
+  shift?: ShiftCode | "all";
   assignments: ShiftTemplateAssignment[];
 }
-

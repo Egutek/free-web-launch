@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   X,
   Plus,
@@ -11,9 +11,9 @@ import {
   Users,
   FolderPlus,
   Layers,
-} from 'lucide-react';
-import { Department, Operator, ShiftCode } from '../types';
-import { EXTRA_WORK_PRESETS, ExtraWorkPreset, createCustomDepartment } from '../data/departments';
+} from "lucide-react";
+import { Department, Operator, ShiftCode } from "../types";
+import { EXTRA_WORK_PRESETS, ExtraWorkPreset, createCustomDepartment } from "../data/departments";
 
 interface AddCustomDepartmentModalProps {
   isOpen: boolean;
@@ -26,12 +26,12 @@ interface AddCustomDepartmentModalProps {
 }
 
 const COLOR_OPTIONS = [
-  { id: 'amber', name: 'Jantarová', badge: 'bg-amber-500' },
-  { id: 'orange', name: 'Oranžová', badge: 'bg-orange-500' },
-  { id: 'teal', name: 'Tyrkysová', badge: 'bg-teal-500' },
-  { id: 'cyan', name: 'Azurová', badge: 'bg-cyan-500' },
-  { id: 'indigo', name: 'Indigová', badge: 'bg-indigo-500' },
-  { id: 'slate', name: 'Břidlicová', badge: 'bg-slate-500' },
+  { id: "amber", name: "Jantarová", badge: "bg-amber-500" },
+  { id: "orange", name: "Oranžová", badge: "bg-orange-500" },
+  { id: "teal", name: "Tyrkysová", badge: "bg-teal-500" },
+  { id: "cyan", name: "Azurová", badge: "bg-cyan-500" },
+  { id: "indigo", name: "Indigová", badge: "bg-indigo-500" },
+  { id: "slate", name: "Břidlicová", badge: "bg-slate-500" },
 ];
 
 export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> = ({
@@ -41,53 +41,51 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
   customDepartments = [],
   operators = [],
   onDeleteDepartment,
-  activeShift = 'A',
+  activeShift = "A",
 }) => {
-  const [activeTab, setActiveTab] = useState<'create' | 'list'>('create');
-  const [name, setName] = useState('');
-  const [code, setCode] = useState('');
-  const [description, setDescription] = useState('');
-  const [color, setColor] = useState('amber');
-  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState<"create" | "list">("create");
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [description, setDescription] = useState("");
+  const [color, setColor] = useState("amber");
+  const [error, setError] = useState("");
 
   if (!isOpen) return null;
 
   // Filter custom departments belonging to this specific shift
-  const shiftCustomDepartments = customDepartments.filter(
-    (d) => (d.shift || 'A') === activeShift
-  );
+  const shiftCustomDepartments = customDepartments.filter((d) => (d.shift || "A") === activeShift);
 
   const handleApplyPreset = (preset: ExtraWorkPreset) => {
     setName(preset.name);
     setCode(preset.code);
     setDescription(preset.description);
     setColor(preset.color);
-    setError('');
+    setError("");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError('Vyplňte prosím název oddělení nebo úkolu.');
+      setError("Vyplňte prosím název oddělení nebo úkolu.");
       return;
     }
 
     const cleanCode = (code.trim() || trimmedName.slice(0, 6)).toUpperCase();
     const newDept = createCustomDepartment(
       trimmedName,
-      description.trim() || 'Vícepráce a mimořádné úkoly',
+      description.trim() || "Vícepráce a mimořádné úkoly",
       cleanCode,
       color,
-      (activeShift || 'A') as ShiftCode
+      (activeShift || "A") as ShiftCode,
     );
 
     onCreateDepartment(newDept);
     // Reset form
-    setName('');
-    setCode('');
-    setDescription('');
-    setError('');
+    setName("");
+    setCode("");
+    setDescription("");
+    setError("");
     onClose();
   };
 
@@ -119,7 +117,8 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Vytvoření oddělení specificky pro <strong>Směnu {activeShift}</strong> (ostatní směny nebudou ovlivněny)
+                Vytvoření oddělení specificky pro <strong>Směnu {activeShift}</strong> (ostatní
+                směny nebudou ovlivněny)
               </p>
             </div>
           </div>
@@ -136,11 +135,11 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
         <div className="flex items-center gap-1 px-5 pt-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
           <button
             type="button"
-            onClick={() => setActiveTab('create')}
+            onClick={() => setActiveTab("create")}
             className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-t-xl transition-all border-b-2 cursor-pointer ${
-              activeTab === 'create'
-                ? 'border-amber-600 text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-900'
-                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              activeTab === "create"
+                ? "border-amber-600 text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-900"
+                : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
             <FolderPlus className="w-4 h-4" />
@@ -148,11 +147,11 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('list')}
+            onClick={() => setActiveTab("list")}
             className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-t-xl transition-all border-b-2 cursor-pointer ${
-              activeTab === 'list'
-                ? 'border-amber-600 text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-900'
-                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              activeTab === "list"
+                ? "border-amber-600 text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-900"
+                : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
             <Layers className="w-4 h-4" />
@@ -161,7 +160,7 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
         </div>
 
         {/* Tab 1: Create New Department */}
-        {activeTab === 'create' && (
+        {activeTab === "create" && (
           <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
             {error && (
               <div className="flex items-center gap-2 p-3 text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 rounded-xl">
@@ -186,8 +185,8 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
                       onClick={() => handleApplyPreset(preset)}
                       className={`p-2.5 text-left rounded-xl border text-xs transition-all cursor-pointer flex flex-col justify-between ${
                         isSelected
-                          ? 'border-amber-500 bg-amber-50/80 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 ring-2 ring-amber-500/30 font-bold shadow-xs'
-                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                          ? "border-amber-500 bg-amber-50/80 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 ring-2 ring-amber-500/30 font-bold shadow-xs"
+                          : "border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
                       }`}
                     >
                       <div className="flex items-center justify-between w-full">
@@ -217,7 +216,7 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
                     if (!code) {
                       setCode(e.target.value.slice(0, 8).toUpperCase());
                     }
-                    if (error) setError('');
+                    if (error) setError("");
                   }}
                   placeholder="např. ŠKOLENÍ, CLEARING..."
                   className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-slate-900 dark:text-white"
@@ -266,7 +265,9 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
                     type="button"
                     onClick={() => setColor(c.id)}
                     className={`w-7 h-7 rounded-full ${c.badge} transition-transform flex items-center justify-center cursor-pointer ${
-                      color === c.id ? 'ring-2 ring-offset-2 ring-slate-800 dark:ring-white scale-110' : 'opacity-70 hover:opacity-100'
+                      color === c.id
+                        ? "ring-2 ring-offset-2 ring-slate-800 dark:ring-white scale-110"
+                        : "opacity-70 hover:opacity-100"
                     }`}
                     title={c.name}
                   >
@@ -283,7 +284,9 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
                 <span>Jak to funguje:</span>
               </p>
               <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
-                Oddělení se zobrazí jako nový sloupec na nástěnce. Můžete do něj přetahovat operátory stejně jako do běžných sekcí. Lidé v tomto oddělení se počítají jako aktivní na směně a po dokončení úkolu můžete oddělení kdykoliv smazat.
+                Oddělení se zobrazí jako nový sloupec na nástěnce. Můžete do něj přetahovat
+                operátory stejně jako do běžných sekcí. Lidé v tomto oddělení se počítají jako
+                aktivní na směně a po dokončení úkolu můžete oddělení kdykoliv smazat.
               </p>
             </div>
 
@@ -308,7 +311,7 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
         )}
 
         {/* Tab 2: Manage Existing Custom Departments */}
-        {activeTab === 'list' && (
+        {activeTab === "list" && (
           <div className="p-5 space-y-4 overflow-y-auto flex-1">
             {shiftCustomDepartments.length === 0 ? (
               <div className="text-center py-10 space-y-3">
@@ -319,11 +322,12 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
                   Zatím jste na Směně {activeShift} nevytvořili žádná oddělení víceprací
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
-                  Potřebujete poslat operátory na mimořádný úkol? Vytvořte nové oddělení pro Směnu {activeShift} kliknutím na záložku výše.
+                  Potřebujete poslat operátory na mimořádný úkol? Vytvořte nové oddělení pro Směnu{" "}
+                  {activeShift} kliknutím na záložku výše.
                 </p>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('create')}
+                  onClick={() => setActiveTab("create")}
                   className="px-4 py-2 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 rounded-xl hover:bg-amber-100 transition-colors"
                 >
                   ➕ Vytvořit první vícepráce na Směně {activeShift}
@@ -332,7 +336,9 @@ export const AddCustomDepartmentModal: React.FC<AddCustomDepartmentModalProps> =
             ) : (
               <div className="space-y-2.5">
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Zde můžete zrušit a smazat oddělení víceprací pro <strong>Směnu {activeShift}</strong>. Ostatní směny zůstanou beze změny. Přiřazení operátoři budou bezpečně přesunuti zpět do Outbound.
+                  Zde můžete zrušit a smazat oddělení víceprací pro{" "}
+                  <strong>Směnu {activeShift}</strong>. Ostatní směny zůstanou beze změny. Přiřazení
+                  operátoři budou bezpečně přesunuti zpět do Outbound.
                 </p>
 
                 {shiftCustomDepartments.map((dept) => {

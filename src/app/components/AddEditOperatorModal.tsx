@@ -1,7 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { X, UserPlus, UserCheck, Trash2 } from 'lucide-react';
-import { DEPARTMENTS } from '../data/departments';
-import { Department, DepartmentId, MachineType, Operator, OperatorStatus, ShiftCode, AbsenceReason } from '../types';
+import React, { useState, useEffect } from "react";
+import { X, UserPlus, UserCheck, Trash2 } from "lucide-react";
+import { DEPARTMENTS } from "../data/departments";
+import {
+  Department,
+  DepartmentId,
+  MachineType,
+  Operator,
+  OperatorStatus,
+  ShiftCode,
+  AbsenceReason,
+} from "../types";
 
 interface AddEditOperatorModalProps {
   operator: Operator | null;
@@ -16,41 +24,41 @@ interface AddEditOperatorModalProps {
 
 export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
   operator,
-  defaultDeptId = 'hovc',
+  defaultDeptId = "hovc",
   customDepartments = [],
-  activeShift = 'A',
+  activeShift = "A",
   isOpen,
   onClose,
   onSave,
   onDelete,
 }) => {
-  const [name, setName] = useState('');
-  const [machineType, setMachineType] = useState<MachineType>('NONE');
+  const [name, setName] = useState("");
+  const [machineType, setMachineType] = useState<MachineType>("NONE");
   const [departmentId, setDepartmentId] = useState<DepartmentId>(defaultDeptId);
   const [shift, setShift] = useState<ShiftCode>(activeShift);
-  const [status, setStatus] = useState<OperatorStatus>('active');
-  const [absenceReason, setAbsenceReason] = useState<AbsenceReason>('Absence');
-  const [notes, setNotes] = useState('');
+  const [status, setStatus] = useState<OperatorStatus>("active");
+  const [absenceReason, setAbsenceReason] = useState<AbsenceReason>("Absence");
+  const [notes, setNotes] = useState("");
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   useEffect(() => {
     setIsConfirmingDelete(false);
     if (operator) {
       setName(operator.name);
-      setMachineType(operator.machineType || 'NONE');
+      setMachineType(operator.machineType || "NONE");
       setDepartmentId(operator.departmentId);
       setShift(operator.shift || activeShift);
       setStatus(operator.status);
-      setAbsenceReason(operator.absenceReason || 'Absence');
-      setNotes(operator.notes || '');
+      setAbsenceReason(operator.absenceReason || "Absence");
+      setNotes(operator.notes || "");
     } else {
-      setName('');
-      setMachineType('NONE');
+      setName("");
+      setMachineType("NONE");
       setDepartmentId(defaultDeptId);
       setShift(activeShift);
-      setStatus(defaultDeptId === 'unassigned' ? 'absence' : 'active');
-      setAbsenceReason('Absence');
-      setNotes('');
+      setStatus(defaultDeptId === "unassigned" ? "absence" : "active");
+      setAbsenceReason("Absence");
+      setNotes("");
     }
   }, [operator, defaultDeptId, activeShift, isOpen]);
 
@@ -58,19 +66,19 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
 
   const handleDepartmentChange = (newDeptId: DepartmentId) => {
     setDepartmentId(newDeptId);
-    if (newDeptId === 'unassigned') {
-      setStatus('absence');
-    } else if (status === 'absence') {
-      setStatus('active');
+    if (newDeptId === "unassigned") {
+      setStatus("absence");
+    } else if (status === "absence") {
+      setStatus("active");
     }
   };
 
   const handleStatusChange = (newStatus: OperatorStatus) => {
     setStatus(newStatus);
-    if (newStatus === 'absence' && departmentId !== 'unassigned') {
-      setDepartmentId('unassigned');
-    } else if (newStatus !== 'absence' && departmentId === 'unassigned') {
-      setDepartmentId(defaultDeptId === 'unassigned' ? 'hovc' : defaultDeptId);
+    if (newStatus === "absence" && departmentId !== "unassigned") {
+      setDepartmentId("unassigned");
+    } else if (newStatus !== "absence" && departmentId === "unassigned") {
+      setDepartmentId(defaultDeptId === "unassigned" ? "hovc" : defaultDeptId);
     }
   };
 
@@ -86,7 +94,8 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
       departmentId,
       isVnaOnly: false,
       status,
-      absenceReason: (status === 'absence' || departmentId === 'unassigned') ? absenceReason : undefined,
+      absenceReason:
+        status === "absence" || departmentId === "unassigned" ? absenceReason : undefined,
       notes: notes.trim(),
       lastMovedAt: operator ? operator.lastMovedAt : new Date().toISOString(),
     });
@@ -111,10 +120,10 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-                {operator ? 'Upravit operátora' : 'Přidat operátora do PICK'}
+                {operator ? "Upravit operátora" : "Přidat operátora do PICK"}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {operator ? operator.name : 'Rychlé zadání do systému'}
+                {operator ? operator.name : "Rychlé zadání do systému"}
               </p>
             </div>
           </div>
@@ -148,19 +157,17 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Stroj / Oprávnění
               </label>
-              <span className="text-[11px] text-slate-400">
-                Volitelné (lze ignorovat)
-              </span>
+              <span className="text-[11px] text-slate-400">Volitelné (lze ignorovat)</span>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => setMachineType(machineType === 'LL' ? 'NONE' : 'LL')}
+                onClick={() => setMachineType(machineType === "LL" ? "NONE" : "LL")}
                 className={`py-2 px-2 rounded-xl border text-center transition-all cursor-pointer ${
-                  machineType === 'LL'
-                    ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 font-extrabold ring-2 ring-amber-500/30'
-                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                  machineType === "LL"
+                    ? "border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 font-extrabold ring-2 ring-amber-500/30"
+                    : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100"
                 }`}
               >
                 <div className="text-sm font-black">LL</div>
@@ -169,11 +176,11 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => setMachineType(machineType === 'RTR' ? 'NONE' : 'RTR')}
+                onClick={() => setMachineType(machineType === "RTR" ? "NONE" : "RTR")}
                 className={`py-2 px-2 rounded-xl border text-center transition-all cursor-pointer ${
-                  machineType === 'RTR'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 font-extrabold ring-2 ring-blue-500/30'
-                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                  machineType === "RTR"
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 font-extrabold ring-2 ring-blue-500/30"
+                    : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100"
                 }`}
               >
                 <div className="text-sm font-black">RTR</div>
@@ -182,18 +189,18 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => setMachineType('NONE')}
+                onClick={() => setMachineType("NONE")}
                 className={`py-2 px-2 rounded-xl border text-center transition-all cursor-pointer ${
-                  machineType === 'NONE'
-                    ? 'border-slate-500 bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-extrabold ring-2 ring-slate-400/30'
-                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100'
+                  machineType === "NONE"
+                    ? "border-slate-500 bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-extrabold ring-2 ring-slate-400/30"
+                    : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100"
                 }`}
               >
                 <div className="text-sm font-bold">Žádný</div>
                 <div className="text-[10px] opacity-75">Ignorovat</div>
               </button>
             </div>
-            {machineType === 'NONE' && (
+            {machineType === "NONE" && (
               <p className="mt-1 text-[10px] text-slate-400 italic">
                 U tohoto operátora se nebude zobrazovat žádný štítek stroje LL ani RTR.
               </p>
@@ -206,15 +213,15 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
               Přiřazená směna *
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {(['A', 'B', 'C'] as ShiftCode[]).map((sc) => (
+              {(["A", "B", "C"] as ShiftCode[]).map((sc) => (
                 <button
                   key={sc}
                   type="button"
                   onClick={() => setShift(sc)}
                   className={`py-1.5 px-3 rounded-xl border text-center transition-all cursor-pointer font-bold text-xs ${
                     shift === sc
-                      ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 ring-2 ring-blue-500/30'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                      ? "border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 ring-2 ring-blue-500/30"
+                      : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100"
                   }`}
                 >
                   Směna {sc}
@@ -269,7 +276,7 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
           </div>
 
           {/* Důvod nepřítomnosti (Absence / Dovolená / PN) */}
-          {(status === 'absence' || departmentId === 'unassigned') && (
+          {(status === "absence" || departmentId === "unassigned") && (
             <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -278,24 +285,28 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
                 <span className="text-[11px] text-slate-400">Podkategorie</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                {(['Absence', 'Dovolená', 'PN'] as AbsenceReason[]).map((reason) => (
+                {(["Absence", "Dovolená", "PN"] as AbsenceReason[]).map((reason) => (
                   <button
                     key={reason}
                     type="button"
                     onClick={() => setAbsenceReason(reason)}
                     className={`py-2 px-2 rounded-xl border text-center transition-all cursor-pointer ${
                       absenceReason === reason
-                        ? reason === 'Dovolená'
-                          ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 font-bold ring-2 ring-amber-400/30'
-                          : reason === 'PN'
-                          ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/50 text-rose-900 dark:text-rose-200 font-bold ring-2 ring-rose-400/30'
-                          : 'border-slate-400 bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white font-bold ring-2 ring-slate-400/30'
-                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100'
+                        ? reason === "Dovolená"
+                          ? "border-amber-400 bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 font-bold ring-2 ring-amber-400/30"
+                          : reason === "PN"
+                            ? "border-rose-400 bg-rose-50 dark:bg-rose-950/50 text-rose-900 dark:text-rose-200 font-bold ring-2 ring-rose-400/30"
+                            : "border-slate-400 bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white font-bold ring-2 ring-slate-400/30"
+                        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100"
                     }`}
                   >
                     <div className="text-xs font-bold">{reason}</div>
                     <div className="text-[9.5px] opacity-75">
-                      {reason === 'Dovolená' ? 'Plánované volno' : reason === 'PN' ? 'Nemoc / PN' : 'Absence'}
+                      {reason === "Dovolená"
+                        ? "Plánované volno"
+                        : reason === "PN"
+                          ? "Nemoc / PN"
+                          : "Absence"}
                     </div>
                   </button>
                 ))}
@@ -367,7 +378,7 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
                 type="submit"
                 className="px-5 py-2 text-xs sm:text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors shadow-sm"
               >
-                {operator ? 'Uložit' : 'Přidat'}
+                {operator ? "Uložit" : "Přidat"}
               </button>
             </div>
           </div>

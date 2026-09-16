@@ -1,20 +1,23 @@
-import { Operator, ShiftCode, ShiftTemplate, ShiftTemplateAssignment } from '../types';
-import { INITIAL_OPERATORS } from './initialOperators';
+import { Operator, ShiftCode, ShiftTemplate, ShiftTemplateAssignment } from "../types";
+import { INITIAL_OPERATORS } from "./initialOperators";
 
-const STORAGE_KEY = 'zf_pick_shift_templates_v1';
-const STORAGE_DELETED_KEY = 'zf_pick_deleted_templates_v1';
+const STORAGE_KEY = "zf_pick_shift_templates_v1";
+const STORAGE_DELETED_KEY = "zf_pick_deleted_templates_v1";
 
 // Built-in initial templates for each shift
 export const BUILTIN_TEMPLATES: ShiftTemplate[] = [
   {
-    id: 'builtin-zf-initial-a',
-    name: 'Výchozí rozdělení PICK - Směna A',
-    description: 'Standardní obsazení oddělení PICK pro Směnu A (Outbound 10, HOVS 12, Putaway 10, VAS 10, OBWF 8, VNA 7, OBWI 8).',
-    createdAt: '2026-09-12T06:00:00.000Z',
+    id: "builtin-zf-initial-a",
+    name: "Výchozí rozdělení PICK - Směna A",
+    description:
+      "Standardní obsazení oddělení PICK pro Směnu A (Outbound 10, HOVS 12, Putaway 10, VAS 10, OBWF 8, VNA 7, OBWI 8).",
+    createdAt: "2026-09-12T06:00:00.000Z",
     isBuiltIn: true,
-    shift: 'A',
+    shift: "A",
     operatorCount: INITIAL_OPERATORS.length,
-    activeCount: INITIAL_OPERATORS.filter((o) => o.status === 'active' && o.departmentId !== 'unassigned').length,
+    activeCount: INITIAL_OPERATORS.filter(
+      (o) => o.status === "active" && o.departmentId !== "unassigned",
+    ).length,
     assignments: INITIAL_OPERATORS.map((o) => ({
       operatorId: o.id,
       operatorName: o.name,
@@ -25,14 +28,16 @@ export const BUILTIN_TEMPLATES: ShiftTemplate[] = [
     })),
   },
   {
-    id: 'builtin-zf-initial-b',
-    name: 'Výchozí rozdělení PICK - Směna B',
-    description: 'Standardní obsazení oddělení PICK pro Směnu B.',
-    createdAt: '2026-09-12T06:00:00.000Z',
+    id: "builtin-zf-initial-b",
+    name: "Výchozí rozdělení PICK - Směna B",
+    description: "Standardní obsazení oddělení PICK pro Směnu B.",
+    createdAt: "2026-09-12T06:00:00.000Z",
     isBuiltIn: true,
-    shift: 'B',
+    shift: "B",
     operatorCount: INITIAL_OPERATORS.length,
-    activeCount: INITIAL_OPERATORS.filter((o) => o.status === 'active' && o.departmentId !== 'unassigned').length,
+    activeCount: INITIAL_OPERATORS.filter(
+      (o) => o.status === "active" && o.departmentId !== "unassigned",
+    ).length,
     assignments: INITIAL_OPERATORS.map((o) => ({
       operatorId: o.id,
       operatorName: o.name,
@@ -43,14 +48,16 @@ export const BUILTIN_TEMPLATES: ShiftTemplate[] = [
     })),
   },
   {
-    id: 'builtin-zf-initial-c',
-    name: 'Výchozí rozdělení PICK - Směna C',
-    description: 'Standardní obsazení oddělení PICK pro Směnu C.',
-    createdAt: '2026-09-12T06:00:00.000Z',
+    id: "builtin-zf-initial-c",
+    name: "Výchozí rozdělení PICK - Směna C",
+    description: "Standardní obsazení oddělení PICK pro Směnu C.",
+    createdAt: "2026-09-12T06:00:00.000Z",
     isBuiltIn: true,
-    shift: 'C',
+    shift: "C",
     operatorCount: INITIAL_OPERATORS.length,
-    activeCount: INITIAL_OPERATORS.filter((o) => o.status === 'active' && o.departmentId !== 'unassigned').length,
+    activeCount: INITIAL_OPERATORS.filter(
+      (o) => o.status === "active" && o.departmentId !== "unassigned",
+    ).length,
     assignments: INITIAL_OPERATORS.map((o) => ({
       operatorId: o.id,
       operatorName: o.name,
@@ -61,19 +68,20 @@ export const BUILTIN_TEMPLATES: ShiftTemplate[] = [
     })),
   },
   {
-    id: 'builtin-all-active',
-    name: 'Všichni přítomní na hale (0 absencí)',
-    description: 'Všichni operátoři jsou nastaveni jako aktivní na pracovištích (univerzální pro všechny směny).',
-    createdAt: '2026-09-12T06:00:00.000Z',
+    id: "builtin-all-active",
+    name: "Všichni přítomní na hale (0 absencí)",
+    description:
+      "Všichni operátoři jsou nastaveni jako aktivní na pracovištích (univerzální pro všechny směny).",
+    createdAt: "2026-09-12T06:00:00.000Z",
     isBuiltIn: true,
-    shift: 'all',
+    shift: "all",
     operatorCount: INITIAL_OPERATORS.length,
     activeCount: INITIAL_OPERATORS.length,
     assignments: INITIAL_OPERATORS.map((o) => ({
       operatorId: o.id,
       operatorName: o.name,
-      departmentId: o.departmentId === 'unassigned' ? 'hovc' : o.departmentId,
-      status: 'active',
+      departmentId: o.departmentId === "unassigned" ? "hovc" : o.departmentId,
+      status: "active",
       machineType: o.machineType,
       notes: o.notes,
     })),
@@ -93,7 +101,7 @@ const saveDeletedTemplateIds = (ids: Set<string>) => {
   try {
     localStorage.setItem(STORAGE_DELETED_KEY, JSON.stringify(Array.from(ids)));
   } catch (err) {
-    console.error('Failed to save deleted template IDs:', err);
+    console.error("Failed to save deleted template IDs:", err);
   }
 };
 
@@ -108,7 +116,7 @@ export const loadAllTemplates = (): ShiftTemplate[] => {
 
     return [...activeBuiltIns, ...activeCustom];
   } catch (err) {
-    console.warn('Failed to load saved shift templates:', err);
+    console.warn("Failed to load saved shift templates:", err);
     return BUILTIN_TEMPLATES;
   }
 };
@@ -117,7 +125,7 @@ export const saveNewTemplate = (
   name: string,
   description: string | undefined,
   currentOperators: Operator[],
-  shift: ShiftCode | 'all' = 'A'
+  shift: ShiftCode | "all" = "A",
 ): ShiftTemplate => {
   const assignments: ShiftTemplateAssignment[] = currentOperators.map((o) => ({
     operatorId: o.id,
@@ -129,7 +137,7 @@ export const saveNewTemplate = (
   }));
 
   const activeCount = currentOperators.filter(
-    (o) => o.departmentId !== 'unassigned' && o.status === 'active'
+    (o) => o.departmentId !== "unassigned" && o.status === "active",
   ).length;
 
   const newTemplate: ShiftTemplate = {
@@ -150,7 +158,7 @@ export const saveNewTemplate = (
     existing.unshift(newTemplate);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
   } catch (err) {
-    console.error('Failed to save template to localStorage:', err);
+    console.error("Failed to save template to localStorage:", err);
   }
 
   return newTemplate;
@@ -171,7 +179,7 @@ export const deleteTemplate = (templateId: string): void => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     }
   } catch (err) {
-    console.error('Failed to delete template:', err);
+    console.error("Failed to delete template:", err);
   }
 };
 
@@ -182,14 +190,14 @@ export const restoreDefaultTemplates = (): ShiftTemplate[] => {
   try {
     localStorage.removeItem(STORAGE_DELETED_KEY);
   } catch (err) {
-    console.error('Failed to restore default templates:', err);
+    console.error("Failed to restore default templates:", err);
   }
   return loadAllTemplates();
 };
 
 export const updateTemplateWithCurrent = (
   templateId: string,
-  currentOperators: Operator[]
+  currentOperators: Operator[],
 ): void => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -208,19 +216,19 @@ export const updateTemplateWithCurrent = (
     }));
     target.operatorCount = currentOperators.length;
     target.activeCount = currentOperators.filter(
-      (o) => o.departmentId !== 'unassigned' && o.status === 'active'
+      (o) => o.departmentId !== "unassigned" && o.status === "active",
     ).length;
     target.createdAt = new Date().toISOString();
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
   } catch (err) {
-    console.error('Failed to update template in localStorage:', err);
+    console.error("Failed to update template in localStorage:", err);
   }
 };
 
 export const applyTemplateToOperators = (
   template: ShiftTemplate,
-  currentOperators: Operator[]
+  currentOperators: Operator[],
 ): Operator[] => {
   const mapById = new Map<string, ShiftTemplateAssignment>();
   const mapByName = new Map<string, ShiftTemplateAssignment>();
@@ -234,8 +242,7 @@ export const applyTemplateToOperators = (
 
   // Update existing operators
   const updated = currentOperators.map((op) => {
-    const matched =
-      mapById.get(op.id) || mapByName.get(op.name.trim().toLowerCase());
+    const matched = mapById.get(op.id) || mapByName.get(op.name.trim().toLowerCase());
     if (matched) {
       return {
         ...op,

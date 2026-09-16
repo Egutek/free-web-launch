@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   X,
   Bookmark,
@@ -11,21 +11,21 @@ import {
   Calendar,
   Layers,
   Sparkles,
-} from 'lucide-react';
-import { Department, Operator, ShiftCode, ShiftTemplate } from '../types';
-import { DEPARTMENTS } from '../data/departments';
+} from "lucide-react";
+import { Department, Operator, ShiftCode, ShiftTemplate } from "../types";
+import { DEPARTMENTS } from "../data/departments";
 import {
   loadAllTemplates,
   saveNewTemplate,
   deleteTemplate,
   updateTemplateWithCurrent,
   restoreDefaultTemplates,
-} from '../data/templates';
+} from "../data/templates";
 import {
   syncTemplateToCloud,
   deleteTemplateFromCloud,
   subscribeToTemplates,
-} from '../services/firestoreSync';
+} from "../services/firestoreSync";
 
 interface ShiftTemplatesModalProps {
   isOpen: boolean;
@@ -40,16 +40,16 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   isOpen,
   onClose,
   currentOperators,
-  activeShift = 'A',
+  activeShift = "A",
   onApplyTemplate,
   customDepartments = [],
 }) => {
   const [templates, setTemplates] = useState<ShiftTemplate[]>([]);
-  const [newTemplateName, setNewTemplateName] = useState('');
-  const [newTemplateNote, setNewTemplateNote] = useState('');
-  const [targetShift, setTargetShift] = useState<ShiftCode | 'all'>(activeShift);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateNote, setNewTemplateNote] = useState("");
+  const [targetShift, setTargetShift] = useState<ShiftCode | "all">(activeShift);
   const [shiftFilter, setShiftFilter] = useState<string>(activeShift);
-  const [typeFilter, setTypeFilter] = useState<'all' | 'custom' | 'builtin'>('all');
+  const [typeFilter, setTypeFilter] = useState<"all" | "custom" | "builtin">("all");
   const [appliedTemplateId, setAppliedTemplateId] = useState<string | null>(null);
 
   const reloadTemplates = () => {
@@ -64,15 +64,11 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
 
       // Suggest template name based on day / time and current shift
       const now = new Date();
-      const dayNames = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'];
+      const dayNames = ["Neděle", "Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota"];
       const dayName = dayNames[now.getDay()];
       const hour = now.getHours();
       const timeShift =
-        hour >= 5 && hour < 14
-          ? 'Ranní'
-          : hour >= 14 && hour < 22
-          ? 'Odpolední'
-          : 'Noční';
+        hour >= 5 && hour < 14 ? "Ranní" : hour >= 14 && hour < 22 ? "Odpolední" : "Noční";
       setNewTemplateName(`Směna ${activeShift} - ${timeShift} (${dayName})`);
 
       // Realtime sync from cloud
@@ -97,28 +93,33 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   if (!isOpen) return null;
 
   const currentActiveCount = currentOperators.filter(
-    (o) => o.departmentId !== 'unassigned' && o.status === 'active'
+    (o) => o.departmentId !== "unassigned" && o.status === "active",
   ).length;
   const currentAbsenceCount = currentOperators.filter(
-    (o) => o.departmentId === 'unassigned' || o.status === 'absence'
+    (o) => o.departmentId === "unassigned" || o.status === "absence",
   ).length;
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTemplateName.trim()) return;
 
-    const created = saveNewTemplate(newTemplateName, newTemplateNote, currentOperators, targetShift);
+    const created = saveNewTemplate(
+      newTemplateName,
+      newTemplateNote,
+      currentOperators,
+      targetShift,
+    );
     if (created) {
-      syncTemplateToCloud(created).catch((err) => console.warn('Cloud template sync notice:', err));
+      syncTemplateToCloud(created).catch((err) => console.warn("Cloud template sync notice:", err));
     }
-    setNewTemplateName('');
-    setNewTemplateNote('');
+    setNewTemplateName("");
+    setNewTemplateNote("");
     reloadTemplates();
   };
 
   const handleDelete = (id: string) => {
     deleteTemplate(id);
-    deleteTemplateFromCloud(id).catch((err) => console.warn('Cloud template delete notice:', err));
+    deleteTemplateFromCloud(id).catch((err) => console.warn("Cloud template delete notice:", err));
     reloadTemplates();
   };
 
@@ -132,7 +133,9 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
     const allT = loadAllTemplates();
     const updatedT = allT.find((t) => t.id === id);
     if (updatedT) {
-      syncTemplateToCloud(updatedT).catch((err) => console.warn('Cloud template update notice:', err));
+      syncTemplateToCloud(updatedT).catch((err) =>
+        console.warn("Cloud template update notice:", err),
+      );
     }
     reloadTemplates();
   };
@@ -147,41 +150,45 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
 
   const filteredTemplates = templates.filter((t) => {
     // Filter by shift
-    if (shiftFilter !== 'all') {
-      const tmplShift = t.shift || 'A';
-      if (tmplShift !== 'all' && tmplShift !== shiftFilter) {
+    if (shiftFilter !== "all") {
+      const tmplShift = t.shift || "A";
+      if (tmplShift !== "all" && tmplShift !== shiftFilter) {
         return false;
       }
     }
     // Filter by type
-    if (typeFilter === 'custom') return !t.isBuiltIn;
-    if (typeFilter === 'builtin') return t.isBuiltIn;
+    if (typeFilter === "custom") return !t.isBuiltIn;
+    if (typeFilter === "builtin") return t.isBuiltIn;
     return true;
   });
 
   const allKnownDepartments = [...DEPARTMENTS, ...(customDepartments || [])];
 
-  const getShiftBadgeProps = (shiftCode?: ShiftCode | 'all') => {
+  const getShiftBadgeProps = (shiftCode?: ShiftCode | "all") => {
     switch (shiftCode) {
-      case 'A':
+      case "A":
         return {
-          label: 'Směna A',
-          className: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200 border-blue-300 dark:border-blue-800',
+          label: "Směna A",
+          className:
+            "bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200 border-blue-300 dark:border-blue-800",
         };
-      case 'B':
+      case "B":
         return {
-          label: 'Směna B',
-          className: 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-200 border-purple-300 dark:border-purple-800',
+          label: "Směna B",
+          className:
+            "bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-200 border-purple-300 dark:border-purple-800",
         };
-      case 'C':
+      case "C":
         return {
-          label: 'Směna C',
-          className: 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-200 border-amber-300 dark:border-amber-800',
+          label: "Směna C",
+          className:
+            "bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-200 border-amber-300 dark:border-amber-800",
         };
       default:
         return {
-          label: 'Všechny směny',
-          className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800',
+          label: "Všechny směny",
+          className:
+            "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800",
         };
     }
   };
@@ -242,7 +249,9 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
               </div>
               <div className="flex items-center gap-2 text-xs font-bold flex-wrap">
                 <span className="text-slate-700 dark:text-slate-300">
-                  Směna: <strong className="text-blue-600 dark:text-blue-400">Směna {activeShift}</strong> ({currentOperators.length} lidí)
+                  Směna:{" "}
+                  <strong className="text-blue-600 dark:text-blue-400">Směna {activeShift}</strong>{" "}
+                  ({currentOperators.length} lidí)
                 </span>
                 <span className="text-slate-300 dark:text-slate-700">•</span>
                 <span className="text-emerald-600 dark:text-emerald-400">
@@ -273,25 +282,27 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
 
                 {/* Target Shift Selector for the template */}
                 <div className="flex items-center gap-1 shrink-0 bg-white dark:bg-slate-800 p-1 border border-slate-300 dark:border-slate-700 rounded-xl">
-                  {(['A', 'B', 'C', 'all'] as const).map((sc) => (
+                  {(["A", "B", "C", "all"] as const).map((sc) => (
                     <button
                       key={sc}
                       type="button"
                       onClick={() => setTargetShift(sc)}
                       className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                         targetShift === sc
-                          ? sc === 'A'
-                            ? 'bg-blue-600 text-white shadow-2xs'
-                            : sc === 'B'
-                            ? 'bg-purple-600 text-white shadow-2xs'
-                            : sc === 'C'
-                            ? 'bg-amber-600 text-white shadow-2xs'
-                            : 'bg-emerald-600 text-white shadow-2xs'
-                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                          ? sc === "A"
+                            ? "bg-blue-600 text-white shadow-2xs"
+                            : sc === "B"
+                              ? "bg-purple-600 text-white shadow-2xs"
+                              : sc === "C"
+                                ? "bg-amber-600 text-white shadow-2xs"
+                                : "bg-emerald-600 text-white shadow-2xs"
+                          : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
                       }`}
-                      title={sc === 'all' ? 'Univerzální pro všechny směny' : `Určeno pro Směnu ${sc}`}
+                      title={
+                        sc === "all" ? "Univerzální pro všechny směny" : `Určeno pro Směnu ${sc}`
+                      }
                     >
-                      {sc === 'all' ? 'Všechny' : `Směna ${sc}`}
+                      {sc === "all" ? "Všechny" : `Směna ${sc}`}
                     </button>
                   ))}
                 </div>
@@ -325,10 +336,10 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
               </span>
               {[
                 { id: activeShift, label: `Moje směna (${activeShift})`, isCurrent: true },
-                { id: 'A', label: 'Směna A' },
-                { id: 'B', label: 'Směna B' },
-                { id: 'C', label: 'Směna C' },
-                { id: 'all', label: 'Všechny směny' },
+                { id: "A", label: "Směna A" },
+                { id: "B", label: "Směna B" },
+                { id: "C", label: "Směna C" },
+                { id: "all", label: "Všechny směny" },
               ].map((item) => {
                 const isActive = shiftFilter === item.id;
                 return (
@@ -338,14 +349,14 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                     onClick={() => setShiftFilter(item.id)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
                       isActive
-                        ? item.id === 'A'
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : item.id === 'B'
-                          ? 'bg-purple-600 text-white shadow-xs'
-                          : item.id === 'C'
-                          ? 'bg-amber-600 text-white shadow-xs'
-                          : 'bg-slate-800 text-white dark:bg-slate-700 shadow-xs'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        ? item.id === "A"
+                          ? "bg-blue-600 text-white shadow-xs"
+                          : item.id === "B"
+                            ? "bg-purple-600 text-white shadow-xs"
+                            : item.id === "C"
+                              ? "bg-amber-600 text-white shadow-xs"
+                              : "bg-slate-800 text-white dark:bg-slate-700 shadow-xs"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                     }`}
                   >
                     {item.label}
@@ -359,33 +370,33 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
               <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
                 <button
                   type="button"
-                  onClick={() => setTypeFilter('all')}
+                  onClick={() => setTypeFilter("all")}
                   className={`px-2 py-0.5 text-[11px] font-bold rounded-lg cursor-pointer ${
-                    typeFilter === 'all'
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
-                      : 'text-slate-600 dark:text-slate-400'
+                    typeFilter === "all"
+                      ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs"
+                      : "text-slate-600 dark:text-slate-400"
                   }`}
                 >
                   Vše
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTypeFilter('custom')}
+                  onClick={() => setTypeFilter("custom")}
                   className={`px-2 py-0.5 text-[11px] font-bold rounded-lg cursor-pointer ${
-                    typeFilter === 'custom'
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
-                      : 'text-slate-600 dark:text-slate-400'
+                    typeFilter === "custom"
+                      ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs"
+                      : "text-slate-600 dark:text-slate-400"
                   }`}
                 >
                   Vlastní
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTypeFilter('builtin')}
+                  onClick={() => setTypeFilter("builtin")}
                   className={`px-2 py-0.5 text-[11px] font-bold rounded-lg cursor-pointer ${
-                    typeFilter === 'builtin'
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
-                      : 'text-slate-600 dark:text-slate-400'
+                    typeFilter === "builtin"
+                      ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs"
+                      : "text-slate-600 dark:text-slate-400"
                   }`}
                 >
                   Tovární
@@ -409,9 +420,9 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
               <div className="p-8 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
                 <Bookmark className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                  {shiftFilter !== 'all'
+                  {shiftFilter !== "all"
                     ? `Zatím žádné šablony pro Směnu ${shiftFilter}`
-                    : 'Zatím žádné šablony'}
+                    : "Zatím žádné šablony"}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">
                   Uložte si aktuální rozdělení operátorů formulářem výše pro tuto směnu.
@@ -442,8 +453,8 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                     key={tmpl.id}
                     className={`p-4 rounded-2xl border transition-all ${
                       isApplied
-                        ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/40 ring-2 ring-emerald-500/20'
-                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/75 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md'
+                        ? "border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/40 ring-2 ring-emerald-500/20"
+                        : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/75 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md"
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3.5">
@@ -489,7 +500,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                           </span>
                           <span className="text-slate-400 dark:text-slate-400 text-[11px] font-normal flex items-center gap-1">
                             <Calendar className="w-3 h-3 text-slate-400" />
-                            <span>{new Date(tmpl.createdAt).toLocaleDateString('cs-CZ')}</span>
+                            <span>{new Date(tmpl.createdAt).toLocaleDateString("cs-CZ")}</span>
                           </span>
                         </div>
 
@@ -500,9 +511,9 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                               key={dc.id}
                               className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-lg border shadow-2xs flex items-center gap-1 transition-colors ${
                                 dc.badgeBg ||
-                                (dc.id === 'unassigned'
-                                  ? 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900'
-                                  : 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600')
+                                (dc.id === "unassigned"
+                                  ? "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900"
+                                  : "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600")
                               }`}
                             >
                               <span className="font-bold opacity-90">{dc.name}:</span>
@@ -555,7 +566,8 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
         {/* Footer */}
         <div className="p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Tip: Šablony jsou spárovány se směnami (A, B, C) a synchronizují se přes cloud v reálném čase.
+            Tip: Šablony jsou spárovány se směnami (A, B, C) a synchronizují se přes cloud v reálném
+            čase.
           </p>
           <button
             type="button"

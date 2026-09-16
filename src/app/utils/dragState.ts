@@ -1,5 +1,5 @@
-import type React from 'react';
-import { Operator } from '../types';
+import type React from "react";
+import { Operator } from "../types";
 
 export interface DragState {
   operatorId: string | null;
@@ -40,9 +40,8 @@ export const startGlobalDrag = (operator: Operator, bulkIds?: string[]) => {
     clearTimeout(clearTimer);
     clearTimer = null;
   }
-  const ids = bulkIds && bulkIds.length > 0 && bulkIds.includes(operator.id)
-    ? bulkIds
-    : [operator.id];
+  const ids =
+    bulkIds && bulkIds.length > 0 && bulkIds.includes(operator.id) ? bulkIds : [operator.id];
 
   globalDragState.operatorId = operator.id;
   globalDragState.operatorName = operator.name;
@@ -74,13 +73,10 @@ export const getGlobalDragState = (): DragState => ({
 /**
  * Resolves all operator IDs being dropped (supports single or multi-drag):
  */
-export const resolveOperatorIdsFromDrop = (
-  e: React.DragEvent,
-  operators: Operator[]
-): string[] => {
+export const resolveOperatorIdsFromDrop = (e: React.DragEvent, operators: Operator[]): string[] => {
   // 1. Check for bulk operator JSON array in dataTransfer
   try {
-    const bulkJson = e.dataTransfer.getData('application/x-bulk-operator-ids');
+    const bulkJson = e.dataTransfer.getData("application/x-bulk-operator-ids");
     if (bulkJson) {
       const parsed = JSON.parse(bulkJson);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -106,13 +102,13 @@ export const resolveOperatorIdsFromDrop = (
  */
 export const resolveOperatorFromDrop = (
   e: React.DragEvent,
-  operators: Operator[]
+  operators: Operator[],
 ): Operator | null => {
-  let rawData = '';
+  let rawData = "";
 
   // 1. Try custom MIME type
   try {
-    rawData = e.dataTransfer.getData('application/x-operator-id');
+    rawData = e.dataTransfer.getData("application/x-operator-id");
   } catch {
     // Ignore iframe permission errors
   }
@@ -125,7 +121,7 @@ export const resolveOperatorFromDrop = (
   // 3. Try standard text/plain
   if (!rawData) {
     try {
-      rawData = e.dataTransfer.getData('text/plain');
+      rawData = e.dataTransfer.getData("text/plain");
     } catch {
       // Ignore
     }
@@ -145,9 +141,7 @@ export const resolveOperatorFromDrop = (
   if (byId) return byId;
 
   // Fallback: match by full name (case insensitive)
-  const byName = operators.find(
-    (op) => op.name.toLowerCase() === trimmed.toLowerCase()
-  );
+  const byName = operators.find((op) => op.name.toLowerCase() === trimmed.toLowerCase());
   if (byName) return byName;
 
   // Fallback: match by globalDragState operatorId if still active

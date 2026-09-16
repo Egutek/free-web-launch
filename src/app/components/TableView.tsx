@@ -1,7 +1,7 @@
-import React from 'react';
-import { ArrowRightLeft, Edit3, Trash2 } from 'lucide-react';
-import { DEPARTMENTS } from '../data/departments';
-import { Department, DepartmentId, Operator, OperatorStatus } from '../types';
+import React from "react";
+import { ArrowRightLeft, Edit3, Trash2 } from "lucide-react";
+import { DEPARTMENTS } from "../data/departments";
+import { Department, DepartmentId, Operator, OperatorStatus } from "../types";
 
 interface TableViewProps {
   operators: Operator[];
@@ -74,17 +74,17 @@ export const TableView: React.FC<TableViewProps> = ({
                   onClick={(e) => {
                     const target = e.target as HTMLElement;
                     if (
-                      !target.closest('button') &&
-                      !target.closest('select') &&
-                      !target.closest('input')
+                      !target.closest("button") &&
+                      !target.closest("select") &&
+                      !target.closest("input")
                     ) {
                       onToggleBulkSelect?.(op.id);
                     }
                   }}
                   className={`transition-colors cursor-pointer ${
                     isSelected
-                      ? 'bg-blue-50/70 dark:bg-blue-950/40'
-                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                      ? "bg-blue-50/70 dark:bg-blue-950/40"
+                      : "hover:bg-slate-50 dark:hover:bg-slate-800/40"
                   }`}
                 >
                   <td className="py-3 px-3 text-center">
@@ -102,18 +102,18 @@ export const TableView: React.FC<TableViewProps> = ({
                   {/* Směna A, B, C */}
                   <td className="py-3 px-3 text-center">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-black bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                      Směna {op.shift || 'A'}
+                      Směna {op.shift || "A"}
                     </span>
                   </td>
 
                   {/* LL or RTR */}
                   <td className="py-3 px-4">
-                    {op.machineType && op.machineType !== 'NONE' ? (
+                    {op.machineType && op.machineType !== "NONE" ? (
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-black tracking-wider ${
-                          op.machineType === 'RTR'
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200'
-                            : 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200'
+                          op.machineType === "RTR"
+                            ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
+                            : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
                         }`}
                       >
                         {op.machineType}
@@ -151,26 +151,26 @@ export const TableView: React.FC<TableViewProps> = ({
 
                   {/* Status & Absence subcategory */}
                   <td className="py-3 px-4">
-                    {op.departmentId === 'unassigned' || op.status === 'absence' ? (
+                    {op.departmentId === "unassigned" || op.status === "absence" ? (
                       <span
                         className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                          op.absenceReason === 'Dovolená'
-                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                            : op.absenceReason === 'PN'
-                            ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-700'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                          op.absenceReason === "Dovolená"
+                            ? "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700"
+                            : op.absenceReason === "PN"
+                              ? "bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-700"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700"
                         }`}
                       >
                         <span
                           className={`w-1.5 h-1.5 rounded-full ${
-                            op.absenceReason === 'Dovolená'
-                              ? 'bg-amber-500'
-                              : op.absenceReason === 'PN'
-                              ? 'bg-rose-500'
-                              : 'bg-slate-400'
+                            op.absenceReason === "Dovolená"
+                              ? "bg-amber-500"
+                              : op.absenceReason === "PN"
+                                ? "bg-rose-500"
+                                : "bg-slate-400"
                           }`}
                         />
-                        <span>{op.absenceReason || 'Absence'}</span>
+                        <span>{op.absenceReason || "Absence"}</span>
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
@@ -182,7 +182,7 @@ export const TableView: React.FC<TableViewProps> = ({
 
                   {/* Note */}
                   <td className="py-3 px-4 text-slate-500 text-xs truncate max-w-[160px]">
-                    {op.notes || '—'}
+                    {op.notes || "—"}
                   </td>
 
                   {/* Actions */}

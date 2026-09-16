@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { X, Copy, Check, MessageSquare } from 'lucide-react';
-import { DEPARTMENTS } from '../data/departments';
-import { Department, Operator, ShiftCode } from '../types';
+import React, { useState } from "react";
+import { X, Copy, Check, MessageSquare } from "lucide-react";
+import { DEPARTMENTS } from "../data/departments";
+import { Department, Operator, ShiftCode } from "../types";
 
 interface BossReportModalProps {
   operators: Operator[];
@@ -14,7 +14,7 @@ interface BossReportModalProps {
 export const BossReportModal: React.FC<BossReportModalProps> = ({
   operators,
   customDepartments = [],
-  activeShift = 'A',
+  activeShift = "A",
   isOpen,
   onClose,
 }) => {
@@ -24,23 +24,23 @@ export const BossReportModal: React.FC<BossReportModalProps> = ({
   if (!isOpen) return null;
 
   const now = new Date();
-  const timeStr = now.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
-  const dateStr = now.toLocaleDateString('cs-CZ', {
-    day: 'numeric',
-    month: 'numeric',
-    year: 'numeric',
+  const timeStr = now.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+  const dateStr = now.toLocaleDateString("cs-CZ", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
   });
 
   const total = operators.length;
   const activeOps = operators.filter(
-    (o) => o.departmentId !== 'unassigned' && o.status === 'active'
+    (o) => o.departmentId !== "unassigned" && o.status === "active",
   );
   const absenceOps = operators.filter(
-    (o) => o.departmentId === 'unassigned' || o.status === 'absence'
+    (o) => o.departmentId === "unassigned" || o.status === "absence",
   );
   const activeTotal = activeOps.length;
-  const llTotal = activeOps.filter((o) => o.machineType === 'LL').length;
-  const rtrTotal = activeOps.filter((o) => o.machineType === 'RTR').length;
+  const llTotal = activeOps.filter((o) => o.machineType === "LL").length;
+  const rtrTotal = activeOps.filter((o) => o.machineType === "RTR").length;
 
   const getDeptOps = (id: string) => operators.filter((o) => o.departmentId === id);
 
@@ -50,43 +50,45 @@ export const BossReportModal: React.FC<BossReportModalProps> = ({
     report += `V provozu na hale: ${activeTotal} lidí (z ${total} na směně ${activeShift} | ${llTotal}× LL, ${rtrTotal}× RTR)\n`;
     report += `----------------------------------------\n`;
 
-    DEPARTMENTS.filter((d) => d.id !== 'unassigned').forEach((dept) => {
-      const ops = getDeptOps(dept.id).filter((o) => o.status !== 'absence');
-      const ll = ops.filter((o) => o.machineType === 'LL').length;
-      const rtr = ops.filter((o) => o.machineType === 'RTR').length;
+    DEPARTMENTS.filter((d) => d.id !== "unassigned").forEach((dept) => {
+      const ops = getDeptOps(dept.id).filter((o) => o.status !== "absence");
+      const ll = ops.filter((o) => o.machineType === "LL").length;
+      const rtr = ops.filter((o) => o.machineType === "RTR").length;
 
       report += `• ${dept.name}: ${ops.length} lidí (${ll}× LL, ${rtr}× RTR)\n`;
 
       if (includeNames && ops.length > 0) {
-        report += `  ${ops.map((o) => `${o.name} (${o.machineType})`).join(', ')}\n`;
+        report += `  ${ops.map((o) => `${o.name} (${o.machineType})`).join(", ")}\n`;
       }
     });
 
     if (customDepartments.length > 0) {
       report += `\n--- VÍCEPRÁCE A MIMOŘÁDNÉ ÚKOLY ---\n`;
       customDepartments.forEach((dept) => {
-        const ops = getDeptOps(dept.id).filter((o) => o.status !== 'absence');
-        const ll = ops.filter((o) => o.machineType === 'LL').length;
-        const rtr = ops.filter((o) => o.machineType === 'RTR').length;
+        const ops = getDeptOps(dept.id).filter((o) => o.status !== "absence");
+        const ll = ops.filter((o) => o.machineType === "LL").length;
+        const rtr = ops.filter((o) => o.machineType === "RTR").length;
 
         report += `• ${dept.name} (${dept.code}): ${ops.length} lidí (${ll}× LL, ${rtr}× RTR)\n`;
 
         if (includeNames && ops.length > 0) {
-          report += `  ${ops.map((o) => `${o.name} (${o.machineType})`).join(', ')}\n`;
+          report += `  ${ops.map((o) => `${o.name} (${o.machineType})`).join(", ")}\n`;
         }
       });
     }
 
     if (absenceOps.length > 0) {
-      const dovo = absenceOps.filter((o) => o.absenceReason === 'Dovolená');
-      const pn = absenceOps.filter((o) => o.absenceReason === 'PN');
-      const abs = absenceOps.filter((o) => !o.absenceReason || o.absenceReason === 'Absence');
+      const dovo = absenceOps.filter((o) => o.absenceReason === "Dovolená");
+      const pn = absenceOps.filter((o) => o.absenceReason === "PN");
+      const abs = absenceOps.filter((o) => !o.absenceReason || o.absenceReason === "Absence");
 
       report += `\n• Nepřítomen celkem: ${absenceOps.length} lidí (Dovolená: ${dovo.length}, PN: ${pn.length}, Absence: ${abs.length})\n`;
       if (includeNames) {
-        if (dovo.length > 0) report += `  - Dovolená (${dovo.length}): ${dovo.map((o) => o.name).join(', ')}\n`;
-        if (pn.length > 0) report += `  - PN (${pn.length}): ${pn.map((o) => o.name).join(', ')}\n`;
-        if (abs.length > 0) report += `  - Absence (${abs.length}): ${abs.map((o) => o.name).join(', ')}\n`;
+        if (dovo.length > 0)
+          report += `  - Dovolená (${dovo.length}): ${dovo.map((o) => o.name).join(", ")}\n`;
+        if (pn.length > 0) report += `  - PN (${pn.length}): ${pn.map((o) => o.name).join(", ")}\n`;
+        if (abs.length > 0)
+          report += `  - Absence (${abs.length}): ${abs.map((o) => o.name).join(", ")}\n`;
       }
     }
 
@@ -178,7 +180,7 @@ export const BossReportModal: React.FC<BossReportModalProps> = ({
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-md active:scale-95"
             >
               {copied ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
-              <span>{copied ? 'Zkopírováno!' : 'Zkopírovat zprávu pro šéfa'}</span>
+              <span>{copied ? "Zkopírováno!" : "Zkopírovat zprávu pro šéfa"}</span>
             </button>
           </div>
         </div>

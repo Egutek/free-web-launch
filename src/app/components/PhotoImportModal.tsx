@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef } from "react";
 import {
   X,
   Upload,
@@ -13,9 +13,9 @@ import {
   ArrowRight,
   HelpCircle,
   RefreshCw,
-} from 'lucide-react';
-import { DepartmentId, MachineType, Operator } from '../types';
-import { DEPARTMENTS, getDepartmentById } from '../data/departments';
+} from "lucide-react";
+import { DepartmentId, MachineType, Operator } from "../types";
+import { DEPARTMENTS, getDepartmentById } from "../data/departments";
 
 interface PhotoImportModalProps {
   isOpen: boolean;
@@ -38,11 +38,11 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   onImportOperators,
   currentCount,
 }) => {
-  const [activeTab, setActiveTab] = useState<'photo' | 'text'>('photo');
+  const [activeTab, setActiveTab] = useState<"photo" | "text">("photo");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [imageMime, setImageMime] = useState<string>('image/jpeg');
-  const [imageFileName, setImageFileName] = useState<string>('');
-  const [rawText, setRawText] = useState<string>('');
+  const [imageMime, setImageMime] = useState<string>("image/jpeg");
+  const [imageFileName, setImageFileName] = useState<string>("");
+  const [rawText, setRawText] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [extractedList, setExtractedList] = useState<DraftOperator[]>([]);
@@ -55,7 +55,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   // Optimize uploaded photo for OCR (downscale massive smartphone photos to max 1600px to avoid timeouts and 503 errors)
   const processAndSetImage = (file: File) => {
     setImageFileName(file.name);
-    setImageMime('image/jpeg');
+    setImageMime("image/jpeg");
     setErrorMessage(null);
 
     const reader = new FileReader();
@@ -80,13 +80,13 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
           height = MAX_DIM;
         }
 
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.88);
+          const compressed = canvas.toDataURL("image/jpeg", 0.88);
           setSelectedImage(compressed);
         } else {
           setSelectedImage(originalDataUrl);
@@ -120,44 +120,49 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const payload: any = {};
-      if (activeTab === 'photo' && selectedImage) {
+      const payload: Record<string, unknown> = {};
+      if (activeTab === "photo" && selectedImage) {
         payload.imageBase64 = selectedImage;
         payload.mimeType = imageMime;
-      } else if (activeTab === 'text' && rawText.trim()) {
+      } else if (activeTab === "text" && rawText.trim()) {
         payload.textInput = rawText.trim();
       } else {
-        throw new Error('Vyberte prosím fotografii nebo vložte text se jmény.');
+        throw new Error("Vyberte prosím fotografii nebo vložte text se jmény.");
       }
 
-      const response = await fetch('/api/extract-operators', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/extract-operators", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Extrakce se nezdařila.');
+        throw new Error(data.error || "Extrakce se nezdařila.");
       }
 
       if (!data.operators || data.operators.length === 0) {
-        throw new Error('Na snímku nebyla nalezena žádná jména operátorů. Zkontrolujte kvalitu fotky nebo vložte text.');
+        throw new Error(
+          "Na snímku nebyla nalezena žádná jména operátorů. Zkontrolujte kvalitu fotky nebo vložte text.",
+        );
       }
 
-      const drafts: DraftOperator[] = data.operators.map((op: any, index: number) => ({
-        tempId: `draft-${Date.now()}-${index}`,
-        name: op.name || `Operátor ${index + 1}`,
-        machineType: op.machineType === 'RTR' ? 'RTR' : 'LL',
-        departmentId: op.departmentId || 'hovc',
-        notes: op.notes || 'Extrahováno ze snímku ZF',
-      }));
+      const drafts: DraftOperator[] = data.operators.map(
+        (op: Record<string, unknown>, index: number) => ({
+          tempId: `draft-${Date.now()}-${index}`,
+          name: (op.name as string) || `Operátor ${index + 1}`,
+          machineType: op.machineType === "RTR" ? "RTR" : "LL",
+          departmentId: (op.departmentId as DepartmentId) || "hovc",
+          notes: (op.notes as string) || "Extrahováno ze snímku ZF",
+        }),
+      );
 
       setExtractedList(drafts);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      let msg = err?.message || 'Nastala neočekávaná chyba při vytahování jmen.';
+      const errObj = err as { message?: string };
+      let msg = errObj?.message || "Nastala neočekávaná chyba při vytahování jmen.";
       // Clean JSON if present
       const jsonMatch = msg.match(/\{[\s\S]*"error"[\s\S]*\}/);
       if (jsonMatch) {
@@ -169,7 +174,8 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         }
       }
       if (/503|high demand|UNAVAILABLE/i.test(msg)) {
-        msg = 'Služba Google Gemini má momentálně vysokou poptávku (kód 503). Zkuste to prosím za pár sekund znovu tlačítkem Zkusit znovu, případně zadejte jména textem.';
+        msg =
+          "Služba Google Gemini má momentálně vysokou poptávku (kód 503). Zkuste to prosím za pár sekund znovu tlačítkem Zkusit znovu, případně zadejte jména textem.";
       }
       setErrorMessage(msg);
     } finally {
@@ -179,7 +185,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
 
   const updateDraft = (tempId: string, patch: Partial<DraftOperator>) => {
     setExtractedList((prev) =>
-      prev.map((item) => (item.tempId === tempId ? { ...item, ...patch } : item))
+      prev.map((item) => (item.tempId === tempId ? { ...item, ...patch } : item)),
     );
   };
 
@@ -192,10 +198,10 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
       ...prev,
       {
         tempId: `draft-${Date.now()}-${prev.length + 1}`,
-        name: 'Nový Operátor',
-        machineType: 'LL',
-        departmentId: 'hovc',
-        notes: 'Ručně přidáno',
+        name: "Nový Operátor",
+        machineType: "LL",
+        departmentId: "hovc",
+        notes: "Ručně přidáno",
       },
     ]);
   };
@@ -209,7 +215,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
       machineType: draft.machineType,
       departmentId: draft.departmentId,
       isVnaOnly: false,
-      status: draft.departmentId === 'unassigned' ? 'absence' : 'active',
+      status: draft.departmentId === "unassigned" ? "absence" : "active",
       notes: draft.notes,
       lastMovedAt: new Date().toISOString(),
     }));
@@ -261,11 +267,11 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
               <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl max-w-md">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('photo')}
+                  onClick={() => setActiveTab("photo")}
                   className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${
-                    activeTab === 'photo'
-                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    activeTab === "photo"
+                      ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
                   <Camera className="w-4 h-4" />
@@ -273,11 +279,11 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('text')}
+                  onClick={() => setActiveTab("text")}
                   className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${
-                    activeTab === 'text'
-                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    activeTab === "text"
+                      ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
                   <FileText className="w-4 h-4" />
@@ -286,7 +292,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
               </div>
 
               {/* Tab 1: Photo upload */}
-              {activeTab === 'photo' && (
+              {activeTab === "photo" && (
                 <div className="space-y-3">
                   <div
                     onDragOver={handleDragOver}
@@ -294,8 +300,8 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                     onClick={() => fileInputRef.current?.click()}
                     className={`border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center ${
                       selectedImage
-                        ? 'border-blue-500 bg-blue-50/30 dark:bg-blue-950/20'
-                        : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-50/50 dark:bg-slate-800/40'
+                        ? "border-blue-500 bg-blue-50/30 dark:bg-blue-950/20"
+                        : "border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-50/50 dark:bg-slate-800/40"
                     }`}
                   >
                     <input
@@ -317,7 +323,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                           />
                         </div>
                         <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                          {imageFileName || 'Fotka vybrána'} • Klikněte pro změnu
+                          {imageFileName || "Fotka vybrána"} • Klikněte pro změnu
                         </p>
                       </div>
                     ) : (
@@ -329,7 +335,8 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                           Přetáhněte sem fotku nebo klikněte pro výběr
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md">
-                          Podporuje fotky z mobilu, screenshoty rozpisů ze SAP/Excelu nebo vyfocený papír se jmény a stroji (LL/RTR).
+                          Podporuje fotky z mobilu, screenshoty rozpisů ze SAP/Excelu nebo vyfocený
+                          papír se jmény a stroji (LL/RTR).
                         </p>
                       </>
                     )}
@@ -338,7 +345,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
               )}
 
               {/* Tab 2: Text input */}
-              {activeTab === 'text' && (
+              {activeTab === "text" && (
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                     Vložte jména operátorů (jméno na řádek):
@@ -351,7 +358,8 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                     className="w-full text-xs sm:text-sm font-mono p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 outline-hidden"
                   />
                   <p className="text-[11px] text-slate-500">
-                    Můžete zkopírovat sloupce z Excelu nebo zprávy. Systém automaticky rozpozná jména, stroje (LL/RTR) i oddělení.
+                    Můžete zkopírovat sloupce z Excelu nebo zprávy. Systém automaticky rozpozná
+                    jména, stroje (LL/RTR) i oddělení.
                   </p>
                 </div>
               )}
@@ -366,10 +374,10 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                    {activeTab === 'photo' && (
+                    {activeTab === "photo" && (
                       <button
                         type="button"
-                        onClick={() => setActiveTab('text')}
+                        onClick={() => setActiveTab("text")}
                         className="px-2.5 py-1 text-xs font-semibold rounded-lg text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50"
                       >
                         Vložit textem
@@ -381,7 +389,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                       disabled={isAnalyzing}
                       className="px-3 py-1 text-xs font-bold rounded-lg text-white bg-rose-600 hover:bg-rose-500 flex items-center gap-1.5 shadow-xs"
                     >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                      <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? "animate-spin" : ""}`} />
                       <span>Zkusit znovu</span>
                     </button>
                   </div>
@@ -392,7 +400,11 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                 <button
                   id="start-extraction-btn"
                   onClick={triggerAnalysis}
-                  disabled={isAnalyzing || (activeTab === 'photo' && !selectedImage) || (activeTab === 'text' && !rawText.trim())}
+                  disabled={
+                    isAnalyzing ||
+                    (activeTab === "photo" && !selectedImage) ||
+                    (activeTab === "text" && !rawText.trim())
+                  }
                   className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white flex items-center justify-center gap-2 shadow-sm transition-all"
                 >
                   {isAnalyzing ? (
@@ -438,7 +450,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                     onClick={() => {
                       setExtractedList([]);
                       setSelectedImage(null);
-                      setRawText('');
+                      setRawText("");
                     }}
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                   >
@@ -472,22 +484,22 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                     <div className="shrink-0 flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => updateDraft(item.tempId, { machineType: 'LL' })}
+                        onClick={() => updateDraft(item.tempId, { machineType: "LL" })}
                         className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
-                          item.machineType === 'LL'
-                            ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-300 dark:border-amber-700'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                          item.machineType === "LL"
+                            ? "bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-300 dark:border-amber-700"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-500"
                         }`}
                       >
                         LL
                       </button>
                       <button
                         type="button"
-                        onClick={() => updateDraft(item.tempId, { machineType: 'RTR' })}
+                        onClick={() => updateDraft(item.tempId, { machineType: "RTR" })}
                         className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
-                          item.machineType === 'RTR'
-                            ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/60 dark:text-blue-200 border border-blue-300 dark:border-blue-700'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                          item.machineType === "RTR"
+                            ? "bg-blue-100 text-blue-900 dark:bg-blue-900/60 dark:text-blue-200 border border-blue-300 dark:border-blue-700"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-500"
                         }`}
                       >
                         RTR
