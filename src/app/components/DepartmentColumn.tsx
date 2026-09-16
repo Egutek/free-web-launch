@@ -305,8 +305,8 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
       : operators;
 
   const theme = department.isCustom
-    ? CUSTOM_THEMES_BY_COLOR[department.color] || CUSTOM_THEMES_BY_COLOR.amber
-    : DEPT_HEADER_THEMES[department.id] || DEPT_HEADER_THEMES.hovc;
+    ? CUSTOM_THEMES_BY_COLOR[department.color] || CUSTOM_THEMES_BY_COLOR['amber']
+    : DEPT_HEADER_THEMES[department.id] || DEPT_HEADER_THEMES['hovc'];
 
   return (
     <div
