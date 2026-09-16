@@ -175,8 +175,7 @@ export default function App() {
     showToast(`Přepnuto na Směnu ${shift}`);
   }, []);
 
-  // Firebase Auth & Cloud Sync state
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // Cloud Sync state (bez přihlašování)
   const [isCloudConnected, setIsCloudConnected] = useState(false);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
 
