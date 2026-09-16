@@ -13,7 +13,14 @@ import {
   CheckSquare,
   Trash2,
 } from "lucide-react";
-import { Department, DepartmentId, Operator, OperatorStatus, AbsenceReason } from "../types";
+import {
+  Department,
+  DepartmentId,
+  Operator,
+  OperatorStatus,
+  AbsenceReason,
+  MachineType,
+} from "../types";
 import { OperatorCard } from "./OperatorCard";
 import { resolveOperatorIdsFromDrop, getGlobalDragState } from "../utils/dragState";
 
@@ -31,6 +38,7 @@ interface DepartmentColumnProps {
   onEditOperator: (operator: Operator) => void;
   onChangeStatus?: (operatorId: string, newStatus: OperatorStatus) => void;
   onChangeAbsenceReason?: (operatorId: string, reason: AbsenceReason) => void;
+  onChangeMachineType?: (operatorId: string, machineType: MachineType) => void;
   onAddOperatorToDept: (deptId: DepartmentId) => void;
   onDropOperator: (operatorIds: string[], targetDeptId: DepartmentId) => void;
   onDeleteDepartment?: (deptId: DepartmentId) => void;
@@ -189,6 +197,7 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
   onEditOperator,
   onChangeStatus,
   onChangeAbsenceReason,
+  onChangeMachineType,
   onAddOperatorToDept,
   onDropOperator,
   onDeleteDepartment,
@@ -434,17 +443,27 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 text-[11px] font-bold self-start mt-0.5">
-            {llCount > 0 && (
-              <span className={`px-2 py-0.5 rounded-md ${theme.chipBgLL}`}>{llCount}× LL</span>
-            )}
-            {rtrCount > 0 && (
-              <span className={`px-2 py-0.5 rounded-md ${theme.chipBgRTR}`}>{rtrCount}× RTR</span>
-            )}
-            {llCount === 0 && rtrCount === 0 && (
-              <span className="text-[10px] text-white/60 font-normal">
-                {operators.length > 0 ? `${operators.length} op` : "—"}
+            {department.id === "vna" ? (
+              <span className="px-2 py-0.5 rounded-md bg-white/20 text-white font-black text-[11px] border border-white/25">
+                VNA uličky
               </span>
-            )}
+            ) : !isAbsence ? (
+              <>
+                {llCount > 0 && (
+                  <span className={`px-2 py-0.5 rounded-md ${theme.chipBgLL}`}>{llCount}× LL</span>
+                )}
+                {rtrCount > 0 && (
+                  <span className={`px-2 py-0.5 rounded-md ${theme.chipBgRTR}`}>
+                    {rtrCount}× RTR
+                  </span>
+                )}
+                {llCount === 0 && rtrCount === 0 && (
+                  <span className="text-[10px] text-white/60 font-normal">
+                    {operators.length > 0 ? `${operators.length} op` : "—"}
+                  </span>
+                )}
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -551,6 +570,7 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
               onEditOperator={onEditOperator}
               onChangeStatus={onChangeStatus}
               onChangeAbsenceReason={onChangeAbsenceReason}
+              onChangeMachineType={onChangeMachineType}
               onDropOperator={onDropOperator}
             />
           ))

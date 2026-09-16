@@ -1,7 +1,7 @@
 import React from "react";
 import { ArrowRightLeft, Edit3, Trash2 } from "lucide-react";
 import { DEPARTMENTS } from "../data/departments";
-import { Department, DepartmentId, Operator, OperatorStatus } from "../types";
+import { Department, DepartmentId, Operator, OperatorStatus, MachineType } from "../types";
 
 interface TableViewProps {
   operators: Operator[];
@@ -14,6 +14,7 @@ interface TableViewProps {
   onEditOperator: (operator: Operator) => void;
   onChangeDepartment: (operatorId: string, deptId: DepartmentId) => void;
   onChangeStatus?: (operatorId: string, status: OperatorStatus) => void;
+  onChangeMachineType?: (operatorId: string, machineType: MachineType) => void;
   onDeleteOperator?: (operatorId: string) => void;
 }
 
@@ -27,6 +28,7 @@ export const TableView: React.FC<TableViewProps> = ({
   onOpenQuickMove,
   onEditOperator,
   onChangeDepartment,
+  onChangeMachineType,
   onDeleteOperator,
 }) => {
   const isAllSelected = operators.length > 0 && operators.every((o) => bulkSelectedIds?.has(o.id));
@@ -106,20 +108,51 @@ export const TableView: React.FC<TableViewProps> = ({
                     </span>
                   </td>
 
-                  {/* LL or RTR */}
+                  {/* LL or RTR or VNA */}
                   <td className="py-3 px-4">
-                    {op.machineType && op.machineType !== "NONE" ? (
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-black tracking-wider ${
+                    {op.departmentId === "vna" ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800">
+                        VNA
+                      </span>
+                    ) : op.departmentId === "unassigned" || op.status === "absence" ? (
+                      <span className="text-xs text-slate-400 italic">—</span>
+                    ) : op.machineType && op.machineType !== "NONE" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onChangeMachineType) {
+                            const next = op.machineType === "LL" ? "RTR" : "LL";
+                            onChangeMachineType(op.id, next);
+                          }
+                        }}
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-black tracking-wider transition-all cursor-pointer border select-none active:scale-95 ${
                           op.machineType === "RTR"
-                            ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
-                            : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+                            ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 border-blue-200 dark:border-blue-700 hover:bg-blue-200"
+                            : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200 border-amber-200 dark:border-amber-700 hover:bg-amber-200"
                         }`}
+                        title={`Stroj: ${op.machineType}. Kliknutím přepnout na ${op.machineType === "LL" ? "RTR" : "LL"}.`}
                       >
                         {op.machineType}
-                      </span>
+                      </button>
                     ) : (
-                      <span className="text-xs text-slate-400">—</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onChangeMachineType) {
+                            const defaultNext: MachineType =
+                              op.departmentId === "hovc" ||
+                              op.departmentId === "obwi" ||
+                              op.departmentId === "hovs"
+                                ? "RTR"
+                                : "LL";
+                            onChangeMachineType(op.id, defaultNext);
+                          }
+                        }}
+                        className="inline-flex items-center px-2 py-0.5 rounded text-xs text-slate-400 dark:text-slate-500 border border-dashed border-slate-300 dark:border-slate-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-400 cursor-pointer"
+                        title="Kliknutím přiřadit stroj (LL/RTR)"
+                      >
+                        + Stroj
+                      </button>
                     )}
                   </td>
 

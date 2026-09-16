@@ -10,19 +10,20 @@ POSTUP PŘI ČTENÍ FOTOGRAFIE BÍLÉ TABULE:
 4. Pokud je u jména kód vozíku / pozice (např. "V47 Burget David", "V107 Andrii Gurkot", "V13 ...", "V01 ..."), vytáhni celé jméno a kód vozíku můžeš dát do poznámky.
 
 PŘIŘAZENÍ K ODDĚLENÍM (departmentId):
+- 'hovc': Sloupce "OUTBOUND", "HOVC", "Expedice", "Balení", "Vstupní/Obalové centrum"
+- 'obwi': Sloupce "OBWI", "Outbound Web", "International", "Expedice Web"
 - 'vna': Sloupce "VNAS", "VNAC", "VNA", "Úzké uličky", vozíky V... s vysokozdvižným zakládáním
 - 'hovs': Sloupce "HOVS", "HOVS/ML", "Konsolidace", "Regály"
 - 'putaway': Sloupce "PUTAWAY", "Zaskladnění", "Zaskladnovani"
 - 'vas': Sloupce "VAS", "Přebal", "Speciální balení"
 - 'obwf': Sloupce "OBWF", "Outbound Waterfront", "HAZMAT", "Waterfront"
-- 'obwi': Sloupce "OBWI", "Outbound Web", "International", "Expedice Web"
-- 'hovc': Sloupce "OUTBOUND", "HOVC", "Expedice", "Balení", "Vstupní/Obalové centrum"
-- 'unassigned': Sekce "TRÉNINK", volné poznámky bez určení sekce, nebo pokud oddělení nelze určit
+- 'unassigned': Sekce "TRÉNINK", "ABSENCE", "DOVOLENÁ", "PN", volné poznámky bez určení sekce, nebo pokud oddělení nelze určit
 
-STROJE A KVALIFIKACE (machineType):
-- 'RTR': Retrak / vysokozdvižný vozík do úzkých uliček (sekce VNA, HOVS nebo výslovně uvedeno RTR / Retrak).
-- 'LL': Nízkozdvižný vozík / běžný pickovací vozík (výchozí pro většinu operátorů na picku, Outboundu, nebo pokud je uvedeno LL).
-- 'NONE': Pokud pracovník nemá stroj (např. čisté balení VAS, trénink).
+PRAVIDLA PRO STROJE A KVALIFIKACE (machineType):
+- 'NONE': Pro oddělení VNA ('vna') a Nepřítomnost / Nezařazeno ('unassigned') VŽDY nastav 'NONE'! U VNA se automaticky počítá, že jsou na VNA a nepřiřazuje se jim LL ani RTR.
+- 'RTR': Pro Outbound / HOVC ('hovc') a OBWI ('obwi') VŽDY AUTOMATICKY PŘIŘAĎ 'RTR'! Může se stát, že tam bude výjimečně někdo s LL – POUZE pokud je u jména výslovně napsáno "LL", "LL:", "(LL)" nebo "nízkozdvih", přiřaď 'LL', jinak VŽDY přiřaď 'RTR'.
+  Pro HOVS ('hovs') rovněž automaticky přiřaď 'RTR' (pokud není výslovně uvedeno LL).
+- 'LL': Pro Putaway ('putaway') nastav 'LL' (pokud není výslovně uveden RTR/Retrak), nebo pokud je u pracovníka výslovně napsáno LL.
 
 REFERENČNÍ SEZNAM PRACOVNÍKŮ ZF OSTROV (využij k přesnému doplnění a opravě překlepů z rukopisu):
 Andrii Gurkot, Barnóky Roman, Bereš Zbyněk, Bogár Alexander, BOHDAN BAIOV, Burget David, Červeňák Michael, Daduč Imrich, Daniel Šír, DAVID SVOBODA, DEMIANETS D., Faber Dominik, Fiala Ladislav, Gajdoš Slavomír, Györke Ladislav, Halimov Oleh, Havel Zdeněk, Hemzáček Lukáš, Horváth Valentin, Hosszu Radek, Hřava Dominik, Chrastina Atilla, IHOR Pozniak, IHOR Savchenko, JAKUB PFREIMER, JAKUB SKÁLA, Jiří Nečas, Jiří Teplý, Jiří Vašíček, Josef Bartko, Kateřina Novotná, Kochut Yurii, Kovalchuk O., Kryvoruchko Daria, Kurcius David, Máca Filip, Martin Mazánek, Martin Vlček, Merzliakov O., Mika Dominik, Miroslav Havlík, Miroslav Kónya, Mrhal Aleš, Müller Jan, Mykhailchuk M., Nováček M., Pacelt Jakub, Pavelka Vojtěch, Petrus Oleksandr, Popelář Hynek, Pukančík Ota, Robert Trapl, Sebastian Čermák, SIDEI BOGDAN, Simona Pyttlová, Sivák David, Sivák R., Sovadina Václav, Šándor Milan, Tomáš Bartoš, TONDA HORÁK, Velat Petr, VITALII SAVCHENKO, Vít Varga, Vojtěch Hodl, Zamrii, Serhiievych, Pitec S.
@@ -30,8 +31,8 @@ Andrii Gurkot, Barnóky Roman, Bereš Zbyněk, Bogár Alexander, BOHDAN BAIOV, B
 Vrať VÝHRADNĚ validní JSON objekt ve tvaru {"operators": [...]}, kde každý prvek obsahuje:
 {
   "name": "Celé Jméno a Příjmení",
-  "machineType": "LL" | "RTR" | "NONE",
-  "departmentId": "hovc" | "hovs" | "putaway" | "vas" | "obwf" | "vna" | "obwi" | "unassigned",
+  "machineType": "RTR" | "LL" | "NONE",
+  "departmentId": "hovc" | "obwi" | "vna" | "hovs" | "putaway" | "vas" | "obwf" | "unassigned",
   "notes": "volitelná poznámka (např. V47, směna 10:00-18:00 apod.)"
 }`;
 
@@ -51,20 +52,54 @@ function parseTextFallback(textInput: string): ExtractedOperator[] {
       const parts = line.split(/[\t;,]/).map((p) => p.trim());
       const name = parts[0] || "Neznámý";
       const notes = parts.slice(1).join(" | ");
-      const isRTR = notes.toUpperCase().includes("RTR") || notes.toUpperCase().includes("RETRAK");
-      const isVNA = notes.toUpperCase().includes("VNA");
-      const machineType = isRTR || isVNA ? "RTR" : "LL";
+      const upperLine = `${name} ${notes}`.toUpperCase();
+      const hasExplicitLL =
+        upperLine.includes(" LL") ||
+        upperLine.includes("(LL)") ||
+        upperLine.includes("-LL") ||
+        upperLine.includes("NÍZKOZDVIH");
+      const hasExplicitRTR = upperLine.includes("RTR") || upperLine.includes("RETRAK");
+      const isVNA = upperLine.includes("VNA") || upperLine.includes("ULIČK");
+
       let departmentId = "unassigned";
-      if (notes.toUpperCase().includes("HOVC")) departmentId = "hovc";
-      if (notes.toUpperCase().includes("HOVS")) departmentId = "hovs";
-      if (notes.toUpperCase().includes("VAS")) departmentId = "vas";
-      if (notes.toUpperCase().includes("PUTAWAY") || notes.toUpperCase().includes("ZASKLADNENI"))
+      if (
+        upperLine.includes("HOVC") ||
+        upperLine.includes("OUTBOUND") ||
+        upperLine.includes("EXPEDICE") ||
+        upperLine.includes("BALENI")
+      ) {
+        departmentId = "hovc";
+      } else if (upperLine.includes("HOVS") || upperLine.includes("REGALY")) {
+        departmentId = "hovs";
+      } else if (upperLine.includes("VAS") || upperLine.includes("PREBAL")) {
+        departmentId = "vas";
+      } else if (
+        upperLine.includes("PUTAWAY") ||
+        upperLine.includes("ZASKLADNENI") ||
+        upperLine.includes("PUT")
+      ) {
         departmentId = "putaway";
-      if (notes.toUpperCase().includes("OBWF") || notes.toUpperCase().includes("WATERFRONT"))
+      } else if (upperLine.includes("OBWF") || upperLine.includes("WATERFRONT")) {
         departmentId = "obwf";
-      if (isVNA) departmentId = "vna";
-      if (notes.toUpperCase().includes("OBWI") || notes.toUpperCase().includes("WEB"))
+      } else if (isVNA) {
+        departmentId = "vna";
+      } else if (upperLine.includes("OBWI") || upperLine.includes("WEB")) {
         departmentId = "obwi";
+      }
+
+      let machineType: "LL" | "RTR" | "NONE" = "LL";
+      if (departmentId === "vna" || departmentId === "unassigned") {
+        machineType = "NONE";
+      } else if (departmentId === "hovc" || departmentId === "obwi" || departmentId === "hovs") {
+        // Outbound, OBWI & HOVS default to RTR, unless explicitly written as LL
+        machineType = hasExplicitLL ? "LL" : "RTR";
+      } else if (departmentId === "putaway") {
+        machineType = hasExplicitRTR ? "RTR" : "LL";
+      } else if (departmentId === "vas") {
+        machineType = hasExplicitRTR ? "RTR" : hasExplicitLL ? "LL" : "NONE";
+      } else {
+        machineType = hasExplicitRTR ? "RTR" : "LL";
+      }
 
       return {
         name: name.slice(0, 50),
@@ -81,13 +116,36 @@ function normalize(list: unknown): ExtractedOperator[] {
     .map((raw) => {
       const op = raw as Record<string, unknown>;
       const name = typeof op["name"] === "string" ? op["name"].trim() : "";
-      const machine = String(op["machineType"] ?? "LL").toUpperCase();
+      const dept =
+        typeof op["departmentId"] === "string" ? op["departmentId"].toLowerCase() : "hovc";
+      const notes = typeof op["notes"] === "string" ? op["notes"] : undefined;
+      const combinedUpper = `${name} ${notes || ""}`.toUpperCase();
+      const hasExplicitLL =
+        combinedUpper.includes(" LL") ||
+        combinedUpper.includes("(LL)") ||
+        combinedUpper.includes("-LL") ||
+        combinedUpper.includes("NÍZKOZDVIH");
+      const hasExplicitRTR = combinedUpper.includes("RTR") || combinedUpper.includes("RETRAK");
+
+      let machineType: "LL" | "RTR" | "NONE" = "LL";
+      if (dept === "vna" || dept === "unassigned") {
+        // VNA & Nepřítomnost: always NONE (no LL/RTR assigned)
+        machineType = "NONE";
+      } else if (dept === "hovc" || dept === "obwi" || dept === "hovs") {
+        // Outbound, OBWI & HOVS: default to RTR unless explicitly LL
+        machineType = hasExplicitLL ? "LL" : "RTR";
+      } else if (dept === "putaway") {
+        machineType = hasExplicitRTR ? "RTR" : "LL";
+      } else {
+        const rawMachine = String(op["machineType"] ?? "").toUpperCase();
+        machineType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
+      }
+
       return {
         name,
-        machineType: (machine === "RTR" ? "RTR" : machine === "NONE" ? "NONE" : "LL") as
-          "LL" | "RTR" | "NONE",
-        departmentId: typeof op["departmentId"] === "string" ? op["departmentId"] : "hovc",
-        notes: typeof op["notes"] === "string" ? op["notes"] : undefined,
+        machineType,
+        departmentId: dept,
+        notes,
       };
     })
     .filter((op) => op.name.length > 1);
@@ -108,7 +166,9 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
       if (textInput) {
         return { operators: parseTextFallback(textInput) };
       }
-      throw new Error("V prostředí chybí proměnná GEMINI_API_KEY. Přidejte si do administrace Netlify (Site configuration -> Environment variables) klíč GEMINI_API_KEY.");
+      throw new Error(
+        "V prostředí chybí proměnná GEMINI_API_KEY. Přidejte si do administrace Netlify (Site configuration -> Environment variables) klíč GEMINI_API_KEY.",
+      );
     }
 
     const headers: Record<string, string> = {
@@ -116,7 +176,9 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
     };
 
     const parts: Array<Record<string, unknown>> = [
-      { text: `${EXTRACTION_PROMPT}\nVytáhni všechny operátory z přiloženého materiálu. Vrať striktně JSON objekt {"operators": [...]}.` }
+      {
+        text: `${EXTRACTION_PROMPT}\nVytáhni všechny operátory z přiloženého materiálu. Vrať striktně JSON objekt {"operators": [...]}.`,
+      },
     ];
 
     if (imageBase64) {
@@ -124,8 +186,8 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
       parts.push({
         inline_data: {
           mime_type: mimeType,
-          data: cleanBase64
-        }
+          data: cleanBase64,
+        },
       });
     }
 
@@ -174,10 +236,14 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
           }
 
           if (aiResponse.status === 400 && detail.includes("API key not valid")) {
-            throw new Error("Zadaný GEMINI_API_KEY není platný. Zkontrolujte prosím svůj klíč v Google AI Studio.");
+            throw new Error(
+              "Zadaný GEMINI_API_KEY není platný. Zkontrolujte prosím svůj klíč v Google AI Studio.",
+            );
           }
           if (aiResponse.status === 429) {
-            throw new Error("Byl překročen limit požadavků na Gemini API (429 Rate limit). Zkuste to prosím za chvíli.");
+            throw new Error(
+              "Byl překročen limit požadavků na Gemini API (429 Rate limit). Zkuste to prosím za chvíli.",
+            );
           }
 
           lastError = new Error(parsedErrorMessage);
@@ -202,7 +268,10 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
         console.warn(`Attempt with ${model} failed:`, err);
         lastError = err instanceof Error ? err : new Error(String(err));
         // If it's a definitive credential or rate limit error, don't keep polling 404s
-        if (lastError.message.includes("GEMINI_API_KEY") || lastError.message.includes("Rate limit")) {
+        if (
+          lastError.message.includes("GEMINI_API_KEY") ||
+          lastError.message.includes("Rate limit")
+        ) {
           break;
         }
       }
@@ -213,7 +282,8 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
         operators = parseTextFallback(textInput);
       } else if (lastError) {
         throw new Error(
-          lastError.message || "Při zpracování snímku došlo k chybě. Zkuste to prosím znovu nebo vyfoťte tabuli z menší vzdálenosti.",
+          lastError.message ||
+            "Při zpracování snímku došlo k chybě. Zkuste to prosím znovu nebo vyfoťte tabuli z menší vzdálenosti.",
         );
       }
     }

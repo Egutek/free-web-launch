@@ -1,0 +1,49 @@
+{
+  "id": "/",
+  "name": "ZF Operativa - Živý Widget & Přehled",
+  "short_name": "ZF Widget",
+  "description": "Živý online widget a přehled oddělení skladu ZF Ostrov na plochu telefonu.",
+  "start_url": "/?view=widget",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
+  "categories": ["productivity", "utilities", "business"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Živý mobilní widget",
+      "short_name": "Widget",
+      "description": "Rychlý přehled oddělení PICK a stavu směny",
+      "url": "/?view=widget",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Kompletní tabule",
+      "short_name": "Tabule",
+      "description": "Kompletní interaktivní tabule rozdělení",
+      "url": "/?view=board",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

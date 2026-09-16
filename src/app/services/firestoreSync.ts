@@ -131,8 +131,7 @@ export async function replaceOperatorsInCloud(
       const docData = docSnap.data() as Partial<Operator>;
       const docShift = docData.shift || "A";
       const shouldDelete =
-        !newOpIds.has(docSnap.id) &&
-        (!shiftToReplace || docShift === shiftToReplace);
+        !newOpIds.has(docSnap.id) && (!shiftToReplace || docShift === shiftToReplace);
 
       if (shouldDelete) {
         batch.delete(docSnap.ref);

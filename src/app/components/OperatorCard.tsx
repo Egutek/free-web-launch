@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ArrowRightLeft, Clock, Edit2, GripVertical, Users } from "lucide-react";
-import { Operator, OperatorStatus, DepartmentId, AbsenceReason } from "../types";
+import { Operator, OperatorStatus, DepartmentId, AbsenceReason, MachineType } from "../types";
 import {
   startGlobalDrag,
   endGlobalDrag,
@@ -21,6 +21,7 @@ interface OperatorCardProps {
   onToggleBulkSelect?: (operatorId: string) => void;
   onChangeStatus?: (operatorId: string, newStatus: OperatorStatus) => void;
   onChangeAbsenceReason?: (operatorId: string, reason: AbsenceReason) => void;
+  onChangeMachineType?: (operatorId: string, machineType: MachineType) => void;
   onDropOperator?: (operatorIds: string[], targetDeptId: DepartmentId) => void;
 }
 
@@ -36,6 +37,7 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
   onEditOperator,
   onToggleBulkSelect,
   onChangeAbsenceReason,
+  onChangeMachineType,
   onDropOperator,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -170,19 +172,58 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
             {operator.name}
           </h4>
 
-          {/* Machine qualification tag: ONLY IF LL or RTR (ignored if NONE) */}
-          {operator.machineType && operator.machineType !== "NONE" && (
-            <span
-              className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-black tracking-wider pointer-events-none shrink-0 ${
-                operator.machineType === "RTR"
-                  ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 border border-blue-200 dark:border-blue-700"
-                  : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-200 dark:border-amber-700"
-              }`}
-              title={operator.machineType === "RTR" ? "Retrak (vysokozdvih)" : "LL (nízkozdvih)"}
-            >
-              {operator.machineType}
-            </span>
-          )}
+          {/* Machine qualification tag: ONLY IF LL or RTR (never on VNA or Absence) - Click to toggle LL <-> RTR */}
+          {operator.departmentId !== "vna" &&
+            !isAbsence &&
+            operator.machineType &&
+            operator.machineType !== "NONE" && (
+              <button
+                type="button"
+                draggable={false}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onChangeMachineType) {
+                    const next: MachineType = operator.machineType === "LL" ? "RTR" : "LL";
+                    onChangeMachineType(operator.id, next);
+                  }
+                }}
+                className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-black tracking-wider transition-all cursor-pointer shrink-0 border select-none active:scale-90 ${
+                  operator.machineType === "RTR"
+                    ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 border-blue-200 dark:border-blue-700 hover:bg-blue-200 dark:hover:bg-blue-800 hover:shadow-xs"
+                    : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200 border-amber-200 dark:border-amber-700 hover:bg-amber-200 dark:hover:bg-amber-800 hover:shadow-xs"
+                }`}
+                title={`Stroj: ${operator.machineType === "RTR" ? "Retrak (RTR)" : "Nízkozdvih (LL)"}. Kliknutím přepnout na ${operator.machineType === "LL" ? "RTR" : "LL"}.`}
+              >
+                <span>{operator.machineType}</span>
+              </button>
+            )}
+
+          {/* If operator in active dept has NONE machine type, offer a quick assign button */}
+          {operator.departmentId !== "vna" &&
+            !isAbsence &&
+            (!operator.machineType || operator.machineType === "NONE") &&
+            onChangeMachineType && (
+              <button
+                type="button"
+                draggable={false}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const defaultNext: MachineType =
+                    operator.departmentId === "hovc" ||
+                    operator.departmentId === "obwi" ||
+                    operator.departmentId === "hovs"
+                      ? "RTR"
+                      : "LL";
+                  onChangeMachineType(operator.id, defaultNext);
+                }}
+                className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold text-slate-400 dark:text-slate-500 border border-dashed border-slate-300 dark:border-slate-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-400 transition-all cursor-pointer shrink-0"
+                title="Přiřadit stroj (kliknutím nastavit LL / RTR)"
+              >
+                <span>+ Stroj</span>
+              </button>
+            )}
 
           {/* Absence Reason badge (Dovolená / PN / Absence) */}
           {isAbsence && (

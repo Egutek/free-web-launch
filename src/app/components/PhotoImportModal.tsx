@@ -33,6 +33,7 @@ import {
   ImageAdjustments,
   DEFAULT_ADJUSTMENTS,
   WHITEBOARD_PRESET,
+  LOW_QUALITY_DARK_PRESET,
   HIGH_CONTRAST_PRESET,
   GRAYSCALE_PRESET,
   applyImageAdjustments,
@@ -65,10 +66,12 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   const [imageMime, setImageMime] = useState<string>("image/jpeg");
   const [imageFileName, setImageFileName] = useState<string>("");
   const [adjustments, setAdjustments] = useState<ImageAdjustments>(WHITEBOARD_PRESET);
-  const [activePreset, setActivePreset] = useState<"whiteboard" | "contrast" | "grayscale" | "original" | "custom">("whiteboard");
+  const [activePreset, setActivePreset] = useState<
+    "whiteboard" | "dark" | "contrast" | "grayscale" | "original" | "custom"
+  >("whiteboard");
   const [showManualControls, setShowManualControls] = useState<boolean>(false);
   const [isProcessingCanvas, setIsProcessingCanvas] = useState<boolean>(false);
-  
+
   const [rawText, setRawText] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -79,21 +82,18 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Recalculate canvas when raw image or adjustments change
-  const updateProcessedImage = useCallback(
-    async (sourceUrl: string, adj: ImageAdjustments) => {
-      setIsProcessingCanvas(true);
-      try {
-        const enhanced = await applyImageAdjustments(sourceUrl, adj);
-        setSelectedImage(enhanced);
-      } catch (e) {
-        console.error("Canvas preprocessing failed:", e);
-        setSelectedImage(sourceUrl);
-      } finally {
-        setIsProcessingCanvas(false);
-      }
-    },
-    []
-  );
+  const updateProcessedImage = useCallback(async (sourceUrl: string, adj: ImageAdjustments) => {
+    setIsProcessingCanvas(true);
+    try {
+      const enhanced = await applyImageAdjustments(sourceUrl, adj);
+      setSelectedImage(enhanced);
+    } catch (e) {
+      console.error("Canvas preprocessing failed:", e);
+      setSelectedImage(sourceUrl);
+    } finally {
+      setIsProcessingCanvas(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (rawSourceImage) {
@@ -129,16 +129,40 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleApplyPreset = (type: "whiteboard" | "contrast" | "grayscale" | "original") => {
+  const handleApplyPreset = (
+    type: "whiteboard" | "dark" | "contrast" | "grayscale" | "original",
+  ) => {
     setActivePreset(type);
     if (type === "whiteboard") {
-      setAdjustments((prev) => ({ ...WHITEBOARD_PRESET, rotation: prev.rotation, crop: prev.crop }));
+      setAdjustments((prev) => ({
+        ...WHITEBOARD_PRESET,
+        rotation: prev.rotation,
+        crop: prev.crop,
+      }));
+    } else if (type === "dark") {
+      setAdjustments((prev) => ({
+        ...LOW_QUALITY_DARK_PRESET,
+        rotation: prev.rotation,
+        crop: prev.crop,
+      }));
     } else if (type === "contrast") {
-      setAdjustments((prev) => ({ ...HIGH_CONTRAST_PRESET, rotation: prev.rotation, crop: prev.crop }));
+      setAdjustments((prev) => ({
+        ...HIGH_CONTRAST_PRESET,
+        rotation: prev.rotation,
+        crop: prev.crop,
+      }));
     } else if (type === "grayscale") {
-      setAdjustments((prev) => ({ ...GRAYSCALE_PRESET, rotation: prev.rotation, crop: prev.crop }));
+      setAdjustments((prev) => ({
+        ...GRAYSCALE_PRESET,
+        rotation: prev.rotation,
+        crop: prev.crop,
+      }));
     } else if (type === "original") {
-      setAdjustments((prev) => ({ ...DEFAULT_ADJUSTMENTS, rotation: prev.rotation, crop: prev.crop }));
+      setAdjustments((prev) => ({
+        ...DEFAULT_ADJUSTMENTS,
+        rotation: prev.rotation,
+        crop: prev.crop,
+      }));
     }
   };
 
@@ -197,8 +221,19 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
 
     try {
       const payload: { imageBase64?: string; mimeType?: string; textInput?: string } = {};
-      if (activeTab === "photo" && selectedImage) {
-        payload.imageBase64 = selectedImage;
+      if (activeTab === "photo") {
+        if (!rawSourceImage && !selectedImage) {
+          throw new Error("Vyberte prosím fotografii nebo vložte text se jmény.");
+        }
+
+        // Perform guaranteed fresh canvas preprocessing (grayscale, contrast, levels) before sending to OCR
+        let finalImageBase64 = selectedImage;
+        if (rawSourceImage) {
+          finalImageBase64 = await applyImageAdjustments(rawSourceImage, adjustments);
+          setSelectedImage(finalImageBase64);
+        }
+
+        payload.imageBase64 = finalImageBase64 || undefined;
         payload.mimeType = imageMime;
       } else if (activeTab === "text" && rawText.trim()) {
         payload.textInput = rawText.trim();
@@ -214,13 +249,36 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         );
       }
 
-      const drafts: DraftOperator[] = data.operators.map((op: any, index: number) => ({
-        tempId: `draft-${Date.now()}-${index}`,
-        name: op.name || `Operátor ${index + 1}`,
-        machineType: op.machineType === "RTR" ? "RTR" : "LL",
-        departmentId: (op.departmentId as DepartmentId) || "hovc",
-        notes: op.notes || "Extrahováno ze snímku ZF",
-      }));
+      const drafts: DraftOperator[] = data.operators.map((op: any, index: number) => {
+        const deptId = (op.departmentId as DepartmentId) || "hovc";
+        const rawMachine = String(op.machineType ?? "").toUpperCase();
+        const combined = `${op.name || ""} ${op.notes || ""}`.toUpperCase();
+        const hasExplicitLL =
+          combined.includes(" LL") ||
+          combined.includes("(LL)") ||
+          combined.includes("-LL") ||
+          combined.includes("NÍZKOZDVIH");
+        const hasExplicitRTR = combined.includes("RTR") || combined.includes("RETRAK");
+
+        let mType: "LL" | "RTR" | "NONE" = "LL";
+        if (deptId === "vna" || deptId === "unassigned") {
+          mType = "NONE";
+        } else if (deptId === "hovc" || deptId === "obwi" || deptId === "hovs") {
+          mType = hasExplicitLL ? "LL" : "RTR";
+        } else if (deptId === "putaway") {
+          mType = hasExplicitRTR ? "RTR" : "LL";
+        } else {
+          mType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
+        }
+
+        return {
+          tempId: `draft-${Date.now()}-${index}`,
+          name: op.name || `Operátor ${index + 1}`,
+          machineType: mType,
+          departmentId: deptId,
+          notes: op.notes || "Extrahováno ze snímku ZF",
+        };
+      });
 
       setExtractedList(drafts);
     } catch (err: unknown) {
@@ -430,19 +488,22 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                               {activePreset === "whiteboard"
                                 ? "Vylepšení tabule (OCR)"
                                 : activePreset === "contrast"
-                                ? "Vysoký kontrast"
-                                : activePreset === "grayscale"
-                                ? "Stupně šedé"
-                                : activePreset === "custom"
-                                ? "Vlastní úpravy"
-                                : "Původní snímek"}
+                                  ? "Vysoký kontrast"
+                                  : activePreset === "grayscale"
+                                    ? "Stupně šedé"
+                                    : activePreset === "custom"
+                                      ? "Vlastní úpravy"
+                                      : "Původní snímek"}
                             </span>
                             {adjustments.rotation > 0 && (
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-800/80 text-white shadow-xs">
                                 {adjustments.rotation}°
                               </span>
                             )}
-                            {(adjustments.crop.width < 100 || adjustments.crop.x > 0 || adjustments.crop.height < 100 || adjustments.crop.y > 0) && (
+                            {(adjustments.crop.width < 100 ||
+                              adjustments.crop.x > 0 ||
+                              adjustments.crop.height < 100 ||
+                              adjustments.crop.y > 0) && (
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-600/90 text-white shadow-xs flex items-center gap-1">
                                 <Crop className="w-2.5 h-2.5" />
                                 Ořez aktivní
@@ -457,7 +518,8 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                             {imageFileName || "Fotka připravena"}
                           </p>
                           <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
-                            <Check className="w-3 h-3" /> Předzpracováno pomocí Canvas API pro maximální přesnost AI
+                            <Check className="w-3 h-3" /> Předzpracováno pomocí Canvas API pro
+                            maximální přesnost AI
                           </span>
                         </div>
 
@@ -475,12 +537,16 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                             >
                               <SlidersHorizontal className="w-3 h-3" />
                               <span>{showManualControls ? "Skrýt posuvníky" : "Ruční ladění"}</span>
-                              {showManualControls ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                              {showManualControls ? (
+                                <ChevronUp className="w-3 h-3" />
+                              ) : (
+                                <ChevronDown className="w-3 h-3" />
+                              )}
                             </button>
                           </div>
 
                           {/* Presets grid */}
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
                             <button
                               type="button"
                               onClick={() => handleApplyPreset("whiteboard")}
@@ -492,6 +558,19 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                             >
                               <Wand2 className="w-3.5 h-3.5" />
                               <span>Vylepšit tabuli</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleApplyPreset("dark")}
+                              className={`py-1.5 px-2 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                activePreset === "dark"
+                                  ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                  : "bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <Sun className="w-3.5 h-3.5 text-amber-300" />
+                              <span>Tmavá fotka</span>
                             </button>
 
                             <button
@@ -516,7 +595,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                   : "bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 hover:bg-slate-50"
                               }`}
                             >
-                              <Sun className="w-3.5 h-3.5" />
+                              <ImageIcon className="w-3.5 h-3.5" />
                               <span>Stupně šedé</span>
                             </button>
 
@@ -536,8 +615,10 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
 
                           {/* Quick Crop & Rotate row */}
                           <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-200/70 dark:border-slate-700/60">
-                            <span className="text-[10px] font-bold text-slate-500 mr-1">Ořez a rotace:</span>
-                            
+                            <span className="text-[10px] font-bold text-slate-500 mr-1">
+                              Ořez a rotace:
+                            </span>
+
                             <button
                               type="button"
                               onClick={() => handleCropPreset("all")}
@@ -594,14 +675,22 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                 <div>
                                   <div className="flex justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
                                     <span>Zvýšení kontrastu</span>
-                                    <span className="font-mono text-blue-600">{adjustments.contrast > 0 ? `+${adjustments.contrast}` : adjustments.contrast}</span>
+                                    <span className="font-mono text-blue-600">
+                                      {adjustments.contrast > 0
+                                        ? `+${adjustments.contrast}`
+                                        : adjustments.contrast}
+                                    </span>
                                   </div>
                                   <input
                                     type="range"
                                     min="-40"
                                     max="100"
                                     value={adjustments.contrast}
-                                    onChange={(e) => handleManualAdjustmentChange({ contrast: Number(e.target.value) })}
+                                    onChange={(e) =>
+                                      handleManualAdjustmentChange({
+                                        contrast: Number(e.target.value),
+                                      })
+                                    }
                                     className="w-full accent-blue-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
                                   />
                                 </div>
@@ -610,14 +699,22 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                 <div>
                                   <div className="flex justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
                                     <span>Jas / prosvětlení tabule</span>
-                                    <span className="font-mono text-blue-600">{adjustments.brightness > 0 ? `+${adjustments.brightness}` : adjustments.brightness}</span>
+                                    <span className="font-mono text-blue-600">
+                                      {adjustments.brightness > 0
+                                        ? `+${adjustments.brightness}`
+                                        : adjustments.brightness}
+                                    </span>
                                   </div>
                                   <input
                                     type="range"
                                     min="-50"
                                     max="50"
                                     value={adjustments.brightness}
-                                    onChange={(e) => handleManualAdjustmentChange({ brightness: Number(e.target.value) })}
+                                    onChange={(e) =>
+                                      handleManualAdjustmentChange({
+                                        brightness: Number(e.target.value),
+                                      })
+                                    }
                                     className="w-full accent-blue-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
                                   />
                                 </div>
@@ -629,7 +726,9 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                   <input
                                     type="checkbox"
                                     checked={adjustments.grayscale}
-                                    onChange={(e) => handleManualAdjustmentChange({ grayscale: e.target.checked })}
+                                    onChange={(e) =>
+                                      handleManualAdjustmentChange({ grayscale: e.target.checked })
+                                    }
                                     className="w-3.5 h-3.5 text-blue-600 rounded-sm"
                                   />
                                   <span>Stupně šedé</span>
@@ -638,8 +737,38 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                 <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
                                   <input
                                     type="checkbox"
+                                    checked={adjustments.autoLevels}
+                                    onChange={(e) =>
+                                      handleManualAdjustmentChange({ autoLevels: e.target.checked })
+                                    }
+                                    className="w-3.5 h-3.5 text-blue-600 rounded-sm"
+                                  />
+                                  <span>Auto vyrovnání úrovní (Auto-levels)</span>
+                                </label>
+
+                                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={adjustments.shadowRemoval}
+                                    onChange={(e) =>
+                                      handleManualAdjustmentChange({
+                                        shadowRemoval: e.target.checked,
+                                      })
+                                    }
+                                    className="w-3.5 h-3.5 text-blue-600 rounded-sm"
+                                  />
+                                  <span>Odstranění stínů a nerovnoměrného světla</span>
+                                </label>
+
+                                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                                  <input
+                                    type="checkbox"
                                     checked={adjustments.whiteboardBoost}
-                                    onChange={(e) => handleManualAdjustmentChange({ whiteboardBoost: e.target.checked })}
+                                    onChange={(e) =>
+                                      handleManualAdjustmentChange({
+                                        whiteboardBoost: e.target.checked,
+                                      })
+                                    }
                                     className="w-3.5 h-3.5 text-blue-600 rounded-sm"
                                   />
                                   <span>Čištění pozadí tabule</span>
@@ -649,7 +778,9 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                   <input
                                     type="checkbox"
                                     checked={adjustments.sharpen}
-                                    onChange={(e) => handleManualAdjustmentChange({ sharpen: e.target.checked })}
+                                    onChange={(e) =>
+                                      handleManualAdjustmentChange({ sharpen: e.target.checked })
+                                    }
                                     className="w-3.5 h-3.5 text-blue-600 rounded-sm"
                                   />
                                   <span>Zostření textu fixy</span>
@@ -663,7 +794,9 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                 </span>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                   <div>
-                                    <span className="text-[10px] text-slate-500 block mb-0.5">Zleva ({adjustments.crop.x}%)</span>
+                                    <span className="text-[10px] text-slate-500 block mb-0.5">
+                                      Zleva ({adjustments.crop.x}%)
+                                    </span>
                                     <input
                                       type="range"
                                       min="0"
@@ -671,14 +804,24 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                       value={adjustments.crop.x}
                                       onChange={(e) => {
                                         const newX = Number(e.target.value);
-                                        const newW = Math.max(20, 100 - newX - (100 - (adjustments.crop.x + adjustments.crop.width)));
-                                        handleManualAdjustmentChange({ crop: { ...adjustments.crop, x: newX, width: newW } });
+                                        const newW = Math.max(
+                                          20,
+                                          100 -
+                                            newX -
+                                            (100 - (adjustments.crop.x + adjustments.crop.width)),
+                                        );
+                                        handleManualAdjustmentChange({
+                                          crop: { ...adjustments.crop, x: newX, width: newW },
+                                        });
                                       }}
                                       className="w-full accent-blue-600 h-1 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
                                     />
                                   </div>
                                   <div>
-                                    <span className="text-[10px] text-slate-500 block mb-0.5">Zprava ({100 - (adjustments.crop.x + adjustments.crop.width)}%)</span>
+                                    <span className="text-[10px] text-slate-500 block mb-0.5">
+                                      Zprava ({100 - (adjustments.crop.x + adjustments.crop.width)}
+                                      %)
+                                    </span>
                                     <input
                                       type="range"
                                       min="0"
@@ -686,14 +829,21 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                       value={100 - (adjustments.crop.x + adjustments.crop.width)}
                                       onChange={(e) => {
                                         const rightMargin = Number(e.target.value);
-                                        const newW = Math.max(20, 100 - adjustments.crop.x - rightMargin);
-                                        handleManualAdjustmentChange({ crop: { ...adjustments.crop, width: newW } });
+                                        const newW = Math.max(
+                                          20,
+                                          100 - adjustments.crop.x - rightMargin,
+                                        );
+                                        handleManualAdjustmentChange({
+                                          crop: { ...adjustments.crop, width: newW },
+                                        });
                                       }}
                                       className="w-full accent-blue-600 h-1 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
                                     />
                                   </div>
                                   <div>
-                                    <span className="text-[10px] text-slate-500 block mb-0.5">Shora ({adjustments.crop.y}%)</span>
+                                    <span className="text-[10px] text-slate-500 block mb-0.5">
+                                      Shora ({adjustments.crop.y}%)
+                                    </span>
                                     <input
                                       type="range"
                                       min="0"
@@ -701,14 +851,24 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                       value={adjustments.crop.y}
                                       onChange={(e) => {
                                         const newY = Number(e.target.value);
-                                        const newH = Math.max(20, 100 - newY - (100 - (adjustments.crop.y + adjustments.crop.height)));
-                                        handleManualAdjustmentChange({ crop: { ...adjustments.crop, y: newY, height: newH } });
+                                        const newH = Math.max(
+                                          20,
+                                          100 -
+                                            newY -
+                                            (100 - (adjustments.crop.y + adjustments.crop.height)),
+                                        );
+                                        handleManualAdjustmentChange({
+                                          crop: { ...adjustments.crop, y: newY, height: newH },
+                                        });
                                       }}
                                       className="w-full accent-blue-600 h-1 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
                                     />
                                   </div>
                                   <div>
-                                    <span className="text-[10px] text-slate-500 block mb-0.5">Zdola ({100 - (adjustments.crop.y + adjustments.crop.height)}%)</span>
+                                    <span className="text-[10px] text-slate-500 block mb-0.5">
+                                      Zdola ({100 - (adjustments.crop.y + adjustments.crop.height)}
+                                      %)
+                                    </span>
                                     <input
                                       type="range"
                                       min="0"
@@ -716,8 +876,13 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                       value={100 - (adjustments.crop.y + adjustments.crop.height)}
                                       onChange={(e) => {
                                         const bottomMargin = Number(e.target.value);
-                                        const newH = Math.max(20, 100 - adjustments.crop.y - bottomMargin);
-                                        handleManualAdjustmentChange({ crop: { ...adjustments.crop, height: newH } });
+                                        const newH = Math.max(
+                                          20,
+                                          100 - adjustments.crop.y - bottomMargin,
+                                        );
+                                        handleManualAdjustmentChange({
+                                          crop: { ...adjustments.crop, height: newH },
+                                        });
                                       }}
                                       className="w-full accent-blue-600 h-1 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
                                     />
@@ -913,41 +1078,66 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                       />
                     </div>
 
-                    {/* Machine Type (LL / RTR only) */}
-                    <div className="shrink-0 flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => updateDraft(item.tempId, { machineType: "LL" })}
-                        className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
-                          item.machineType === "LL"
-                            ? "bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-300 dark:border-amber-700"
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-500"
-                        }`}
-                      >
-                        LL
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateDraft(item.tempId, { machineType: "RTR" })}
-                        className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
-                          item.machineType === "RTR"
-                            ? "bg-blue-100 text-blue-900 dark:bg-blue-900/60 dark:text-blue-200 border border-blue-300 dark:border-blue-700"
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-500"
-                        }`}
-                      >
-                        RTR
-                      </button>
+                    {/* Machine Type (LL / RTR / NONE for VNA/Absence) */}
+                    <div className="shrink-0 flex items-center gap-1 min-w-[76px] justify-center">
+                      {item.departmentId === "vna" ? (
+                        <span className="px-2 py-0.5 text-[11px] font-bold rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                          VNA
+                        </span>
+                      ) : item.departmentId === "unassigned" ? (
+                        <span className="px-2 py-0.5 text-[11px] font-medium rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                          Bez stroje
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => updateDraft(item.tempId, { machineType: "LL" })}
+                            className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
+                              item.machineType === "LL"
+                                ? "bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-300 dark:border-amber-700"
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200"
+                            }`}
+                          >
+                            LL
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateDraft(item.tempId, { machineType: "RTR" })}
+                            className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
+                              item.machineType === "RTR"
+                                ? "bg-blue-100 text-blue-900 dark:bg-blue-900/60 dark:text-blue-200 border border-blue-300 dark:border-blue-700"
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200"
+                            }`}
+                          >
+                            RTR
+                          </button>
+                        </>
+                      )}
                     </div>
 
                     {/* Department Dropdown */}
                     <div className="shrink-0 w-28 sm:w-36">
                       <select
                         value={item.departmentId}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const newDept = e.target.value as DepartmentId;
+                          let newMachine = item.machineType;
+                          if (newDept === "vna" || newDept === "unassigned") {
+                            newMachine = "NONE";
+                          } else if (
+                            (newDept === "hovc" || newDept === "obwi" || newDept === "hovs") &&
+                            newMachine === "NONE"
+                          ) {
+                            newMachine = "RTR";
+                          } else if (newDept === "putaway" && newMachine === "NONE") {
+                            newMachine = "LL";
+                          }
                           updateDraft(item.tempId, {
-                            departmentId: e.target.value as DepartmentId,
-                          })
-                        }
+                            departmentId: newDept,
+                            machineType: newMachine,
+                          });
+                        }}
                         className="w-full text-xs font-medium px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                       >
                         {DEPARTMENTS.map((d) => (

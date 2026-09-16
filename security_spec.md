@@ -1,12 +1,14 @@
 # Security Spec
 
 ## Data Invariants
+
 1. A workspace can only be created, read, or updated by its owner (ownerId == request.auth.uid).
 2. Operators and HistoryRecords can only be accessed or modified if the user owns the parent workspace.
 3. String fields have strict size limits.
 4. Enums are enforced.
 
 ## Dirty Dozen Payloads
+
 1. Create workspace with someone else's ownerId.
 2. Read workspace owned by someone else.
 3. Update workspace ownerId.

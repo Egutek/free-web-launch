@@ -53,7 +53,13 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
       setNotes(operator.notes || "");
     } else {
       setName("");
-      setMachineType("NONE");
+      const initialMachine =
+        defaultDeptId === "vna" || defaultDeptId === "unassigned"
+          ? "NONE"
+          : defaultDeptId === "hovc" || defaultDeptId === "obwi" || defaultDeptId === "hovs"
+            ? "RTR"
+            : "LL";
+      setMachineType(initialMachine);
       setDepartmentId(defaultDeptId);
       setShift(activeShift);
       setStatus(defaultDeptId === "unassigned" ? "absence" : "active");
@@ -66,6 +72,17 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
 
   const handleDepartmentChange = (newDeptId: DepartmentId) => {
     setDepartmentId(newDeptId);
+    if (newDeptId === "vna" || newDeptId === "unassigned") {
+      setMachineType("NONE");
+    } else if (
+      (newDeptId === "hovc" || newDeptId === "obwi" || newDeptId === "hovs") &&
+      machineType === "NONE"
+    ) {
+      setMachineType("RTR");
+    } else if (newDeptId === "putaway" && machineType === "NONE") {
+      setMachineType("LL");
+    }
+
     if (newDeptId === "unassigned") {
       setStatus("absence");
     } else if (status === "absence") {

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite dev --host 0.0.0.0 --port 3000",
     "build": "vite build",
+    "postbuild": "node -e \"import('node:fs').then(fs => { if (fs.existsSync('dist/public') && !fs.existsSync('dist/client')) fs.cpSync('dist/public', 'dist/client', { recursive: true }); if (fs.existsSync('.netlify/publish') && !fs.existsSync('dist/client')) fs.cpSync('.netlify/publish', 'dist/client', { recursive: true }); })\"",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",

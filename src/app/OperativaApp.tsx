@@ -183,10 +183,17 @@ export default function App() {
   // Bulk Selection of Operators (subtle checkboxes)
   const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
 
-  // Search & View Mode (persisted across sessions)
+  // Search & View Mode (persisted across sessions or set via URL ?view=widget)
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"board" | "widget" | "table">(() => {
     try {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const urlView = params.get("view") || params.get("mode");
+        if (urlView === "widget" || urlView === "board" || urlView === "table") {
+          return urlView;
+        }
+      }
       return (
         (localStorage.getItem("zf_ostrov_view_mode") as "board" | "widget" | "table") || "board"
       );
@@ -198,6 +205,13 @@ export default function App() {
   // Auto-scroll state & container ref
   const boardContainerRef = useRef<HTMLDivElement>(null);
   const [isAutoScrolling, setIsAutoScrolling] = useState(false);
+
+  // Mouse pan/drag-to-scroll state for horizontal board
+  const [isPanningBoard, setIsPanningBoard] = useState(false);
+  const isPanActiveRef = useRef(false);
+  const panStartXRef = useRef(0);
+  const panScrollLeftRef = useRef(0);
+  const panHasMovedRef = useRef(false);
 
   // Modals state
   const [quickMoveOperator, setQuickMoveOperator] = useState<Operator | null>(null);
@@ -548,9 +562,26 @@ export default function App() {
 
     const updatedOperators = operators.map((o) => {
       if (idSet.has(o.id)) {
+        let finalMachineType = o.machineType;
+        if (targetDeptId === "vna" || targetDeptId === "unassigned") {
+          // Automatic removal of LL/RTR when moving to VNA or Absence
+          finalMachineType = "NONE";
+        } else if (
+          o.departmentId === "vna" ||
+          o.departmentId === "unassigned" ||
+          finalMachineType === "NONE"
+        ) {
+          if (targetDeptId === "hovc" || targetDeptId === "obwi" || targetDeptId === "hovs") {
+            finalMachineType = "RTR";
+          } else {
+            finalMachineType = "LL";
+          }
+        }
+
         return {
           ...o,
           departmentId: targetDeptId,
+          machineType: finalMachineType,
           status: newStatus,
           absenceReason:
             targetDeptId === "unassigned"
@@ -602,7 +633,6 @@ export default function App() {
 
     // Clear selection
     setBulkSelectedIds(new Set());
-    scrollToDepartment(targetDeptId);
     showToast(`Hromadně přesunuto ${count} operátorů do oddělení ${targetDept.name}`);
   };
 
@@ -646,12 +676,29 @@ export default function App() {
     const fromDept = getDepartmentById(previousDeptId, customDepartments);
     const toDept = getDepartmentById(targetDeptId, customDepartments);
 
+    let finalMachineType = targetOp.machineType;
+    if (targetDeptId === "vna" || targetDeptId === "unassigned") {
+      // Automatic removal of LL/RTR when moving to VNA or Absence
+      finalMachineType = "NONE";
+    } else if (
+      targetOp.departmentId === "vna" ||
+      targetOp.departmentId === "unassigned" ||
+      finalMachineType === "NONE"
+    ) {
+      if (targetDeptId === "hovc" || targetDeptId === "obwi" || targetDeptId === "hovs") {
+        finalMachineType = "RTR";
+      } else {
+        finalMachineType = "LL";
+      }
+    }
+
     // Update operator
     const updatedOperators = operators.map((op) => {
       if (op.id === resolvedId) {
         return {
           ...op,
           departmentId: targetDeptId,
+          machineType: finalMachineType,
           status: newStatus,
           absenceReason:
             targetDeptId === "unassigned"
@@ -703,10 +750,7 @@ export default function App() {
       console.warn("Cloud history sync error:", e),
     );
 
-    // Auto scroll to target department
-    scrollToDepartment(targetDeptId);
-
-    // Toast feedback with direct undo
+    // Toast feedback with direct undo (no auto-scroll away from current view)
     const msg = `Operátor ${targetOp.name} přesunut z ${fromDept.name} ➔ ${toDept.name}`;
     showToast(msg, false, () => {
       handleUndoSingle();
@@ -749,7 +793,7 @@ export default function App() {
     }
   };
 
-  // Edge auto-scrolling when dragging near horizontal board boundaries
+  // Edge auto-scrolling when dragging near horizontal board boundaries during HTML5 drag
   const handleBoardContainerDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     if (!boardContainerRef.current) return;
     const container = boardContainerRef.current;
@@ -765,6 +809,59 @@ export default function App() {
       container.scrollLeft -= scrollStep;
     }
   };
+
+  // Mouse pan/drag-to-scroll on board container (grab and slide columns horizontally)
+  const handleBoardMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Only primary mouse button (left-click)
+    if (e.button !== 0) return;
+
+    const target = e.target as HTMLElement;
+    // Don't pan if clicking inside interactive buttons, inputs, selects, links, or draggable cards
+    if (
+      target.closest("button") ||
+      target.closest("input") ||
+      target.closest("select") ||
+      target.closest("textarea") ||
+      target.closest("a") ||
+      target.closest('[draggable="true"]') ||
+      target.closest('[data-no-pan="true"]')
+    ) {
+      return;
+    }
+
+    if (!boardContainerRef.current) return;
+    isPanActiveRef.current = true;
+    panStartXRef.current = e.pageX - boardContainerRef.current.offsetLeft;
+    panScrollLeftRef.current = boardContainerRef.current.scrollLeft;
+    panHasMovedRef.current = false;
+    setIsPanningBoard(true);
+  };
+
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!isPanActiveRef.current || !boardContainerRef.current) return;
+      const x = e.pageX - boardContainerRef.current.offsetLeft;
+      const walk = (x - panStartXRef.current) * 1.25;
+      if (Math.abs(walk) > 3) {
+        panHasMovedRef.current = true;
+        boardContainerRef.current.scrollLeft = panScrollLeftRef.current - walk;
+      }
+    };
+
+    const handleGlobalMouseUp = () => {
+      if (isPanActiveRef.current) {
+        isPanActiveRef.current = false;
+        setIsPanningBoard(false);
+      }
+    };
+
+    window.addEventListener("mousemove", handleGlobalMouseMove);
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleGlobalMouseMove);
+      window.removeEventListener("mouseup", handleGlobalMouseUp);
+    };
+  }, []);
 
   // Change operator status (active, break, absence)
   const handleChangeStatus = (operatorId: string, newStatus: OperatorStatus) => {
@@ -783,12 +880,26 @@ export default function App() {
     const previousDeptId = targetOp.departmentId;
     const previousStatus = targetOp.status;
 
+    let targetMachine = targetOp.machineType;
+    if (targetDeptId === "unassigned" || newStatus === "absence") {
+      targetMachine = "NONE";
+    } else if (targetOp.departmentId === "unassigned" || targetMachine === "NONE") {
+      if (targetDeptId === "hovc" || targetDeptId === "obwi" || targetDeptId === "hovs") {
+        targetMachine = "RTR";
+      } else if (targetDeptId === "vna") {
+        targetMachine = "NONE";
+      } else {
+        targetMachine = "LL";
+      }
+    }
+
     const updated = operators.map((op) => {
       if (op.id === operatorId) {
         return {
           ...op,
           status: newStatus,
           departmentId: targetDeptId,
+          machineType: targetMachine,
           lastMovedAt: new Date().toISOString(),
         };
       }
@@ -847,6 +958,39 @@ export default function App() {
     }
   };
 
+  const handleChangeMachineType = (operatorId: string, machineType: MachineType) => {
+    const targetOp = operators.find((o) => o.id === operatorId);
+    if (!targetOp) return;
+
+    const updated = operators.map((op) => {
+      if (op.id === operatorId) {
+        return {
+          ...op,
+          machineType,
+          lastMovedAt: new Date().toISOString(),
+        };
+      }
+      return op;
+    });
+    setOperators(updated);
+    saveOperators(updated);
+
+    const changedOp = updated.find((o) => o.id === operatorId);
+    if (changedOp) {
+      syncOperatorToCloud(changedOp).catch((e) => console.warn("Cloud machine sync error:", e));
+    }
+
+    showToast(
+      `Stroj u ${targetOp.name} přepnut na: ${
+        machineType === "RTR"
+          ? "RTR (Retrak)"
+          : machineType === "LL"
+            ? "LL (Nízkozdvih)"
+            : "Bez stroje"
+      }`,
+    );
+  };
+
   // Apply shift template
   const handleApplyTemplate = (template: ShiftTemplate) => {
     const updated = applyTemplateToOperators(template, operators);
@@ -869,8 +1013,14 @@ export default function App() {
           ? "hovc"
           : opData.departmentId || "hovc";
 
+    let finalMachineType = opData.machineType || "NONE";
+    if (finalDeptId === "vna" || finalDeptId === "unassigned") {
+      finalMachineType = "NONE";
+    }
+
     const sanitizedOpData = {
       ...opData,
+      machineType: finalMachineType,
       status: finalStatus,
       departmentId: finalDeptId,
     };
@@ -904,8 +1054,24 @@ export default function App() {
 
   // Import operators from photo OCR or text list
   const handleImportOperators = async (newOps: Operator[], replaceAll: boolean) => {
-    // Ensure all new operators are assigned to the current active shift
-    const shiftedOps = newOps.map((op) => ({ ...op, shift: activeShift }));
+    // Ensure all new operators are assigned to the current active shift and have correct machine types
+    const shiftedOps = newOps.map((op) => {
+      const deptId = op.departmentId || "hovc";
+      let machine = op.machineType;
+      if (deptId === "vna" || deptId === "unassigned") {
+        machine = "NONE";
+      } else if (
+        (deptId === "hovc" || deptId === "obwi" || deptId === "hovs") &&
+        (!machine || machine === "NONE")
+      ) {
+        machine = "RTR";
+      }
+      return {
+        ...op,
+        machineType: machine,
+        shift: activeShift,
+      };
+    });
 
     // If replaceAll is true, replace all operators for the current shift (treating undefined as shift 'A')
     const otherShiftsOps = replaceAll
@@ -1503,20 +1669,34 @@ export default function App() {
             <div
               id="board-columns-container"
               ref={boardContainerRef}
+              onMouseDown={handleBoardMouseDown}
               onDragOver={handleBoardContainerDragOver}
+              onClickCapture={(e) => {
+                if (panHasMovedRef.current) {
+                  e.stopPropagation();
+                  panHasMovedRef.current = false;
+                }
+              }}
               onClick={(e) => {
+                if (panHasMovedRef.current) {
+                  panHasMovedRef.current = false;
+                  return;
+                }
                 const target = e.target as HTMLElement;
                 if (
                   !target.closest('[id^="operator-card-"]') &&
                   !target.closest("button") &&
-                  !target.closest("input")
+                  !target.closest("input") &&
+                  !target.closest("select")
                 ) {
                   if (selectedOperatorId) {
                     setSelectedOperatorId(null);
                   }
                 }
               }}
-              className="flex gap-4 overflow-x-auto pb-4 pt-1 items-start scrollbar-thin scroll-smooth"
+              className={`flex gap-4 overflow-x-auto pb-4 pt-1 items-start scrollbar-thin select-none ${
+                isPanningBoard ? "cursor-grabbing scroll-auto" : "cursor-grab scroll-smooth"
+              }`}
             >
               {allDepartments.map((dept) => {
                 const deptOps = filteredOperators.filter((o) => o.departmentId === dept.id);
@@ -1539,6 +1719,7 @@ export default function App() {
                     onEditOperator={(op) => setAddEditOperator({ operator: op })}
                     onChangeStatus={handleChangeStatus}
                     onChangeAbsenceReason={handleChangeAbsenceReason}
+                    onChangeMachineType={handleChangeMachineType}
                     onAddOperatorToDept={(deptId) =>
                       setAddEditOperator({ operator: null, defaultDeptId: deptId })
                     }
@@ -1580,12 +1761,19 @@ export default function App() {
           </div>
         )}
 
-        {/* View Mode 2: Phone Wallpaper Widget View */}
+        {/* View Mode 2: Phone Wallpaper & Online Mobile Widget View */}
         {viewMode === "widget" && (
           <WidgetView
             operators={filteredOperators}
             customDepartments={shiftCustomDepartments}
+            activeShift={activeShift}
+            onShiftChange={handleShiftChange}
+            isCloudConnected={isCloudConnected}
+            isCloudSyncing={isCloudSyncing}
             onSelectDepartment={() => {
+              setViewMode("board");
+            }}
+            onSwitchToBoard={() => {
               setViewMode("board");
             }}
           />
@@ -1606,6 +1794,7 @@ export default function App() {
               handleMoveOperator(operatorId, targetDeptId)
             }
             onChangeStatus={handleChangeStatus}
+            onChangeMachineType={handleChangeMachineType}
             onDeleteOperator={handleDeleteOperator}
           />
         )}
