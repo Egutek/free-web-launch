@@ -173,7 +173,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
       }
       if (/503|high demand|UNAVAILABLE/i.test(msg)) {
         msg =
-          "Služba Google Gemini má momentálně vysokou poptávku (kód 503). Zkuste to prosím za pár sekund znovu tlačítkem Zkusit znovu, případně zadejte jména textem.";
+          "AI služba je momentálně vytížená. Zkuste to prosím za minutu znovu, případně vložte jména textem.";
       }
       setErrorMessage(msg);
     } finally {
