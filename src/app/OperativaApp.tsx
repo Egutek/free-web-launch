@@ -1213,12 +1213,8 @@ export default function App() {
         onOpenReportModal={() => setIsReportModalOpen(true)}
         onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
         onResetData={handleResetData}
-        currentUser={currentUser}
         isCloudConnected={isCloudConnected}
         isCloudSyncing={isCloudSyncing}
-        isGoogleSigningIn={isGoogleSigningIn}
-        onGoogleSignIn={handleGoogleSignIn}
-        onSignOut={handleSignOut}
       />
 
       {/* Main Content Area */}
