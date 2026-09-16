@@ -290,33 +290,6 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
-
-  const handleGoogleSignIn = async () => {
-    if (isGoogleSigningIn) return;
-    setIsGoogleSigningIn(true);
-    try {
-      const user = await signInWithGoogle();
-      if (user) {
-        showToast(`Přihlášeno k Firebase: ${user.displayName || user.email}`);
-      }
-    } catch (err: any) {
-      showToast(`Přihlášení přes Google se nezdařilo: ${err?.message || 'Chyba'}`, true);
-    } finally {
-      setIsGoogleSigningIn(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOutUser();
-      setIsCloudConnected(false);
-      showToast('Byli jste odhlášeni z Firebase');
-    } catch (err: any) {
-      showToast(`Odhlášení se nezdařilo: ${err?.message || 'Chyba'}`, true);
-    }
-  };
-
   // Persist view mode
   useEffect(() => {
     try {
