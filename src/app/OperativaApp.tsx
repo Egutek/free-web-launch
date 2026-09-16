@@ -64,6 +64,7 @@ import {
   subscribeToOperators,
   syncOperatorToCloud,
   bulkSyncOperatorsToCloud,
+  replaceOperatorsInCloud,
   deleteOperatorFromCloud,
   syncHistoryRecordToCloud,
   subscribeToHistory,
@@ -902,26 +903,40 @@ export default function App() {
   };
 
   // Import operators from photo OCR or text list
-  const handleImportOperators = (newOps: Operator[], replaceAll: boolean) => {
-    // Ensure all new operators are assigned to the current shift
-    const shiftedOps = newOps.map((op) => ({ ...op, shift: op.shift || activeShift }));
+  const handleImportOperators = async (newOps: Operator[], replaceAll: boolean) => {
+    // Ensure all new operators are assigned to the current active shift
+    const shiftedOps = newOps.map((op) => ({ ...op, shift: activeShift }));
 
-    // If replaceAll is true, ONLY replace operators for the current shift. Keep other shifts intact.
+    // If replaceAll is true, replace all operators for the current shift (treating undefined as shift 'A')
     const otherShiftsOps = replaceAll
-      ? operators.filter((o) => o.shift !== activeShift)
+      ? operators.filter((o) => (o.shift || "A") !== activeShift)
       : operators;
-    const updated = [...shiftedOps, ...otherShiftsOps];
+
+    let updated: Operator[];
+    if (replaceAll) {
+      updated = [...shiftedOps, ...otherShiftsOps];
+    } else {
+      const existingNames = new Set(operators.map((o) => o.name.toLowerCase().trim()));
+      const uniqueNew = shiftedOps.filter((o) => !existingNames.has(o.name.toLowerCase().trim()));
+      updated = [...uniqueNew, ...operators];
+    }
 
     setOperators(updated);
     saveOperators(updated);
-    bulkSyncOperatorsToCloud(updated).catch((e) => console.warn("Cloud import sync error:", e));
+
     if (replaceAll) {
+      await replaceOperatorsInCloud(updated, activeShift).catch((e) =>
+        console.warn("Cloud import sync error:", e),
+      );
       showToast(
-        `Načteno ${newOps.length} operátorů ze snímku. Seznam směny ${activeShift} byl přepsán.`,
+        `Načteno ${shiftedOps.length} operátorů. Směna ${activeShift} byla kompletně nahrazena (${updated.filter((o) => (o.shift || "A") === activeShift).length} lidí na směně).`,
       );
     } else {
+      await bulkSyncOperatorsToCloud(shiftedOps).catch((e) =>
+        console.warn("Cloud import sync error:", e),
+      );
       showToast(
-        `Přidáno ${newOps.length} operátorů ze snímku k existujícímu týmu (Směna ${activeShift}).`,
+        `Přidáno ${shiftedOps.length} operátorů ze snímku k existujícímu týmu (Směna ${activeShift}).`,
       );
     }
     setIsPhotoImportOpen(false);
@@ -1020,7 +1035,7 @@ export default function App() {
     setIsResetConfirmOpen(true);
   };
 
-  const handleConfirmResetData = () => {
+  const handleConfirmResetData = async () => {
     setIsResetConfirmOpen(false);
     const reset = resetToInitialOperators();
     setOperators(reset);
@@ -1028,7 +1043,7 @@ export default function App() {
     setHistory([]);
     saveHistory([]);
     setUndoStack([]);
-    bulkSyncOperatorsToCloud(reset).catch((e) => console.warn("Cloud reset sync error:", e));
+    await replaceOperatorsInCloud(reset).catch((e) => console.warn("Cloud reset sync error:", e));
     showToast("Data obnovena na 65 operátorů oddělení PICK.");
   };
 

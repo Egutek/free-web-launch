@@ -6,6 +6,7 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  getDocs,
   onSnapshot,
   query,
   orderBy,
@@ -13,7 +14,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db, auth } from "../firebase";
-import { Operator, MoveHistoryRecord, ShiftTemplate, Department } from "../types";
+import { Operator, MoveHistoryRecord, ShiftTemplate, Department, ShiftCode } from "../types";
 
 export type Unsubscribe = () => void;
 
@@ -99,7 +100,7 @@ export async function deleteOperatorFromCloud(operatorId: string): Promise<void>
 export async function bulkSyncOperatorsToCloud(operators: Operator[]): Promise<void> {
   const batch = writeBatch(db);
   for (const op of operators) {
-    const cleanOp: any = { ...op };
+    const cleanOp: any = { ...op, shift: op.shift || "A" };
     Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
     batch.set(getDocRef("operators", op.id), cleanOp);
   }
@@ -107,6 +108,61 @@ export async function bulkSyncOperatorsToCloud(operators: Operator[]): Promise<v
     await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, "operators(batch)");
+  }
+}
+
+/**
+ * Replaces operators in Firestore by deleting obsolete documents and writing current ones.
+ * If shiftToReplace is passed, only documents matching that shift (or missing shift) are deleted.
+ */
+export async function replaceOperatorsInCloud(
+  allCurrentOperators: Operator[],
+  shiftToReplace?: ShiftCode,
+): Promise<void> {
+  try {
+    const querySnapshot = await getDocs(getCollectionRef("operators"));
+    const newOpIds = new Set(allCurrentOperators.map((o) => o.id));
+
+    let batch = writeBatch(db);
+    let opCount = 0;
+
+    // 1. Delete old documents in cloud that belonged to the replaced shift (or no longer exist)
+    for (const docSnap of querySnapshot.docs) {
+      const docData = docSnap.data() as Partial<Operator>;
+      const docShift = docData.shift || "A";
+      const shouldDelete =
+        !newOpIds.has(docSnap.id) &&
+        (!shiftToReplace || docShift === shiftToReplace);
+
+      if (shouldDelete) {
+        batch.delete(docSnap.ref);
+        opCount++;
+        if (opCount >= 400) {
+          await batch.commit();
+          batch = writeBatch(db);
+          opCount = 0;
+        }
+      }
+    }
+
+    // 2. Save all current operators
+    for (const op of allCurrentOperators) {
+      const cleanOp: any = { ...op, shift: op.shift || "A" };
+      Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
+      batch.set(getDocRef("operators", op.id), cleanOp);
+      opCount++;
+      if (opCount >= 400) {
+        await batch.commit();
+        batch = writeBatch(db);
+        opCount = 0;
+      }
+    }
+
+    if (opCount > 0) {
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, "operators(replaceBatch)");
   }
 }
 

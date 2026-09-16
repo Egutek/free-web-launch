@@ -1,33 +1,39 @@
 import { createServerFn } from "@tanstack/react-start";
 
-const EXTRACTION_PROMPT = `Jsi asistent pro vedoucího směny v logistickém centru ZF Aftermarket v Ostrově.
-Tvým úkolem je z poskytnutého snímku (fotka rozpisu směn, papírová docházka, nástěnka, tabulka na monitoru) nebo textu vytáhnout seznam operátorů pro oddělení PICK.
+const EXTRACTION_PROMPT = `Jsi špičkový expert na počítačové vidění (OCR) a čtení rukopisu pro logistické centrum ZF Aftermarket v Ostrově.
+Tvým úkolem je z poskytnuté fotografie (bílá magnetická tabule, rozpis směn, papírová docházka, nástěnka, monitor) nebo textu pečlivě a bezchybně vytáhnout VŠECHNY přítomné operátory a přiřadit je k jejich oddělením a strojům.
 
-Oddělení PICK se dělí výhradně na tyto pododdělení:
-- 'hovc': HOVC (High-bay Obalové / Vstupní centrum)
-- 'hovs': HOVS (High-bay Skladové regály & konsolidace)
-- 'putaway': Putaway / Zaskladnění
-- 'vas': VAS (Value Added Services / speciální balení)
-- 'obwf': OBWF (Outbound Waterfront)
-- 'vna': VNA (Very Narrow Aisle - úzké uličky)
-- 'obwi': OBWI (Outbound Web & International)
-- 'unassigned': Pokud oddělení nelze určit
+POSTUP PŘI ČTENÍ FOTOGRAFIE BÍLÉ TABULE:
+1. Projdi detailně každý sloupec, rámeček a magnetickou lištu na tabuli zleva doprava a shora dolů.
+2. Přečti jména na magnetických štítcích, lístcích i psaná fixem (i když jsou napsaná tiskacím, psacím, zkratkou nebo hůře čitelným písmem).
+3. Přečti i volně připsaná jména v dolní části tabule, v poznámkách nebo po stranách (např. "PITEC S. - LL", "ZAMRII - LL", "SERHIIEVYCH - LL", "Savchenko Ihor" atd.).
+4. Pokud je u jména kód vozíku / pozice (např. "V47 Burget David", "V107 Andrii Gurkot", "V13 ...", "V01 ..."), vytáhni celé jméno a kód vozíku můžeš dát do poznámky.
 
-Stroje/Kvalifikace:
-- Pouze 'LL' nebo 'RTR'. Pokud není výslovně uvedeno, odhadni z kontextu (např. VNA/HOVS často RTR, běžný pick LL), výchozí je 'LL'.
-- ŽÁDNÉ jiné stroje, žádná osobní čísla, žádné směny.
+PŘIŘAZENÍ K ODDĚLENÍM (departmentId):
+- 'vna': Sloupce "VNAS", "VNAC", "VNA", "Úzké uličky", vozíky V... s vysokozdvižným zakládáním
+- 'hovs': Sloupce "HOVS", "HOVS/ML", "Konsolidace", "Regály"
+- 'putaway': Sloupce "PUTAWAY", "Zaskladnění", "Zaskladnovani"
+- 'vas': Sloupce "VAS", "Přebal", "Speciální balení"
+- 'obwf': Sloupce "OBWF", "Outbound Waterfront", "HAZMAT", "Waterfront"
+- 'obwi': Sloupce "OBWI", "Outbound Web", "International", "Expedice Web"
+- 'hovc': Sloupce "OUTBOUND", "HOVC", "Expedice", "Balení", "Vstupní/Obalové centrum"
+- 'unassigned': Sekce "TRÉNINK", volné poznámky bez určení sekce, nebo pokud oddělení nelze určit
 
-Zde je referenční seznam známých pracovníků skladu v ZF Ostrov (použij pro přesné rozpoznání i z méně čitelných fotek, zkratek a tabulek):
-Andrii Gurkot, Barnóky Roman, Bereš Zbyněk, Bogár Alexander, BOHDAN BAIOV, Burget David, Červeňák Michael, Daduč Imrich, Daniel Šír, DAVID SVOBODA, DEMIANETS D., Faber Dominik, Fiala Ladislav, Gajdoš Slavomír, Györke Ladislav, Halimov Oleh, Havel Zdeněk, Hemzáček Lukáš, Horváth Valentin, Hosszu Radek, Hřava Dominik, Chrastina Atilla, IHOR Pozniak, IHOR Savchenko, JAKUB PFREIMER, JAKUB SKÁLA, Jiří Nečas, Jiří Teplý, Jiří Vašíček, Josef Bartko, Kateřina Novotná, Kochut Yurii, Kovalchuk O., Kryvoruchko Daria, Kurcius David, Máca Filip, Martin Mazánek, Martin Vlček, Merzliakov O., Mika Dominik, Miroslav Havlík, Miroslav Kónya, Mrhal Aleš, Müller Jan, Mykhailchuk M., Nováček M., Pacelt Jakub, Pavelka Vojtěch, Petrus Oleksandr, Popelář Hynek, Pukančík Ota, Robert Trapl, Sebastian Čermák, SIDEI BOGDAN, Simona Pyttlová, Sivák David, Sivák R., Sovadina Václav, Šándor Milan, Tomáš Bartoš, TONDA HORÁK, Velat Petr, VITALII SAVCHENKO, Vít Varga, Vojtěch Hodl.
+STROJE A KVALIFIKACE (machineType):
+- 'RTR': Retrak / vysokozdvižný vozík do úzkých uliček (sekce VNA, HOVS nebo výslovně uvedeno RTR / Retrak).
+- 'LL': Nízkozdvižný vozík / běžný pickovací vozík (výchozí pro většinu operátorů na picku, Outboundu, nebo pokud je uvedeno LL).
+- 'NONE': Pokud pracovník nemá stroj (např. čisté balení VAS, trénink).
 
-Vrať POUZE validní JSON objekt ve tvaru {"operators": [...]}, kde každý prvek má strukturu:
+REFERENČNÍ SEZNAM PRACOVNÍKŮ ZF OSTROV (využij k přesnému doplnění a opravě překlepů z rukopisu):
+Andrii Gurkot, Barnóky Roman, Bereš Zbyněk, Bogár Alexander, BOHDAN BAIOV, Burget David, Červeňák Michael, Daduč Imrich, Daniel Šír, DAVID SVOBODA, DEMIANETS D., Faber Dominik, Fiala Ladislav, Gajdoš Slavomír, Györke Ladislav, Halimov Oleh, Havel Zdeněk, Hemzáček Lukáš, Horváth Valentin, Hosszu Radek, Hřava Dominik, Chrastina Atilla, IHOR Pozniak, IHOR Savchenko, JAKUB PFREIMER, JAKUB SKÁLA, Jiří Nečas, Jiří Teplý, Jiří Vašíček, Josef Bartko, Kateřina Novotná, Kochut Yurii, Kovalchuk O., Kryvoruchko Daria, Kurcius David, Máca Filip, Martin Mazánek, Martin Vlček, Merzliakov O., Mika Dominik, Miroslav Havlík, Miroslav Kónya, Mrhal Aleš, Müller Jan, Mykhailchuk M., Nováček M., Pacelt Jakub, Pavelka Vojtěch, Petrus Oleksandr, Popelář Hynek, Pukančík Ota, Robert Trapl, Sebastian Čermák, SIDEI BOGDAN, Simona Pyttlová, Sivák David, Sivák R., Sovadina Václav, Šándor Milan, Tomáš Bartoš, TONDA HORÁK, Velat Petr, VITALII SAVCHENKO, Vít Varga, Vojtěch Hodl, Zamrii, Serhiievych, Pitec S.
+
+Vrať VÝHRADNĚ validní JSON objekt ve tvaru {"operators": [...]}, kde každý prvek obsahuje:
 {
   "name": "Celé Jméno a Příjmení",
   "machineType": "LL" | "RTR" | "NONE",
   "departmentId": "hovc" | "hovs" | "putaway" | "vas" | "obwf" | "vna" | "obwi" | "unassigned",
-  "notes": "volitelná krátká poznámka (např. pozice nebo původní údaj z tabulky)"
-}
-Poznámka: oddělení "hovc" odpovídá sekci "Outbound" / expedice a balení. Pokud operátor nemá uveden stroj LL ani RTR, nastav "machineType": "NONE".`;
+  "notes": "volitelná poznámka (např. V47, směna 10:00-18:00 apod.)"
+}`;
 
 export type ExtractedOperator = {
   name: string;
@@ -96,137 +102,118 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
       throw new Error("Nebyly poskytnuty žádné obrazové ani textové údaje.");
     }
 
-    const openaiKey = process.env["OPENAI_API_KEY"];
-    const lovableKey = process.env["LOVABLE_API_KEY"];
+    const geminiKey = process.env["GEMINI_API_KEY"];
 
-    const activeKey = openaiKey || lovableKey;
-
-    if (!activeKey) {
+    if (!geminiKey) {
       if (textInput) {
         return { operators: parseTextFallback(textInput) };
       }
-      throw new Error("AI služba není dostupná. Zadejte prosím jména textem.");
+      throw new Error("V prostředí chybí proměnná GEMINI_API_KEY. Přidejte si do administrace Netlify (Site configuration -> Environment variables) klíč GEMINI_API_KEY.");
     }
-
-    const apiUrl = openaiKey
-      ? "https://api.openai.com/v1/chat/completions"
-      : "https://ai.gateway.lovable.dev/v1/chat/completions";
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
 
-    if (openaiKey) {
-      headers["Authorization"] = `Bearer ${openaiKey}`;
-    } else {
-      headers["Lovable-API-Key"] = lovableKey!;
-      headers["X-Lovable-AIG-SDK"] = "fetch";
-    }
-
-    const userContent: Array<Record<string, unknown>> = [
-      {
-        type: "text",
-        text: `${EXTRACTION_PROMPT}\nVytáhni všechny operátory z přiloženého materiálu. Vrať striktně JSON objekt {"operators": [...]}.`,
-      },
+    const parts: Array<Record<string, unknown>> = [
+      { text: `${EXTRACTION_PROMPT}\nVytáhni všechny operátory z přiloženého materiálu. Vrať striktně JSON objekt {"operators": [...]}.` }
     ];
 
     if (imageBase64) {
       const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/, "");
-      const dataUrl = `data:${mimeType};base64,${cleanBase64}`;
-      userContent.push({
-        type: "image_url",
-        image_url: { url: dataUrl },
+      parts.push({
+        inline_data: {
+          mime_type: mimeType,
+          data: cleanBase64
+        }
       });
     }
 
     if (textInput) {
-      userContent.push({ type: "text", text: `Zdrojový text:\n${textInput}` });
+      parts.push({ text: `Zdrojový text:\n${textInput}` });
     }
 
     let operators: ExtractedOperator[] = [];
 
-    try {
-      const aiResponse = await fetch(apiUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [{ role: "user", content: userContent }],
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "operators_schema",
-              strict: true,
-              schema: {
-                type: "object",
-                additionalProperties: false,
-                required: ["operators"],
-                properties: {
-                  operators: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      required: ["name", "machineType", "departmentId", "notes"],
-                      properties: {
-                        name: { type: "string" },
-                        machineType: { type: "string", enum: ["LL", "RTR", "NONE"] },
-                        departmentId: {
-                          type: "string",
-                          enum: [
-                            "hovc",
-                            "hovs",
-                            "putaway",
-                            "vas",
-                            "obwf",
-                            "vna",
-                            "obwi",
-                            "unassigned",
-                          ],
-                        },
-                        notes: { type: ["string", "null"] },
-                      },
-                    },
-                  },
-                },
-              },
+    // Active free-tier Gemini models with vision capabilities
+    const modelsToTry = [
+      "gemini-3.6-flash",
+      "gemini-flash-latest",
+      "gemini-3.8-flash",
+      "gemini-3.1-flash-lite",
+    ];
+    let lastError: Error | null = null;
+
+    for (const model of modelsToTry) {
+      try {
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+        const aiResponse = await fetch(apiUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.1,
             },
-          },
-        }),
-      });
+          }),
+        });
 
-      if (!aiResponse.ok) {
-        const detail = await aiResponse.text();
-        console.error("AI gateway error:", aiResponse.status, detail);
-        if (textInput) {
-          return { operators: parseTextFallback(textInput) };
+        if (!aiResponse.ok) {
+          const detail = await aiResponse.text();
+          console.warn(`Gemini model ${model} returned ${aiResponse.status}:`, detail);
+
+          let parsedErrorMessage = `Chyba modelu ${model} (${aiResponse.status})`;
+          try {
+            const errObj = JSON.parse(detail);
+            if (errObj?.error?.message) {
+              parsedErrorMessage = errObj.error.message;
+            }
+          } catch {
+            // Keep fallback message
+          }
+
+          if (aiResponse.status === 400 && detail.includes("API key not valid")) {
+            throw new Error("Zadaný GEMINI_API_KEY není platný. Zkontrolujte prosím svůj klíč v Google AI Studio.");
+          }
+          if (aiResponse.status === 429) {
+            throw new Error("Byl překročen limit požadavků na Gemini API (429 Rate limit). Zkuste to prosím za chvíli.");
+          }
+
+          lastError = new Error(parsedErrorMessage);
+          continue; // Try next fallback model
         }
-        const message =
-          aiResponse.status === 429
-            ? "Rozpoznávání je momentálně zahlcené, zkuste to prosím za chvíli znovu."
-            : aiResponse.status === 402 || aiResponse.status === 401
-              ? "Chyba ověření nebo vyčerpaný kredit pro AI. Zadejte prosím jména textem."
-              : "Rozpoznávání z fotky se nezdařilo (Chyba AI). Zkuste to znovu, nebo zadejte jména textem.";
-        throw new Error(message);
+
+        const payload = (await aiResponse.json()) as any;
+        const content = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+
+        const parsed = JSON.parse(
+          content
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .trim(),
+        );
+        const extracted = normalize(Array.isArray(parsed) ? parsed : parsed?.operators);
+        if (extracted.length > 0) {
+          operators = extracted;
+          break; // Successfully extracted
+        }
+      } catch (err: any) {
+        console.warn(`Attempt with ${model} failed:`, err);
+        lastError = err instanceof Error ? err : new Error(String(err));
+        // If it's a definitive credential or rate limit error, don't keep polling 404s
+        if (lastError.message.includes("GEMINI_API_KEY") || lastError.message.includes("Rate limit")) {
+          break;
+        }
       }
+    }
 
-      const payload = (await aiResponse.json()) as any;
-      const content = payload.choices?.[0]?.message?.content ?? "{}";
-
-      const parsed = JSON.parse(
-        content
-          .replace(/```json/g, "")
-          .replace(/```/g, "")
-          .trim(),
-      );
-      operators = normalize(Array.isArray(parsed) ? parsed : parsed?.operators);
-    } catch (error: any) {
-      console.error("AI request or parsing failed:", error);
+    if (operators.length === 0) {
       if (textInput) {
         operators = parseTextFallback(textInput);
-      } else {
+      } else if (lastError) {
         throw new Error(
-          error?.message || "Při zpracování snímku došlo k chybě (výpadek AI služby).",
+          lastError.message || "Při zpracování snímku došlo k chybě. Zkuste to prosím znovu nebo vyfoťte tabuli z menší vzdálenosti.",
         );
       }
     }

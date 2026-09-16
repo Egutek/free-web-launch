@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   X,
   Upload,
@@ -14,10 +14,29 @@ import {
   HelpCircle,
   RefreshCw,
   Image as ImageIcon,
+  Sliders,
+  RotateCw,
+  Crop,
+  Wand2,
+  Sun,
+  Contrast,
+  SlidersHorizontal,
+  ChevronDown,
+  ChevronUp,
+  SplitSquareVertical,
+  Columns,
 } from "lucide-react";
 import { DepartmentId, MachineType, Operator } from "../types";
 import { DEPARTMENTS, getDepartmentById } from "../data/departments";
 import { extractOperatorsFn } from "../services/aiServerFn";
+import {
+  ImageAdjustments,
+  DEFAULT_ADJUSTMENTS,
+  WHITEBOARD_PRESET,
+  HIGH_CONTRAST_PRESET,
+  GRAYSCALE_PRESET,
+  applyImageAdjustments,
+} from "../utils/imagePreprocessing";
 
 interface PhotoImportModalProps {
   isOpen: boolean;
@@ -41,9 +60,15 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   currentCount,
 }) => {
   const [activeTab, setActiveTab] = useState<"photo" | "text">("photo");
+  const [rawSourceImage, setRawSourceImage] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [imageMime, setImageMime] = useState<string>("image/jpeg");
   const [imageFileName, setImageFileName] = useState<string>("");
+  const [adjustments, setAdjustments] = useState<ImageAdjustments>(WHITEBOARD_PRESET);
+  const [activePreset, setActivePreset] = useState<"whiteboard" | "contrast" | "grayscale" | "original" | "custom">("whiteboard");
+  const [showManualControls, setShowManualControls] = useState<boolean>(false);
+  const [isProcessingCanvas, setIsProcessingCanvas] = useState<boolean>(false);
+  
   const [rawText, setRawText] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -53,15 +78,41 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  // Recalculate canvas when raw image or adjustments change
+  const updateProcessedImage = useCallback(
+    async (sourceUrl: string, adj: ImageAdjustments) => {
+      setIsProcessingCanvas(true);
+      try {
+        const enhanced = await applyImageAdjustments(sourceUrl, adj);
+        setSelectedImage(enhanced);
+      } catch (e) {
+        console.error("Canvas preprocessing failed:", e);
+        setSelectedImage(sourceUrl);
+      } finally {
+        setIsProcessingCanvas(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (rawSourceImage) {
+      updateProcessedImage(rawSourceImage, adjustments);
+    }
+  }, [rawSourceImage, adjustments, updateProcessedImage]);
+
   if (!isOpen) return null;
 
   const clearImage = () => {
+    setRawSourceImage(null);
     setSelectedImage(null);
     setImageFileName("");
     setErrorMessage(null);
+    setAdjustments(WHITEBOARD_PRESET);
+    setActivePreset("whiteboard");
+    setShowManualControls(false);
   };
 
-  // Optimize uploaded photo for OCR (downscale massive smartphone photos to max 1600px to avoid timeouts and 503 errors)
   const processAndSetImage = (file: File) => {
     setImageFileName(file.name);
     setImageMime("image/jpeg");
@@ -71,40 +122,55 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
     reader.onload = (ev) => {
       const originalDataUrl = ev.target?.result as string;
       if (!originalDataUrl) return;
-
-      const img = new Image();
-      img.onload = () => {
-        const MAX_DIM = 1600;
-        let { width, height } = img;
-        if (width <= MAX_DIM && height <= MAX_DIM) {
-          setSelectedImage(originalDataUrl);
-          return;
-        }
-
-        if (width > height) {
-          height = Math.round((height * MAX_DIM) / width);
-          width = MAX_DIM;
-        } else {
-          width = Math.round((width * MAX_DIM) / height);
-          height = MAX_DIM;
-        }
-
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL("image/jpeg", 0.88);
-          setSelectedImage(compressed);
-        } else {
-          setSelectedImage(originalDataUrl);
-        }
-      };
-      img.onerror = () => setSelectedImage(originalDataUrl);
-      img.src = originalDataUrl;
+      setRawSourceImage(originalDataUrl);
+      setAdjustments(WHITEBOARD_PRESET);
+      setActivePreset("whiteboard");
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleApplyPreset = (type: "whiteboard" | "contrast" | "grayscale" | "original") => {
+    setActivePreset(type);
+    if (type === "whiteboard") {
+      setAdjustments((prev) => ({ ...WHITEBOARD_PRESET, rotation: prev.rotation, crop: prev.crop }));
+    } else if (type === "contrast") {
+      setAdjustments((prev) => ({ ...HIGH_CONTRAST_PRESET, rotation: prev.rotation, crop: prev.crop }));
+    } else if (type === "grayscale") {
+      setAdjustments((prev) => ({ ...GRAYSCALE_PRESET, rotation: prev.rotation, crop: prev.crop }));
+    } else if (type === "original") {
+      setAdjustments((prev) => ({ ...DEFAULT_ADJUSTMENTS, rotation: prev.rotation, crop: prev.crop }));
+    }
+  };
+
+  const handleRotate = () => {
+    setAdjustments((prev) => ({
+      ...prev,
+      rotation: ((prev.rotation + 90) % 360) as 0 | 90 | 180 | 270,
+    }));
+  };
+
+  const handleCropPreset = (type: "all" | "left" | "right") => {
+    if (type === "all") {
+      setAdjustments((prev) => ({
+        ...prev,
+        crop: { x: 0, y: 0, width: 100, height: 100 },
+      }));
+    } else if (type === "left") {
+      setAdjustments((prev) => ({
+        ...prev,
+        crop: { x: 0, y: 0, width: 52, height: 100 },
+      }));
+    } else if (type === "right") {
+      setAdjustments((prev) => ({
+        ...prev,
+        crop: { x: 48, y: 0, width: 52, height: 100 },
+      }));
+    }
+  };
+
+  const handleManualAdjustmentChange = (patch: Partial<ImageAdjustments>) => {
+    setActivePreset("custom");
+    setAdjustments((prev) => ({ ...prev, ...patch }));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -335,30 +401,334 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                   <div
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}
-                    className={`border-2 border-dashed rounded-2xl p-5 sm:p-7 text-center transition-all flex flex-col items-center justify-center ${
+                    className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center transition-all flex flex-col items-center justify-center ${
                       selectedImage
-                        ? "border-blue-500 bg-blue-50/30 dark:bg-blue-950/20"
+                        ? "border-blue-400 bg-blue-50/20 dark:bg-blue-950/10"
                         : "border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 hover:border-blue-400 dark:hover:border-blue-500"
                     }`}
                   >
                     {selectedImage ? (
-                      <div className="space-y-3 flex flex-col items-center w-full">
-                        <div className="relative max-h-52 rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 shadow-sm bg-black/5">
+                      <div className="space-y-4 flex flex-col items-center w-full">
+                        {/* Image Canvas Preview */}
+                        <div className="relative max-h-60 w-full flex items-center justify-center rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 shadow-sm bg-slate-900/10 dark:bg-black/30 p-1">
                           <img
                             src={selectedImage}
-                            alt="Náhled fotky"
-                            className="max-h-52 max-w-full object-contain"
+                            alt="Náhled po předzpracování"
+                            className="max-h-56 max-w-full object-contain rounded-lg transition-all"
                           />
+                          {isProcessingCanvas && (
+                            <div className="absolute inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center gap-2 text-white text-xs font-semibold">
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              <span>Aplikuji vylepšení obrazu...</span>
+                            </div>
+                          )}
+
+                          {/* Overlay badges for active filters */}
+                          <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-600/90 text-white shadow-xs backdrop-blur-xs flex items-center gap-1">
+                              <Wand2 className="w-3 h-3" />
+                              {activePreset === "whiteboard"
+                                ? "Vylepšení tabule (OCR)"
+                                : activePreset === "contrast"
+                                ? "Vysoký kontrast"
+                                : activePreset === "grayscale"
+                                ? "Stupně šedé"
+                                : activePreset === "custom"
+                                ? "Vlastní úpravy"
+                                : "Původní snímek"}
+                            </span>
+                            {adjustments.rotation > 0 && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-800/80 text-white shadow-xs">
+                                {adjustments.rotation}°
+                              </span>
+                            )}
+                            {(adjustments.crop.width < 100 || adjustments.crop.x > 0 || adjustments.crop.height < 100 || adjustments.crop.y > 0) && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-600/90 text-white shadow-xs flex items-center gap-1">
+                                <Crop className="w-2.5 h-2.5" />
+                                Ořez aktivní
+                              </span>
+                            )}
+                          </div>
                         </div>
+
+                        {/* File info and ready tag */}
                         <div className="flex flex-col items-center">
-                          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate max-w-xs">
-                            {imageFileName || "Fotka vybrána"}
+                          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate max-w-sm">
+                            {imageFileName || "Fotka připravena"}
                           </p>
                           <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
-                            <Check className="w-3 h-3" /> Připraveno k vytěžení jmen
+                            <Check className="w-3 h-3" /> Předzpracováno pomocí Canvas API pro maximální přesnost AI
                           </span>
                         </div>
 
+                        {/* OCR Preprocessing Quick Presets */}
+                        <div className="w-full bg-slate-100 dark:bg-slate-800/70 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2.5 text-left">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                              Předzpracování obrazu pro čtení OCR:
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setShowManualControls(!showManualControls)}
+                              className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <SlidersHorizontal className="w-3 h-3" />
+                              <span>{showManualControls ? "Skrýt posuvníky" : "Ruční ladění"}</span>
+                              {showManualControls ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            </button>
+                          </div>
+
+                          {/* Presets grid */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleApplyPreset("whiteboard")}
+                              className={`py-1.5 px-2 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                activePreset === "whiteboard"
+                                  ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                  : "bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <Wand2 className="w-3.5 h-3.5" />
+                              <span>Vylepšit tabuli</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleApplyPreset("contrast")}
+                              className={`py-1.5 px-2 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                activePreset === "contrast"
+                                  ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                  : "bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <Contrast className="w-3.5 h-3.5" />
+                              <span>Vysoký kontrast</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleApplyPreset("grayscale")}
+                              className={`py-1.5 px-2 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                activePreset === "grayscale"
+                                  ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                  : "bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <Sun className="w-3.5 h-3.5" />
+                              <span>Stupně šedé</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleApplyPreset("original")}
+                              className={`py-1.5 px-2 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                activePreset === "original"
+                                  ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                  : "bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              <RotateCw className="w-3.5 h-3.5" />
+                              <span>Původní barvy</span>
+                            </button>
+                          </div>
+
+                          {/* Quick Crop & Rotate row */}
+                          <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-200/70 dark:border-slate-700/60">
+                            <span className="text-[10px] font-bold text-slate-500 mr-1">Ořez a rotace:</span>
+                            
+                            <button
+                              type="button"
+                              onClick={() => handleCropPreset("all")}
+                              className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-all cursor-pointer ${
+                                adjustments.crop.width === 100 && adjustments.crop.x === 0
+                                  ? "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800"
+                                  : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"
+                              }`}
+                            >
+                              Celá fotka (100%)
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleCropPreset("left")}
+                              className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-all cursor-pointer flex items-center gap-1 ${
+                                adjustments.crop.width < 100 && adjustments.crop.x === 0
+                                  ? "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800"
+                                  : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"
+                              }`}
+                            >
+                              <Columns className="w-3 h-3" />
+                              <span>Levá polovina tabule</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleCropPreset("right")}
+                              className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-all cursor-pointer flex items-center gap-1 ${
+                                adjustments.crop.width < 100 && adjustments.crop.x > 0
+                                  ? "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800"
+                                  : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600"
+                              }`}
+                            >
+                              <Columns className="w-3 h-3" />
+                              <span>Pravá polovina tabule</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handleRotate}
+                              className="px-2 py-1 rounded-md text-[11px] font-semibold border bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-50 flex items-center gap-1 cursor-pointer ml-auto"
+                            >
+                              <RotateCw className="w-3 h-3 text-slate-500" />
+                              <span>Otočit +90°</span>
+                            </button>
+                          </div>
+
+                          {/* Expandable Manual Fine-Tuning Sliders */}
+                          {showManualControls && (
+                            <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 space-y-3 bg-white/60 dark:bg-slate-900/40 p-3 rounded-lg mt-1">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {/* Contrast slider */}
+                                <div>
+                                  <div className="flex justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                    <span>Zvýšení kontrastu</span>
+                                    <span className="font-mono text-blue-600">{adjustments.contrast > 0 ? `+${adjustments.contrast}` : adjustments.contrast}</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="-40"
+                                    max="100"
+                                    value={adjustments.contrast}
+                                    onChange={(e) => handleManualAdjustmentChange({ contrast: Number(e.target.value) })}
+                                    className="w-full accent-blue-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                                  />
+                                </div>
+
+                                {/* Brightness slider */}
+                                <div>
+                                  <div className="flex justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                    <span>Jas / prosvětlení tabule</span>
+                                    <span className="font-mono text-blue-600">{adjustments.brightness > 0 ? `+${adjustments.brightness}` : adjustments.brightness}</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="-50"
+                                    max="50"
+                                    value={adjustments.brightness}
+                                    onChange={(e) => handleManualAdjustmentChange({ brightness: Number(e.target.value) })}
+                                    className="w-full accent-blue-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Toggles */}
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={adjustments.grayscale}
+                                    onChange={(e) => handleManualAdjustmentChange({ grayscale: e.target.checked })}
+                                    className="w-3.5 h-3.5 text-blue-600 rounded-sm"
+                                  />
+                                  <span>Stupně šedé</span>
+                                </label>
+
+                                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={adjustments.whiteboardBoost}
+                                    onChange={(e) => handleManualAdjustmentChange({ whiteboardBoost: e.target.checked })}
+                                    className="w-3.5 h-3.5 text-blue-600 rounded-sm"
+                                  />
+                                  <span>Čištění pozadí tabule</span>
+                                </label>
+
+                                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={adjustments.sharpen}
+                                    onChange={(e) => handleManualAdjustmentChange({ sharpen: e.target.checked })}
+                                    className="w-3.5 h-3.5 text-blue-600 rounded-sm"
+                                  />
+                                  <span>Zostření textu fixy</span>
+                                </label>
+                              </div>
+
+                              {/* Fine Crop controls */}
+                              <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                                  Ruční oříznutí okrajů tabule (%):
+                                </span>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                  <div>
+                                    <span className="text-[10px] text-slate-500 block mb-0.5">Zleva ({adjustments.crop.x}%)</span>
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max="45"
+                                      value={adjustments.crop.x}
+                                      onChange={(e) => {
+                                        const newX = Number(e.target.value);
+                                        const newW = Math.max(20, 100 - newX - (100 - (adjustments.crop.x + adjustments.crop.width)));
+                                        handleManualAdjustmentChange({ crop: { ...adjustments.crop, x: newX, width: newW } });
+                                      }}
+                                      className="w-full accent-blue-600 h-1 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                                    />
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-slate-500 block mb-0.5">Zprava ({100 - (adjustments.crop.x + adjustments.crop.width)}%)</span>
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max="45"
+                                      value={100 - (adjustments.crop.x + adjustments.crop.width)}
+                                      onChange={(e) => {
+                                        const rightMargin = Number(e.target.value);
+                                        const newW = Math.max(20, 100 - adjustments.crop.x - rightMargin);
+                                        handleManualAdjustmentChange({ crop: { ...adjustments.crop, width: newW } });
+                                      }}
+                                      className="w-full accent-blue-600 h-1 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                                    />
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-slate-500 block mb-0.5">Shora ({adjustments.crop.y}%)</span>
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max="45"
+                                      value={adjustments.crop.y}
+                                      onChange={(e) => {
+                                        const newY = Number(e.target.value);
+                                        const newH = Math.max(20, 100 - newY - (100 - (adjustments.crop.y + adjustments.crop.height)));
+                                        handleManualAdjustmentChange({ crop: { ...adjustments.crop, y: newY, height: newH } });
+                                      }}
+                                      className="w-full accent-blue-600 h-1 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                                    />
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-slate-500 block mb-0.5">Zdola ({100 - (adjustments.crop.y + adjustments.crop.height)}%)</span>
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max="45"
+                                      value={100 - (adjustments.crop.y + adjustments.crop.height)}
+                                      onChange={(e) => {
+                                        const bottomMargin = Number(e.target.value);
+                                        const newH = Math.max(20, 100 - adjustments.crop.y - bottomMargin);
+                                        handleManualAdjustmentChange({ crop: { ...adjustments.crop, height: newH } });
+                                      }}
+                                      className="w-full accent-blue-600 h-1 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bottom action bar */}
                         <div className="flex items-center gap-2 pt-1 flex-wrap justify-center">
                           <button
                             type="button"
@@ -366,7 +736,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 flex items-center gap-1.5 shadow-xs cursor-pointer"
                           >
                             <ImageIcon className="w-3.5 h-3.5 text-blue-500" />
-                            <span>Změnit z galerie</span>
+                            <span>Změnit fotku</span>
                           </button>
                           <button
                             type="button"

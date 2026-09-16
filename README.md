@@ -1,6 +1,8 @@
-# Free Web Launch
+# ZF Operativa Ostrov
 
-chci tento web zavest online zdarma
+[![Netlify Status](https://api.netlify.com/api/v1/badges/109dc72d-db81-4248-a2ef-43227ebd75bc/deploy-status)](https://app.netlify.com/projects/zfoperatives/deploys)
+
+Tento projekt je online.
 
 This project was built with [Lovable](https://lovable.dev).
 
