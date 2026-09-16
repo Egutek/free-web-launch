@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Workspace Validation
+    function isValidWorkspace(data) {
+      return data.keys().hasAll(['ownerId', 'activeShift'])
+          && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == request.auth.uid
+          && data.activeShift in ['A', 'B', 'C'];
+    }
+
+    function isWorkspaceOwner(workspaceId) {
+      return isValidId(workspaceId) && workspaceId == request.auth.uid; // Since workspaceId == userId
+    }
+
+    match /workspaces/{workspaceId} {
+      allow get: if isSignedIn() && isWorkspaceOwner(workspaceId);
+      allow create: if isSignedIn() 
+          && isWorkspaceOwner(workspaceId)
+          && isValidWorkspace(incoming())
+          && incoming().keys().size() == 2;
+      allow update: if isSignedIn()
+          && isWorkspaceOwner(workspaceId)
+          && isValidWorkspace(incoming())
+          && incoming().ownerId == existing().ownerId
+          && incoming().diff(existing()).affectedKeys().hasOnly(['activeShift']);
+      allow delete: if false;
+
+      // Operators
+      function isValidOperator(data) {
+        return data.keys().hasAll(['name', 'machineType', 'departmentId', 'status', 'lastMovedAt'])
+            && data.name is string && data.name.size() <= 100
+            && data.machineType in ['LL', 'RTR', 'NONE']
+            && data.departmentId is string && data.departmentId.size() <= 50
+            && data.status in ['active', 'break', 'absence']
+            && data.lastMovedAt is string && data.lastMovedAt.size() <= 50
+            && (!data.keys().hasAny(['isVnaOnly']) || data.isVnaOnly is bool)
+            && (!data.keys().hasAny(['shift']) || data.shift in ['A', 'B', 'C'])
+            && (!data.keys().hasAny(['absenceReason']) || data.absenceReason in ['Absence', 'Dovolená', 'PN'])
+            && (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 500));
+      }
+
+      match /operators/{operatorId} {
+        allow read: if isSignedIn() && isWorkspaceOwner(workspaceId);
+        allow create: if isSignedIn() 
+            && isWorkspaceOwner(workspaceId)
+            && isValidId(operatorId)
+            && isValidOperator(incoming());
+        allow update: if isSignedIn()
+            && isWorkspaceOwner(workspaceId)
+            && isValidId(operatorId)
+            && isValidOperator(incoming());
+        allow delete: if isSignedIn() && isWorkspaceOwner(workspaceId) && isValidId(operatorId);
+      }
+
+      // History
+      function isValidHistoryRecord(data) {
+        return data.keys().hasAll(['operatorId', 'operatorName', 'machineType', 'fromDept', 'toDept', 'timestamp'])
+            && data.operatorId is string && data.operatorId.size() <= 128
+            && data.operatorName is string && data.operatorName.size() <= 100
+            && data.machineType in ['LL', 'RTR', 'NONE']
+            && data.fromDept is string && data.fromDept.size() <= 50
+            && data.toDept is string && data.toDept.size() <= 50
+            && data.timestamp is string && data.timestamp.size() <= 50
+            && (!data.keys().hasAny(['shift']) || data.shift in ['A', 'B', 'C'])
+            && (!data.keys().hasAny(['reason']) || (data.reason is string && data.reason.size() <= 500));
+      }
+
+      match /history/{historyId} {
+        allow read: if isSignedIn() && isWorkspaceOwner(workspaceId);
+        allow create: if isSignedIn()
+            && isWorkspaceOwner(workspaceId)
+            && isValidId(historyId)
+            && isValidHistoryRecord(incoming());
+        allow update: if false; // History is immutable
+        allow delete: if isSignedIn() && isWorkspaceOwner(workspaceId) && isValidId(historyId);
+      }
+    }
+  }
+}

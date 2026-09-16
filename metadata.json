@@ -1,6 +1,6 @@
 {
   "name": "ZF Operativa Ostrov",
   "description": "Systém pro operativní řízení směn, přesun operátorů a plánování skladu ZF Ostrov",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

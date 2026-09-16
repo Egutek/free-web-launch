@@ -1,0 +1,91 @@
+{
+  "entities": {
+    "Operator": {
+      "title": "Operator",
+      "description": "A warehouse operator",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "machineType": { "type": "string", "enum": ["LL", "RTR", "NONE"] },
+        "departmentId": { "type": "string", "maxLength": 50 },
+        "isVnaOnly": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["active", "break", "absence"] },
+        "shift": { "type": "string", "enum": ["A", "B", "C"] },
+        "absenceReason": { "type": "string", "enum": ["Absence", "Dovolená", "PN"] },
+        "notes": { "type": "string", "maxLength": 500 },
+        "lastMovedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["name", "machineType", "departmentId", "status", "lastMovedAt"]
+    },
+    "HistoryRecord": {
+      "title": "HistoryRecord",
+      "description": "Operator move history",
+      "type": "object",
+      "properties": {
+        "operatorId": { "type": "string", "maxLength": 128 },
+        "operatorName": { "type": "string", "maxLength": 100 },
+        "machineType": { "type": "string", "enum": ["LL", "RTR", "NONE"] },
+        "fromDept": { "type": "string", "maxLength": 50 },
+        "toDept": { "type": "string", "maxLength": 50 },
+        "timestamp": { "type": "string", "maxLength": 50 },
+        "shift": { "type": "string", "enum": ["A", "B", "C"] },
+        "reason": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["operatorId", "operatorName", "machineType", "fromDept", "toDept", "timestamp"]
+    },
+    "ShiftTemplate": {
+      "title": "ShiftTemplate",
+      "description": "Shift templates",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 500 },
+        "isBuiltIn": { "type": "boolean" },
+        "operatorCount": { "type": "number" },
+        "activeCount": { "type": "number" },
+        "shift": { "type": "string", "enum": ["A", "B", "C", "all"] },
+        "assignments": { "type": "array" },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["name", "operatorCount", "activeCount", "createdAt"]
+    },
+    "CustomDepartment": {
+      "title": "CustomDepartment",
+      "description": "Custom departments",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "fullName": { "type": "string", "maxLength": 120 },
+        "code": { "type": "string", "maxLength": 20 },
+        "description": { "type": "string", "maxLength": 500 },
+        "color": { "type": "string", "maxLength": 50 },
+        "badgeBg": { "type": "string", "maxLength": 200 },
+        "badgeText": { "type": "string", "maxLength": 200 },
+        "borderColor": { "type": "string", "maxLength": 200 },
+        "iconName": { "type": "string", "maxLength": 50 },
+        "targetCount": { "type": "number" },
+        "shift": { "type": "string", "enum": ["A", "B", "C"] },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["name", "fullName", "code", "createdAt"]
+    }
+  },
+  "firestore": {
+    "operators/{operatorId}": {
+      "schema": { "$ref": "#/entities/Operator" },
+      "description": "All operators"
+    },
+    "history/{historyId}": {
+      "schema": { "$ref": "#/entities/HistoryRecord" },
+      "description": "History records"
+    },
+    "templates/{templateId}": {
+      "schema": { "$ref": "#/entities/ShiftTemplate" },
+      "description": "Shift templates"
+    },
+    "custom_departments/{deptId}": {
+      "schema": { "$ref": "#/entities/CustomDepartment" },
+      "description": "Custom departments"
+    }
+  }
+}
