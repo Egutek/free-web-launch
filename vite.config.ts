@@ -8,8 +8,8 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
   nitro: {
-    preset: "node-server",
-    output: { dir: "dist" }
+    preset: process.env.NETLIFY ? "netlify" : "node-server",
+    output: process.env.NETLIFY ? undefined : { dir: "dist" }
   },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
