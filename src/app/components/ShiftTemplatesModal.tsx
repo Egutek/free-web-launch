@@ -91,6 +91,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
       });
       return () => unsub();
     }
+    return undefined;
   }, [isOpen, activeShift]);
 
   if (!isOpen) return null;

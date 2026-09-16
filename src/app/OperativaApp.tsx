@@ -60,8 +60,6 @@ import {
   resolveOperatorIdsFromDrop,
   getGlobalDragState,
 } from './utils/dragState';
-import { User, onAuthStateChanged } from 'firebase/auth';
-import { auth, signInWithGoogle, signOutUser } from './services/firebase';
 import {
   subscribeToOperators,
   syncOperatorToCloud,
@@ -175,8 +173,7 @@ export default function App() {
     showToast(`Přepnuto na Směnu ${shift}`);
   }, []);
 
-  // Firebase Auth & Cloud Sync state
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // Cloud Sync state (bez přihlašování)
   const [isCloudConnected, setIsCloudConnected] = useState(false);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
 
@@ -237,15 +234,7 @@ export default function App() {
     saveUndoStack(undoStack);
   }, [undoStack]);
 
-  // Listen to Firebase Auth state (optional sign in)
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-    });
-    return () => unsub();
-  }, []);
-
-  // Real-time Firestore sync for Operators for everyone with the link
+  // Real-time sync for Operators for everyone with the link
   useEffect(() => {
     setIsCloudSyncing(true);
     const unsub = subscribeToOperators(
@@ -289,33 +278,6 @@ export default function App() {
     });
     return () => unsub();
   }, []);
-
-  const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
-
-  const handleGoogleSignIn = async () => {
-    if (isGoogleSigningIn) return;
-    setIsGoogleSigningIn(true);
-    try {
-      const user = await signInWithGoogle();
-      if (user) {
-        showToast(`Přihlášeno k Firebase: ${user.displayName || user.email}`);
-      }
-    } catch (err: any) {
-      showToast(`Přihlášení přes Google se nezdařilo: ${err?.message || 'Chyba'}`, true);
-    } finally {
-      setIsGoogleSigningIn(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOutUser();
-      setIsCloudConnected(false);
-      showToast('Byli jste odhlášeni z Firebase');
-    } catch (err: any) {
-      showToast(`Odhlášení se nezdařilo: ${err?.message || 'Chyba'}`, true);
-    }
-  };
 
   // Persist view mode
   useEffect(() => {
@@ -1213,12 +1175,8 @@ export default function App() {
         onOpenReportModal={() => setIsReportModalOpen(true)}
         onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
         onResetData={handleResetData}
-        currentUser={currentUser}
         isCloudConnected={isCloudConnected}
         isCloudSyncing={isCloudSyncing}
-        isGoogleSigningIn={isGoogleSigningIn}
-        onGoogleSignIn={handleGoogleSignIn}
-        onSignOut={handleSignOut}
       />
 
       {/* Main Content Area */}
