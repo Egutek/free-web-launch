@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { requestAI } from "./aiRequest";
 
 const EXTRACTION_PROMPT = `Jsi asistent pro vedoucího směny v logistickém centru ZF Aftermarket v Ostrově.
 Tvým úkolem je z poskytnutého snímku (fotka rozpisu směn, papírová docházka, nástěnka, tabulka na monitoru) nebo textu vytáhnout seznam operátorů pro oddělení PICK.
@@ -96,10 +97,14 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
       throw new Error("Nebyly poskytnuty žádné obrazové ani textové údaje.");
     }
 
+    const netlifyGatewayKey = process.env["NETLIFY_AI_GATEWAY_KEY"];
+    const netlifyGatewayBaseUrl = process.env["NETLIFY_AI_GATEWAY_BASE_URL"];
     const openaiKey = process.env["OPENAI_API_KEY"];
+    const openaiBaseUrl = process.env["OPENAI_BASE_URL"];
     const lovableKey = process.env["LOVABLE_API_KEY"];
+    const useNetlifyGateway = Boolean(netlifyGatewayKey && netlifyGatewayBaseUrl);
 
-    const activeKey = openaiKey || lovableKey;
+    const activeKey = useNetlifyGateway ? netlifyGatewayKey : openaiKey || lovableKey;
 
     if (!activeKey) {
       if (textInput) {
@@ -108,15 +113,20 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
       throw new Error("AI služba není dostupná. Zadejte prosím jména textem.");
     }
 
-    const apiUrl = openaiKey
-      ? "https://api.openai.com/v1/chat/completions"
-      : "https://ai.gateway.lovable.dev/v1/chat/completions";
+    const trimTrailingSlash = (value: string) => value.replace(/\/$/, "");
+    const apiUrl = useNetlifyGateway
+      ? `${trimTrailingSlash(netlifyGatewayBaseUrl!)}/openai/v1/chat/completions`
+      : openaiKey
+        ? `${trimTrailingSlash(openaiBaseUrl || "https://api.openai.com/v1")}/chat/completions`
+        : "https://ai.gateway.lovable.dev/v1/chat/completions";
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
 
-    if (openaiKey) {
+    if (useNetlifyGateway) {
+      headers["Authorization"] = `Bearer ${netlifyGatewayKey}`;
+    } else if (openaiKey) {
       headers["Authorization"] = `Bearer ${openaiKey}`;
     } else {
       headers["Lovable-API-Key"] = lovableKey!;
@@ -146,71 +156,60 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
     let operators: ExtractedOperator[] = [];
 
     try {
-      const aiResponse = await fetch(apiUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [{ role: "user", content: userContent }],
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "operators_schema",
-              strict: true,
-              schema: {
-                type: "object",
-                additionalProperties: false,
-                required: ["operators"],
-                properties: {
-                  operators: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      required: ["name", "machineType", "departmentId", "notes"],
-                      properties: {
-                        name: { type: "string" },
-                        machineType: { type: "string", enum: ["LL", "RTR", "NONE"] },
-                        departmentId: {
-                          type: "string",
-                          enum: [
-                            "hovc",
-                            "hovs",
-                            "putaway",
-                            "vas",
-                            "obwf",
-                            "vna",
-                            "obwi",
-                            "unassigned",
-                          ],
-                        },
-                        notes: { type: ["string", "null"] },
+      const requestBody = JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: userContent }],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "operators_schema",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["operators"],
+              properties: {
+                operators: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["name", "machineType", "departmentId", "notes"],
+                    properties: {
+                      name: { type: "string" },
+                      machineType: { type: "string", enum: ["LL", "RTR", "NONE"] },
+                      departmentId: {
+                        type: "string",
+                        enum: [
+                          "hovc",
+                          "hovs",
+                          "putaway",
+                          "vas",
+                          "obwf",
+                          "vna",
+                          "obwi",
+                          "unassigned",
+                        ],
                       },
+                      notes: { type: ["string", "null"] },
                     },
                   },
                 },
               },
             },
           },
-        }),
+        },
       });
 
-      if (!aiResponse.ok) {
-        const detail = await aiResponse.text();
-        console.error("AI gateway error:", aiResponse.status, detail);
-        if (textInput) {
-          return { operators: parseTextFallback(textInput) };
-        }
-        const message =
-          aiResponse.status === 429
-            ? "Rozpoznávání je momentálně zahlcené, zkuste to prosím za chvíli znovu."
-            : aiResponse.status === 402 || aiResponse.status === 401
-              ? "Chyba ověření nebo vyčerpaný kredit pro AI. Zadejte prosím jména textem."
-              : "Rozpoznávání z fotky se nezdařilo (Chyba AI). Zkuste to znovu, nebo zadejte jména textem.";
-        throw new Error(message);
-      }
+      const aiResponse = await requestAI(apiUrl, {
+        method: "POST",
+        headers,
+        body: requestBody,
+      });
 
-      const payload = (await aiResponse.json()) as any;
+      const payload = (await aiResponse.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
       const content = payload.choices?.[0]?.message?.content ?? "{}";
 
       const parsed = JSON.parse(
@@ -220,13 +219,14 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
           .trim(),
       );
       operators = normalize(Array.isArray(parsed) ? parsed : parsed?.operators);
-    } catch (error: any) {
-      console.error("AI request or parsing failed:", error);
+    } catch (error: unknown) {
+      console.error("AI request or parsing failed");
       if (textInput) {
         operators = parseTextFallback(textInput);
       } else {
         throw new Error(
-          error?.message || "Při zpracování snímku došlo k chybě (výpadek AI služby).",
+          (error instanceof Error && error.message) ||
+            "Při zpracování snímku došlo k chybě (výpadek AI služby).",
         );
       }
     }
