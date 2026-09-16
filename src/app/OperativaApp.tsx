@@ -60,8 +60,6 @@ import {
   resolveOperatorIdsFromDrop,
   getGlobalDragState,
 } from './utils/dragState';
-import { User, onAuthStateChanged } from 'firebase/auth';
-import { auth, signInWithGoogle, signOutUser } from './services/firebase';
 import {
   subscribeToOperators,
   syncOperatorToCloud,
