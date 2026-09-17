@@ -9,6 +9,10 @@ POSTUP PŘI ČTENÍ FOTOGRAFIE BÍLÉ TABULE:
 3. Přečti i volně připsaná jména v dolní části tabule, v poznámkách nebo po stranách (např. "PITEC S. - LL", "ZAMRII - LL", "SERHIIEVYCH - LL", "Savchenko Ihor" atd.).
 4. Pokud je u jména kód vozíku / pozice (např. "V47 Burget David", "V107 Andrii Gurkot", "V13 ...", "V01 ..."), vytáhni celé jméno a kód vozíku můžeš dát do poznámky.
 
+DŮLEŽITÁ PRAVIDLA PRO VYŘAZENÍ A ABSENCE:
+- IGNORUJ PROBLEM SOLVERY: Zcela ignoruj všechny osoby, které jsou v sekci "Problem Solver" (nebo podobně nazvané sekci úplně nahoře). Tyto lidi vůbec nezařazuj do výsledků.
+- VYNUCENÁ ABSENCE: V levé horní části (nebo jinde) jsou lidé označení jako Absence, Dovolená, PN, Neschopenka, OČR apod. Ačkoliv u nich může být napsáno i oddělení, kam normálně patří, musíš tyto lidi VŽDY zařadit s departmentId: 'unassigned' a do pole notes jim napiš důvod (např. "Absence", "Dovolená", "PN"). Nikdy je neřaď do aktivních oddělení!
+
 PŘIŘAZENÍ K ODDĚLENÍM (departmentId):
 - 'hovc': Sloupce "OUTBOUND", "HOVC", "Expedice", "Balení", "Vstupní/Obalové centrum"
 - 'obwi': Sloupce "OBWI", "Outbound Web", "International", "Expedice Web"

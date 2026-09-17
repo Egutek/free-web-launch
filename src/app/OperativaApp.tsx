@@ -642,6 +642,64 @@ export default function App() {
     handleMoveMultipleOperators(Array.from(bulkSelectedIds), targetDeptId);
   };
 
+  const handleBulkChangeMachine = (machineType: "LL" | "RTR" | "NONE") => {
+    if (bulkSelectedIds.size === 0) return;
+    
+    const count = bulkSelectedIds.size;
+    const now = new Date().toISOString();
+    const idSet = new Set(bulkSelectedIds);
+    const toChange = operators.filter((o) => idSet.has(o.id));
+    if (toChange.length === 0) return;
+
+    const undoOps: UndoOperation[] = toChange.map((op) => ({
+      id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 7)}-${op.id}`,
+      operatorId: op.id,
+      operatorName: op.name,
+      machineType: op.machineType,
+      fromDept: op.departmentId,
+      toDept: op.departmentId,
+      fromStatus: op.status,
+      toStatus: op.status,
+      timestamp: now,
+    }));
+    setUndoStack((prev) => [...undoOps, ...prev].slice(0, 5));
+
+    const updatedOperators = operators.map((op) => {
+      if (idSet.has(op.id)) {
+        return {
+          ...op,
+          machineType,
+          lastMovedAt: now,
+        };
+      }
+      return op;
+    });
+
+    setOperators(updatedOperators);
+    saveOperators(updatedOperators);
+
+    const historyItem: MoveHistoryRecord = {
+      id: `hist-${Date.now()}-bulk-machine`,
+      operatorId: "BULK",
+      operatorName: `Hromadná změna stroje (${count} operátorů)`,
+      machineType,
+      fromDept: "unassigned", // not moving depts, just tracking history
+      toDept: "unassigned",
+      timestamp: now,
+      reason: `Hromadná změna stroje na ${machineType} u ${count} operátorů`,
+    };
+    setHistory((prev) => [historyItem, ...prev]);
+
+    const movedOps = updatedOperators.filter((o) => idSet.has(o.id));
+    bulkSyncOperatorsToCloud(movedOps).catch((e) => console.warn("Cloud bulk sync error:", e));
+    syncHistoryRecordToCloud(historyItem).catch((e) =>
+      console.warn("Cloud history sync error:", e),
+    );
+
+    setBulkSelectedIds(new Set());
+    showToast(`Hromadně změněn stroj na ${machineType} u ${count} operátorů`);
+  };
+
   // Move operator handler with strict VNA rule & undo tracking
   const handleMoveOperator = (
     operatorId: string,
@@ -1517,6 +1575,23 @@ export default function App() {
                 {/* Quick selection actions when bulk is active */}
                 {bulkSelectedIds.size > 0 && (
                   <div className="flex items-center gap-1 shrink-0 ml-auto mr-1">
+                    <button
+                      id="jump-bar-change-ll-btn"
+                      onClick={() => handleBulkChangeMachine("LL")}
+                      className="px-2 py-1 text-[11px] font-bold rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-all cursor-pointer"
+                      title="Změnit stroj na LL pro vybrané"
+                    >
+                      Nastavit LL
+                    </button>
+                    <button
+                      id="jump-bar-change-rtr-btn"
+                      onClick={() => handleBulkChangeMachine("RTR")}
+                      className="px-2 py-1 text-[11px] font-bold rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 hover:bg-purple-100 transition-all cursor-pointer"
+                      title="Změnit stroj na RTR pro vybrané"
+                    >
+                      Nastavit RTR
+                    </button>
+                    <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
                     <button
                       id="jump-bar-select-all-btn"
                       onClick={handleSelectAll}
