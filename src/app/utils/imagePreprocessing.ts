@@ -146,7 +146,7 @@ function applyShadowRemoval(
 export async function applyImageAdjustments(
   sourceDataUrl: string,
   adjustments: ImageAdjustments,
-  maxDimension: number = 2600,
+  maxDimension: number = 1800,
 ): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -353,7 +353,7 @@ export async function applyImageAdjustments(
           ctx.putImageData(imageData, 0, 0);
         }
 
-        const outputDataUrl = canvas.toDataURL("image/jpeg", 0.92);
+        const outputDataUrl = canvas.toDataURL("image/jpeg", 0.86);
         resolve(outputDataUrl);
       } catch (err) {
         console.error("Image adjustment error:", err);

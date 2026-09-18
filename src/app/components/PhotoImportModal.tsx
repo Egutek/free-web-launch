@@ -25,10 +25,17 @@ import {
   ChevronUp,
   SplitSquareVertical,
   Columns,
+  ShieldAlert,
 } from "lucide-react";
 import { DepartmentId, MachineType, Operator } from "../types";
 import { DEPARTMENTS, getDepartmentById } from "../data/departments";
-import { extractOperatorsFn } from "../services/aiServerFn";
+import {
+  extractOperatorsFn,
+  isProblemSolver,
+  isTopAbsenceOrAbsent,
+  isCategoryHeader,
+  FilteredOutRecord,
+} from "../services/aiServerFn";
 import {
   ImageAdjustments,
   DEFAULT_ADJUSTMENTS,
@@ -76,6 +83,8 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [extractedList, setExtractedList] = useState<DraftOperator[]>([]);
+  const [filteredOutList, setFilteredOutList] = useState<FilteredOutRecord[]>([]);
+  const [showFilteredDetails, setShowFilteredDetails] = useState<boolean>(false);
   const [replaceAll, setReplaceAll] = useState<boolean>(true);
 
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -111,6 +120,8 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
     setAdjustments(WHITEBOARD_PRESET);
     setActivePreset("whiteboard");
     setShowManualControls(false);
+    setFilteredOutList([]);
+    setShowFilteredDetails(false);
   };
 
   const processAndSetImage = (file: File) => {
@@ -123,8 +134,8 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
       const originalDataUrl = ev.target?.result as string;
       if (!originalDataUrl) return;
       setRawSourceImage(originalDataUrl);
-      setAdjustments(WHITEBOARD_PRESET);
-      setActivePreset("whiteboard");
+      setAdjustments(DEFAULT_ADJUSTMENTS);
+      setActivePreset("original");
     };
     reader.readAsDataURL(file);
   };
@@ -241,46 +252,110 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         throw new Error("Vyberte prosím fotografii nebo vložte text se jmény.");
       }
 
-      const data = await extractOperatorsFn({ data: payload });
+      const data = (await extractOperatorsFn({ data: payload })) as {
+        operators?: Array<{
+          name: string;
+          machineType: "LL" | "RTR" | "NONE";
+          departmentId: string;
+          notes?: string;
+        }>;
+        filteredOut?: FilteredOutRecord[];
+      };
 
-      if (!data.operators || data.operators.length === 0) {
+      const accumulatedFilteredOut: FilteredOutRecord[] = [...(data.filteredOut || [])];
+      const validOps: Array<{
+        name: string;
+        machineType: "LL" | "RTR" | "NONE";
+        departmentId: string;
+        notes?: string;
+      }> = [];
+
+      // Second client-side safety filter pass
+      for (const op of data.operators || []) {
+        const name = op.name || "";
+        const notes = op.notes || "";
+        const dept = op.departmentId || "";
+
+        if (isCategoryHeader(name)) {
+          accumulatedFilteredOut.push({
+            name,
+            reason: "header_or_invalid",
+            detail: "Záhlaví nebo název kategorie",
+          });
+          continue;
+        }
+
+        if (isProblemSolver(name, notes, dept)) {
+          accumulatedFilteredOut.push({
+            name,
+            reason: "problem_solver",
+            detail: "Kategorie Problem Solver",
+          });
+          continue;
+        }
+
+        if (isTopAbsenceOrAbsent(name, notes, dept)) {
+          accumulatedFilteredOut.push({
+            name,
+            reason: "top_absence",
+            detail: "Horní lišta absencí / nepřítomnost na směně",
+          });
+          continue;
+        }
+
+        validOps.push(op);
+      }
+
+      setFilteredOutList(accumulatedFilteredOut);
+
+      if (validOps.length === 0) {
+        if (accumulatedFilteredOut.length > 0) {
+          // If all names were detected as problem solvers or absences, present them to user as candidates with clear note
+          const fallbackDrafts: DraftOperator[] = accumulatedFilteredOut.map((f, idx) => ({
+            tempId: `draft-fallback-${Date.now()}-${idx}`,
+            name: f.name,
+            machineType: "LL",
+            departmentId: "hovc",
+            notes: `Detekováno v sekci ${f.detail} (zkontrolujte)`,
+          }));
+          setExtractedList(fallbackDrafts);
+          return;
+        }
         throw new Error(
           "Na snímku nebyla nalezena žádná jména operátorů. Zkontrolujte kvalitu fotky nebo vložte text.",
         );
       }
 
-      const drafts: DraftOperator[] = data.operators.map(
-        (op: Record<string, unknown>, index: number) => {
-          const deptId = (op.departmentId as DepartmentId) || "hovc";
-          const rawMachine = String(op.machineType ?? "").toUpperCase();
-          const combined = `${String(op.name || "")} ${String(op.notes || "")}`.toUpperCase();
-          const hasExplicitLL =
-            combined.includes(" LL") ||
-            combined.includes("(LL)") ||
-            combined.includes("-LL") ||
-            combined.includes("NÍZKOZDVIH");
-          const hasExplicitRTR = combined.includes("RTR") || combined.includes("RETRAK");
+      const drafts: DraftOperator[] = validOps.map((op, index: number) => {
+        const deptId = (op.departmentId as DepartmentId) || "hovc";
+        const rawMachine = String(op.machineType ?? "").toUpperCase();
+        const combined = `${String(op.name || "")} ${String(op.notes || "")}`.toUpperCase();
+        const hasExplicitLL =
+          combined.includes(" LL") ||
+          combined.includes("(LL)") ||
+          combined.includes("-LL") ||
+          combined.includes("NÍZKOZDVIH");
+        const hasExplicitRTR = combined.includes("RTR") || combined.includes("RETRAK");
 
-          let mType: "LL" | "RTR" | "NONE" = "LL";
-          if (deptId === "vna" || deptId === "unassigned") {
-            mType = "NONE";
-          } else if (deptId === "hovc" || deptId === "obwi" || deptId === "hovs") {
-            mType = hasExplicitLL ? "LL" : "RTR";
-          } else if (deptId === "putaway") {
-            mType = hasExplicitRTR ? "RTR" : "LL";
-          } else {
-            mType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
-          }
+        let mType: "LL" | "RTR" | "NONE" = "LL";
+        if (deptId === "vna" || deptId === "unassigned") {
+          mType = "NONE";
+        } else if (deptId === "hovc" || deptId === "obwi" || deptId === "hovs") {
+          mType = hasExplicitLL ? "LL" : "RTR";
+        } else if (deptId === "putaway") {
+          mType = hasExplicitRTR ? "RTR" : "LL";
+        } else {
+          mType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
+        }
 
-          return {
-            tempId: `draft-${Date.now()}-${index}`,
-            name: op.name || `Operátor ${index + 1}`,
-            machineType: mType,
-            departmentId: deptId,
-            notes: op.notes || "Extrahováno ze snímku ZF",
-          };
-        },
-      );
+        return {
+          tempId: `draft-${Date.now()}-${index}`,
+          name: op.name || `Operátor ${index + 1}`,
+          machineType: mType,
+          departmentId: deptId,
+          notes: op.notes || "Extrahováno ze snímku ZF",
+        };
+      });
 
       setExtractedList(drafts);
     } catch (err: unknown) {
@@ -1049,6 +1124,8 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                   <button
                     onClick={() => {
                       setExtractedList([]);
+                      setFilteredOutList([]);
+                      setShowFilteredDetails(false);
                       setSelectedImage(null);
                       setRawText("");
                     }}
@@ -1058,6 +1135,98 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Banner with auto-filtered entries (Problem Solver & Top Absences) */}
+              {filteredOutList.length > 0 && (
+                <div className="p-3 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-xl text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span className="font-semibold">
+                        Automaticky odfiltrováno {filteredOutList.length}{" "}
+                        {filteredOutList.length === 1
+                          ? "jméno"
+                          : filteredOutList.length < 5
+                            ? "jména"
+                            : "jmen"}
+                      </span>
+                      <span className="text-[11px] text-amber-700/80 dark:text-amber-300/80 hidden sm:inline">
+                        (Problem Solver & horní lišta absencí vyřazeny z oddělení)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowFilteredDetails(!showFilteredDetails)}
+                      className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>{showFilteredDetails ? "Skrýt" : "Zobrazit podrobnosti"}</span>
+                      {showFilteredDetails ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+
+                  {showFilteredDetails && (
+                    <div className="pt-2 border-t border-amber-200/60 dark:border-amber-800/60 space-y-1.5 max-h-40 overflow-y-auto">
+                      <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                        Tyto osoby byly v obrazu detekovány, ale systém je automaticky nezapsal do
+                        seznamu na směně, aby nedošlo k jejich chybnému zařazení do oddělení.
+                      </p>
+                      <div className="divide-y divide-amber-200/40 dark:divide-amber-800/40">
+                        {filteredOutList.map((item, idx) => (
+                          <div
+                            key={`filtered-${idx}`}
+                            className="py-1.5 flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-semibold truncate">{item.name}</span>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                                  item.reason === "problem_solver"
+                                    ? "bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
+                                    : item.reason === "top_absence"
+                                      ? "bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                                      : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                                }`}
+                              >
+                                {item.reason === "problem_solver"
+                                  ? "Problem Solver"
+                                  : item.reason === "top_absence"
+                                    ? "Horní lišta / Absence"
+                                    : "Záhlaví"}
+                              </span>
+                              <span className="text-[10px] text-slate-500 truncate hidden sm:inline">
+                                {item.detail}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExtractedList((prev) => [
+                                  ...prev,
+                                  {
+                                    tempId: `draft-restored-${Date.now()}-${idx}`,
+                                    name: item.name,
+                                    machineType: "NONE",
+                                    departmentId: "unassigned",
+                                    notes: item.detail,
+                                  },
+                                ]);
+                                setFilteredOutList((prev) => prev.filter((_, i) => i !== idx));
+                              }}
+                              className="shrink-0 text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 underline cursor-pointer"
+                            >
+                              + Přidat do seznamu
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Table of extracted operators */}
               <div className="max-h-72 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">

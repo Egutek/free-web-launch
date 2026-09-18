@@ -9,9 +9,15 @@ POSTUP PŘI ČTENÍ FOTOGRAFIE BÍLÉ TABULE:
 3. Přečti i volně připsaná jména v dolní části tabule, v poznámkách nebo po stranách (např. "PITEC S. - LL", "ZAMRII - LL", "SERHIIEVYCH - LL", "Savchenko Ihor" atd.).
 4. Pokud je u jména kód vozíku / pozice (např. "V47 Burget David", "V107 Andrii Gurkot", "V13 ...", "V01 ..."), vytáhni celé jméno a kód vozíku můžeš dát do poznámky.
 
-DŮLEŽITÁ PRAVIDLA PRO VYŘAZENÍ A ABSENCE:
-- IGNORUJ PROBLEM SOLVERY: Zcela ignoruj všechny osoby, které jsou v sekci "Problem Solver" (nebo podobně nazvané sekci úplně nahoře). Tyto lidi vůbec nezařazuj do výsledků.
-- VYNUCENÁ ABSENCE: V levé horní části (nebo jinde) jsou lidé označení jako Absence, Dovolená, PN, Neschopenka, OČR apod. Ačkoliv u nich může být napsáno i oddělení, kam normálně patří, musíš tyto lidi VŽDY zařadit s departmentId: 'unassigned' a do pole notes jim napiš důvod (např. "Absence", "Dovolená", "PN"). Nikdy je neřaď do aktivních oddělení!
+DŮLEŽITÁ PRAVIDLA PRO VYŘAZENÍ (FILTER OUT) A ZABRÁNĚNÍ CHYBNÉMU PŘIŘAZENÍ:
+- 1. ZCELA VYŘAĎ / IGNORUJ PROBLEM SOLVERY:
+  Zcela ignoruj všechny osoby v sekci "Problem Solver", "Problem Solvers", "PS" nebo "Problem-solving" (obvykle umístěné nahoře tabule nebo v samostatném záhlaví).
+  Tyto osoby NEJSOU operátoři na směně – do JSONu je VŮBEC NEZAPISUJ a vyřaď je!
+- 2. ZCELA VYŘAĎ / IGNORUJ OSOBY Z HORNÍ LIŠTY ABSENCÍ A ODDĚLENÍ:
+  V horní části tabule (zejména vlevo nahoře v záhlaví) bývá rozpis absencí (označení jako Absence, Dovolená, D, PN, NV, Nemoc, Neschopenka, OČR, Lékař apod.), u kterých je často napsáno i jejich kmenové oddělení (např. "HOVC - Novák D", "Svoboda - HOVC - PN", "Novák (Dovolená)", "HOVC: Novák D, Svoboda PN").
+  TITO LIDÉ NEJSOU V PRÁCI NA SMĚNĚ! Aby nedošlo k jejich chybnému zařazení do oddělení, ZCELA TYTO OSOBY Z HORNÍ LIŠTY ABSENCÍ VYŘAĎ a do výsledného JSONu je VŮBEC NEZAŘAZUJ!
+- 3. IGNORUJ NÁPISY A ZÁHLAVÍ:
+  Nezařazuj názvy sloupců nebo oddělení (např. "OUTBOUND", "HOVC", "OBWI", "VNA", "PUTAWAY", "VAS", "HOVS", "PROBLEM SOLVER", "ABSENCE", "DOVOLENÁ", "SMĚNA A") jako jména lidí.
 
 PŘIŘAZENÍ K ODDĚLENÍM (departmentId):
 - 'hovc': Sloupce "OUTBOUND", "HOVC", "Expedice", "Balení", "Vstupní/Obalové centrum"
@@ -21,10 +27,10 @@ PŘIŘAZENÍ K ODDĚLENÍM (departmentId):
 - 'putaway': Sloupce "PUTAWAY", "Zaskladnění", "Zaskladnovani"
 - 'vas': Sloupce "VAS", "Přebal", "Speciální balení"
 - 'obwf': Sloupce "OBWF", "Outbound Waterfront", "HAZMAT", "Waterfront"
-- 'unassigned': Sekce "TRÉNINK", "ABSENCE", "DOVOLENÁ", "PN", volné poznámky bez určení sekce, nebo pokud oddělení nelze určit
+- 'unassigned': Sekce "TRÉNINK", nebo pokud oddělení nelze určit
 
 PRAVIDLA PRO STROJE A KVALIFIKACE (machineType):
-- 'NONE': Pro oddělení VNA ('vna') a Nepřítomnost / Nezařazeno ('unassigned') VŽDY nastav 'NONE'! U VNA se automaticky počítá, že jsou na VNA a nepřiřazuje se jim LL ani RTR.
+- 'NONE': Pro oddělení VNA ('vna') a Nezařazeno ('unassigned') VŽDY nastav 'NONE'! U VNA se automaticky počítá, že jsou na VNA a nepřiřazuje se jim LL ani RTR.
 - 'RTR': Pro Outbound / HOVC ('hovc') a OBWI ('obwi') VŽDY AUTOMATICKY PŘIŘAĎ 'RTR'! Může se stát, že tam bude výjimečně někdo s LL – POUZE pokud je u jména výslovně napsáno "LL", "LL:", "(LL)" nebo "nízkozdvih", přiřaď 'LL', jinak VŽDY přiřaď 'RTR'.
   Pro HOVS ('hovs') rovněž automaticky přiřaď 'RTR' (pokud není výslovně uvedeno LL).
 - 'LL': Pro Putaway ('putaway') nastav 'LL' (pokud není výslovně uveden RTR/Retrak), nebo pokud je u pracovníka výslovně napsáno LL.
@@ -47,112 +53,347 @@ export type ExtractedOperator = {
   notes?: string;
 };
 
-function parseTextFallback(textInput: string): ExtractedOperator[] {
-  return textInput
+export type FilteredOutRecord = {
+  name: string;
+  reason: "problem_solver" | "top_absence" | "header_or_invalid";
+  detail: string;
+};
+
+export function isProblemSolver(name: string, notes?: string, dept?: string): boolean {
+  const text = `${name} ${notes || ""} ${dept || ""}`.toLowerCase();
+  if (/problem[\s_-]*solv/i.test(text)) return true;
+  if (/řešitel|resitel/i.test(text)) return true;
+  // Match standalone "PS" tag in name or department (e.g. "PS", "PS:", "(PS)", "[PS]")
+  if (
+    /(?:^|[\s([_\-,])ps(?::|[\s)\]_\-,]|$)/i.test(name) ||
+    /(?:^|[\s([_\-,])ps(?::|[\s)\]_\-,]|$)/i.test(dept || "")
+  ) {
+    return true;
+  }
+  // In notes, only match if it explicitly mentions problem solving or stands alone as PS role
+  if (
+    notes &&
+    /(?:^|[\s([_\-,])ps(?::|[\s)\]_\-,]|$)/i.test(notes) &&
+    /problem|solver|řešit/i.test(notes)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function isTopAbsenceOrAbsent(name: string, notes?: string, dept?: string): boolean {
+  const n = (name || "").toLowerCase();
+  const not = (notes || "").toLowerCase();
+  const d = (dept || "").toLowerCase();
+
+  // Strong keywords indicating absent workers
+  const strongAbsencePattern =
+    /absence|dovolen[áa]|neschopenka|nemoc|l[ée]ka[rř]|o[šs]et[rř]ov|nep[rř][íi]tom|neomluven|p[rř]ek[áa][zž]ka|paragraf/i;
+  if (strongAbsencePattern.test(n) || strongAbsencePattern.test(d)) return true;
+  if (strongAbsencePattern.test(not)) return true;
+
+  // Czech absence abbreviations: PN (pracovní neschopnost), NV (neplacené volno), OČR (ošetřovné)
+  // CRITICAL: NEVER match English "OCR" (Optical Character Recognition) as an absence!
+  const absenceCodePattern = /(?:^|[\s([_\-,])(pn|nv|očr|ocr_abs)(?:[\s)\]_\-.,]|$)/i;
+  if (absenceCodePattern.test(n) || absenceCodePattern.test(d)) return true;
+  if (
+    not &&
+    absenceCodePattern.test(not) &&
+    !not.includes("optical") &&
+    !not.includes("rozpoznán")
+  ) {
+    return true;
+  }
+
+  // Tag (D) or (DOV) for dovolená
+  if (
+    /(?:^|[\s([_\-,])d(?:ov)?(?:[\s)\]_\-.,]|$)/i.test(n) &&
+    (n.includes("dovol") || not.includes("dovol"))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function isCategoryHeader(name: string): boolean {
+  const cleaned = name
+    .trim()
+    .toLowerCase()
+    .replace(/[:\-_.]/g, "");
+  const headers = [
+    "problem solver",
+    "problem solvers",
+    "problem solving",
+    "ps",
+    "absence",
+    "dovolená",
+    "dovolena",
+    "nemoc",
+    "outbound",
+    "hovc",
+    "obwi",
+    "vna",
+    "vnas",
+    "vnac",
+    "hovs",
+    "putaway",
+    "vas",
+    "obwf",
+    "oddělení",
+    "oddeleni",
+    "směna",
+    "smena",
+    "legenda",
+    "operátor",
+    "operator",
+    "operátoři",
+    "operatori",
+    "zf aftermarket",
+    "jméno",
+    "jmeno",
+    "poznámka",
+    "poznamka",
+  ];
+  return (
+    headers.includes(cleaned) || cleaned.startsWith("oddělení") || cleaned.startsWith("oddeleni")
+  );
+}
+
+function parseGeminiJson(rawContent: string): { operators?: unknown[] } | unknown[] | null {
+  if (!rawContent || !rawContent.trim()) return null;
+  const trimmed = rawContent.trim();
+
+  try {
+    return JSON.parse(trimmed);
+  } catch (_e) {
+    // try fallback extraction
+  }
+
+  const markdownMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (markdownMatch && markdownMatch[1]) {
+    try {
+      return JSON.parse(markdownMatch[1].trim());
+    } catch (_e) {
+      // try fallback extraction
+    }
+  }
+
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1));
+    } catch (_e) {
+      // try fallback extraction
+    }
+  }
+
+  const firstBracket = trimmed.indexOf("[");
+  const lastBracket = trimmed.lastIndexOf("]");
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    try {
+      return JSON.parse(trimmed.slice(firstBracket, lastBracket + 1));
+    } catch (_e) {
+      // try fallback extraction
+    }
+  }
+
+  return null;
+}
+
+export function parseTextFallback(textInput: string): {
+  operators: ExtractedOperator[];
+  filteredOut: FilteredOutRecord[];
+} {
+  const operators: ExtractedOperator[] = [];
+  const filteredOut: FilteredOutRecord[] = [];
+
+  const lines = textInput
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => {
-      const parts = line.split(/[\t;,]/).map((p) => p.trim());
-      const name = parts[0] || "Neznámý";
-      const notes = parts.slice(1).join(" | ");
-      const upperLine = `${name} ${notes}`.toUpperCase();
-      const hasExplicitLL =
-        upperLine.includes(" LL") ||
-        upperLine.includes("(LL)") ||
-        upperLine.includes("-LL") ||
-        upperLine.includes("NÍZKOZDVIH");
-      const hasExplicitRTR = upperLine.includes("RTR") || upperLine.includes("RETRAK");
-      const isVNA = upperLine.includes("VNA") || upperLine.includes("ULIČK");
+    .filter((line) => line.length > 0);
 
-      let departmentId = "unassigned";
-      if (
-        upperLine.includes("HOVC") ||
-        upperLine.includes("OUTBOUND") ||
-        upperLine.includes("EXPEDICE") ||
-        upperLine.includes("BALENI")
-      ) {
-        departmentId = "hovc";
-      } else if (upperLine.includes("HOVS") || upperLine.includes("REGALY")) {
-        departmentId = "hovs";
-      } else if (upperLine.includes("VAS") || upperLine.includes("PREBAL")) {
-        departmentId = "vas";
-      } else if (
-        upperLine.includes("PUTAWAY") ||
-        upperLine.includes("ZASKLADNENI") ||
-        upperLine.includes("PUT")
-      ) {
-        departmentId = "putaway";
-      } else if (upperLine.includes("OBWF") || upperLine.includes("WATERFRONT")) {
-        departmentId = "obwf";
-      } else if (isVNA) {
-        departmentId = "vna";
-      } else if (upperLine.includes("OBWI") || upperLine.includes("WEB")) {
-        departmentId = "obwi";
-      }
+  for (const line of lines) {
+    const parts = line.split(/[\t;,]/).map((p) => p.trim());
+    const name = parts[0] || "Neznámý";
+    const notes = parts.slice(1).join(" | ");
 
-      let machineType: "LL" | "RTR" | "NONE" = "LL";
-      if (departmentId === "vna" || departmentId === "unassigned") {
-        machineType = "NONE";
-      } else if (departmentId === "hovc" || departmentId === "obwi" || departmentId === "hovs") {
-        // Outbound, OBWI & HOVS default to RTR, unless explicitly written as LL
-        machineType = hasExplicitLL ? "LL" : "RTR";
-      } else if (departmentId === "putaway") {
-        machineType = hasExplicitRTR ? "RTR" : "LL";
-      } else if (departmentId === "vas") {
-        machineType = hasExplicitRTR ? "RTR" : hasExplicitLL ? "LL" : "NONE";
-      } else {
-        machineType = hasExplicitRTR ? "RTR" : "LL";
-      }
+    if (isCategoryHeader(name)) {
+      filteredOut.push({
+        name,
+        reason: "header_or_invalid",
+        detail: "Záhlaví nebo název kategorie",
+      });
+      continue;
+    }
 
-      return {
+    if (isProblemSolver(name, notes)) {
+      filteredOut.push({
+        name,
+        reason: "problem_solver",
+        detail: "Kategorie Problem Solver",
+      });
+      continue;
+    }
+
+    if (isTopAbsenceOrAbsent(name, notes)) {
+      filteredOut.push({
+        name,
+        reason: "top_absence",
+        detail: "Horní lišta absencí / nepřítomnost",
+      });
+      continue;
+    }
+
+    const upperLine = `${name} ${notes}`.toUpperCase();
+    const hasExplicitLL =
+      upperLine.includes(" LL") ||
+      upperLine.includes("(LL)") ||
+      upperLine.includes("-LL") ||
+      upperLine.includes("NÍZKOZDVIH");
+    const hasExplicitRTR = upperLine.includes("RTR") || upperLine.includes("RETRAK");
+    const isVNA = upperLine.includes("VNA") || upperLine.includes("ULIČK");
+
+    let departmentId = "unassigned";
+    if (
+      upperLine.includes("HOVC") ||
+      upperLine.includes("OUTBOUND") ||
+      upperLine.includes("EXPEDICE") ||
+      upperLine.includes("BALENI")
+    ) {
+      departmentId = "hovc";
+    } else if (upperLine.includes("HOVS") || upperLine.includes("REGALY")) {
+      departmentId = "hovs";
+    } else if (upperLine.includes("VAS") || upperLine.includes("PREBAL")) {
+      departmentId = "vas";
+    } else if (
+      upperLine.includes("PUTAWAY") ||
+      upperLine.includes("ZASKLADNENI") ||
+      upperLine.includes("PUT")
+    ) {
+      departmentId = "putaway";
+    } else if (upperLine.includes("OBWF") || upperLine.includes("WATERFRONT")) {
+      departmentId = "obwf";
+    } else if (isVNA) {
+      departmentId = "vna";
+    } else if (upperLine.includes("OBWI") || upperLine.includes("WEB")) {
+      departmentId = "obwi";
+    }
+
+    let machineType: "LL" | "RTR" | "NONE" = "LL";
+    if (departmentId === "vna" || departmentId === "unassigned") {
+      machineType = "NONE";
+    } else if (departmentId === "hovc" || departmentId === "obwi" || departmentId === "hovs") {
+      machineType = hasExplicitLL ? "LL" : "RTR";
+    } else if (departmentId === "putaway") {
+      machineType = hasExplicitRTR ? "RTR" : "LL";
+    } else if (departmentId === "vas") {
+      machineType = hasExplicitRTR ? "RTR" : hasExplicitLL ? "LL" : "NONE";
+    } else {
+      machineType = hasExplicitRTR ? "RTR" : "LL";
+    }
+
+    if (name.length > 1) {
+      operators.push({
         name: name.slice(0, 50),
         machineType,
         departmentId,
         notes: notes.slice(0, 100),
-      };
-    });
+      });
+    }
+  }
+
+  return { operators, filteredOut };
 }
 
-function normalize(list: unknown): ExtractedOperator[] {
-  if (!Array.isArray(list)) return [];
-  return list
-    .map((raw) => {
-      const op = raw as Record<string, unknown>;
-      const name = typeof op["name"] === "string" ? op["name"].trim() : "";
-      const dept =
-        typeof op["departmentId"] === "string" ? op["departmentId"].toLowerCase() : "hovc";
-      const notes = typeof op["notes"] === "string" ? op["notes"] : undefined;
-      const combinedUpper = `${name} ${notes || ""}`.toUpperCase();
-      const hasExplicitLL =
-        combinedUpper.includes(" LL") ||
-        combinedUpper.includes("(LL)") ||
-        combinedUpper.includes("-LL") ||
-        combinedUpper.includes("NÍZKOZDVIH");
-      const hasExplicitRTR = combinedUpper.includes("RTR") || combinedUpper.includes("RETRAK");
+export function normalize(list: unknown): {
+  operators: ExtractedOperator[];
+  filteredOut: FilteredOutRecord[];
+} {
+  if (!Array.isArray(list)) return { operators: [], filteredOut: [] };
 
-      let machineType: "LL" | "RTR" | "NONE" = "LL";
-      if (dept === "vna" || dept === "unassigned") {
-        // VNA & Nepřítomnost: always NONE (no LL/RTR assigned)
-        machineType = "NONE";
-      } else if (dept === "hovc" || dept === "obwi" || dept === "hovs") {
-        // Outbound, OBWI & HOVS: default to RTR unless explicitly LL
-        machineType = hasExplicitLL ? "LL" : "RTR";
-      } else if (dept === "putaway") {
-        machineType = hasExplicitRTR ? "RTR" : "LL";
-      } else {
-        const rawMachine = String(op["machineType"] ?? "").toUpperCase();
-        machineType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
-      }
+  const operators: ExtractedOperator[] = [];
+  const filteredOut: FilteredOutRecord[] = [];
 
-      return {
+  for (const raw of list) {
+    const op = raw as Record<string, unknown>;
+    const name = typeof op["name"] === "string" ? op["name"].trim() : "";
+    const dept = typeof op["departmentId"] === "string" ? op["departmentId"].toLowerCase() : "hovc";
+    const notes = typeof op["notes"] === "string" ? op["notes"] : undefined;
+
+    if (!name || name.length <= 1) continue;
+
+    if (isCategoryHeader(name)) {
+      filteredOut.push({
         name,
-        machineType,
-        departmentId: dept,
-        notes,
-      };
-    })
-    .filter((op) => op.name.length > 1);
+        reason: "header_or_invalid",
+        detail: "Záhlaví nebo název kategorie",
+      });
+      continue;
+    }
+
+    if (isProblemSolver(name, notes, dept)) {
+      filteredOut.push({
+        name,
+        reason: "problem_solver",
+        detail: "Kategorie Problem Solver",
+      });
+      continue;
+    }
+
+    if (isTopAbsenceOrAbsent(name, notes, dept)) {
+      filteredOut.push({
+        name,
+        reason: "top_absence",
+        detail: "Horní lišta absencí / nepřítomnost na směně",
+      });
+      continue;
+    }
+
+    // Safety check: if assigned to unassigned and notes contain absence/dovolená/pn, filter out
+    if (
+      dept === "unassigned" &&
+      notes &&
+      /absence|dovolen|pn|neschop|nemoc|lékař|očr/i.test(notes)
+    ) {
+      filteredOut.push({
+        name,
+        reason: "top_absence",
+        detail: "Horní lišta absencí (nezařazeno)",
+      });
+      continue;
+    }
+
+    const combinedUpper = `${name} ${notes || ""}`.toUpperCase();
+    const hasExplicitLL =
+      combinedUpper.includes(" LL") ||
+      combinedUpper.includes("(LL)") ||
+      combinedUpper.includes("-LL") ||
+      combinedUpper.includes("NÍZKOZDVIH");
+    const hasExplicitRTR = combinedUpper.includes("RTR") || combinedUpper.includes("RETRAK");
+
+    let machineType: "LL" | "RTR" | "NONE" = "LL";
+    if (dept === "vna" || dept === "unassigned") {
+      machineType = "NONE";
+    } else if (dept === "hovc" || dept === "obwi" || dept === "hovs") {
+      machineType = hasExplicitLL ? "LL" : "RTR";
+    } else if (dept === "putaway") {
+      machineType = hasExplicitRTR ? "RTR" : "LL";
+    } else {
+      const rawMachine = String(op["machineType"] ?? "").toUpperCase();
+      machineType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
+    }
+
+    operators.push({
+      name,
+      machineType,
+      departmentId: dept,
+      notes,
+    });
+  }
+
+  return { operators, filteredOut };
 }
 
 export const extractOperatorsFn = createServerFn({ method: "POST" })
@@ -168,7 +409,8 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
 
     if (!geminiKey) {
       if (textInput) {
-        return { operators: parseTextFallback(textInput) };
+        const fallbackResult = parseTextFallback(textInput);
+        return { operators: fallbackResult.operators, filteredOut: fallbackResult.filteredOut };
       }
       throw new Error(
         "V prostředí chybí proměnná GEMINI_API_KEY. Přidejte si do administrace Netlify (Site configuration -> Environment variables) klíč GEMINI_API_KEY.",
@@ -200,18 +442,15 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
     }
 
     let operators: ExtractedOperator[] = [];
+    let filteredOut: FilteredOutRecord[] = [];
 
-    // Active free-tier Gemini models with vision capabilities
-    const modelsToTry = [
-      "gemini-3.6-flash",
-      "gemini-flash-latest",
-      "gemini-3.8-flash",
-      "gemini-3.1-flash-lite",
-    ];
+    // Prioritized working Gemini models (gemini-3.6-flash is primary, 3.1-flash-lite is backup)
+    const modelsToTry = ["gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash"];
     let lastError: Error | null = null;
 
     for (const model of modelsToTry) {
       try {
+        console.log(`[OCR] Pokus o extrakci modelem ${model}...`);
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
         const aiResponse = await fetch(apiUrl, {
           method: "POST",
@@ -223,11 +462,12 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
               temperature: 0.1,
             },
           }),
+          signal: AbortSignal.timeout(20000),
         });
 
         if (!aiResponse.ok) {
           const detail = await aiResponse.text();
-          console.warn(`Gemini model ${model} returned ${aiResponse.status}:`, detail);
+          console.warn(`[OCR] Gemini model ${model} vrátil kód ${aiResponse.status}:`, detail);
 
           let parsedErrorMessage = `Chyba modelu ${model} (${aiResponse.status})`;
           try {
@@ -244,63 +484,87 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
               "Zadaný GEMINI_API_KEY není platný. Zkontrolujte prosím svůj klíč v Google AI Studio.",
             );
           }
-          if (aiResponse.status === 429) {
-            throw new Error(
-              "Byl překročen limit požadavků na Gemini API (429 Rate limit). Zkuste to prosím za chvíli.",
-            );
-          }
 
+          // On 429 or 503, continue to try fallback model
           lastError = new Error(parsedErrorMessage);
-          continue; // Try next fallback model
+          continue;
         }
 
         const payload = (await aiResponse.json()) as {
           candidates?: Array<{
             content?: {
-              parts?: Array<{ text?: string }>;
+              parts?: Array<{ text?: string; thought?: boolean }>;
             };
           }>;
         };
-        const content = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
 
-        const parsed = JSON.parse(
-          content
-            .replace(/```json/g, "")
-            .replace(/```/g, "")
-            .trim(),
+        const candidateParts = payload.candidates?.[0]?.content?.parts || [];
+        // Combine text from non-thought parts first, or fallback to all text parts
+        const nonThoughtText = candidateParts
+          .filter((p) => !p.thought && typeof p.text === "string")
+          .map((p) => p.text)
+          .join("\n")
+          .trim();
+
+        const allText = candidateParts
+          .filter((p) => typeof p.text === "string")
+          .map((p) => p.text)
+          .join("\n")
+          .trim();
+
+        const textToParse = nonThoughtText || allText || "{}";
+
+        const parsed = parseGeminiJson(textToParse);
+        if (!parsed) {
+          console.warn(
+            `[OCR] Model ${model} vrátil text, který se nepodařilo zparsovat jako JSON:`,
+            textToParse.slice(0, 200),
+          );
+          lastError = new Error(`Model ${model} nevrátil platný JSON.`);
+          continue;
+        }
+
+        const rawList = Array.isArray(parsed)
+          ? parsed
+          : (parsed as { operators?: unknown[] })?.operators;
+
+        const extracted = normalize(rawList);
+        console.log(
+          `[OCR] Model ${model} úspěšně extrahoval ${extracted.operators.length} operátorů a ${extracted.filteredOut.length} vyřazených.`,
         );
-        const extracted = normalize(Array.isArray(parsed) ? parsed : parsed?.operators);
-        if (extracted.length > 0) {
-          operators = extracted;
+
+        if (extracted.operators.length > 0 || extracted.filteredOut.length > 0) {
+          operators = extracted.operators;
+          filteredOut = extracted.filteredOut;
           break; // Successfully extracted
         }
       } catch (err: unknown) {
-        console.warn(`Attempt with ${model} failed:`, err);
+        console.warn(`[OCR] Pokus s modelem ${model} selhal:`, err);
         lastError = err instanceof Error ? err : new Error(String(err));
-        // If it's a definitive credential or rate limit error, don't keep polling 404s
-        if (
-          lastError.message.includes("GEMINI_API_KEY") ||
-          lastError.message.includes("Rate limit")
-        ) {
+        if (lastError.message.includes("GEMINI_API_KEY není platný")) {
           break;
         }
       }
     }
 
-    if (operators.length === 0) {
+    if (operators.length === 0 && filteredOut.length === 0) {
       if (textInput) {
-        operators = parseTextFallback(textInput);
+        const fallbackResult = parseTextFallback(textInput);
+        operators = fallbackResult.operators;
+        filteredOut = fallbackResult.filteredOut;
       } else if (lastError) {
         throw new Error(
           lastError.message ||
-            "Při zpracování snímku došlo k chybě. Zkuste to prosím znovu nebo vyfoťte tabuli z menší vzdálenosti.",
+            "Při zpracování snímku došlo k chybě. Zkuste to prosím znovu nebo vložte rozpis jako text.",
         );
       }
     }
 
-    if (operators.length === 0 && textInput) {
-      operators = parseTextFallback(textInput);
+    if (operators.length === 0 && filteredOut.length === 0 && textInput) {
+      const fallbackResult = parseTextFallback(textInput);
+      operators = fallbackResult.operators;
+      filteredOut = fallbackResult.filteredOut;
     }
 
-    return { operators };
+    return { operators, filteredOut };
   });
