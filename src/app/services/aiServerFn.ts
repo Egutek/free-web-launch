@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
 const EXTRACTION_PROMPT = `Jsi špičkový expert na počítačové vidění (OCR) a čtení rukopisu pro logistické centrum ZF Aftermarket v Ostrově.
-Tvým úkolem je z poskytnuté fotografie (bílá magnetická tabule, rozpis směn, papírová docházka, nástěnka, monitor) nebo textu pečlivě a bezchybně vytáhnout VŠECHNY přítomné operátory a přiřadit je k jejich oddělením a strojům.
+Tvým úkolem je z poskytnuté fotografie (bílá magnetická tabule, rozpis směn, papírová docházka, nástěnka, monitor) nebo textu pečlivě a bezchybně vytáhnout VŠECHNY přítomné operátory i osoby v absenci/vynechané a zařadit je do odpovídajících kategorií.
 
 POSTUP PŘI ČTENÍ FOTOGRAFIE BÍLÉ TABULE:
 1. Projdi detailně každý sloupec, rámeček a magnetickou lištu na tabuli zleva doprava a shora dolů.
@@ -9,17 +9,24 @@ POSTUP PŘI ČTENÍ FOTOGRAFIE BÍLÉ TABULE:
 3. Přečti i volně připsaná jména v dolní části tabule, v poznámkách nebo po stranách (např. "PITEC S. - LL", "ZAMRII - LL", "SERHIIEVYCH - LL", "Savchenko Ihor" atd.).
 4. Pokud je u jména kód vozíku / pozice (např. "V47 Burget David", "V107 Andrii Gurkot", "V13 ...", "V01 ..."), vytáhni celé jméno a kód vozíku můžeš dát do poznámky.
 
-DŮLEŽITÁ PRAVIDLA PRO VYŘAZENÍ (FILTER OUT) A ZABRÁNĚNÍ CHYBNÉMU PŘIŘAZENÍ:
-- 1. ZCELA VYŘAĎ / IGNORUJ PROBLEM SOLVERY:
-  Zcela ignoruj všechny osoby v sekci "Problem Solver", "Problem Solvers", "PS" nebo "Problem-solving" (obvykle umístěné nahoře tabule nebo v samostatném záhlaví).
-  Tyto osoby NEJSOU operátoři na směně – do JSONu je VŮBEC NEZAPISUJ a vyřaď je!
-- 2. ZCELA VYŘAĎ / IGNORUJ OSOBY Z HORNÍ LIŠTY ABSENCÍ A ODDĚLENÍ:
-  V horní části tabule (zejména vlevo nahoře v záhlaví) bývá rozpis absencí (označení jako Absence, Dovolená, D, PN, NV, Nemoc, Neschopenka, OČR, Lékař apod.), u kterých je často napsáno i jejich kmenové oddělení (např. "HOVC - Novák D", "Svoboda - HOVC - PN", "Novák (Dovolená)", "HOVC: Novák D, Svoboda PN").
-  TITO LIDÉ NEJSOU V PRÁCI NA SMĚNĚ! Aby nedošlo k jejich chybnému zařazení do oddělení, ZCELA TYTO OSOBY Z HORNÍ LIŠTY ABSENCÍ VYŘAĎ a do výsledného JSONu je VŮBEC NEZAŘAZUJ!
-- 3. IGNORUJ NÁPISY A ZÁHLAVÍ:
-  Nezařazuj názvy sloupců nebo oddělení (např. "OUTBOUND", "HOVC", "OBWI", "VNA", "PUTAWAY", "VAS", "HOVS", "PROBLEM SOLVER", "ABSENCE", "DOVOLENÁ", "SMĚNA A") jako jména lidí.
+DŮLEŽITÁ PRAVIDLA PRO ROZPOZNÁNÍ OPERÁTORŮ VS. ABSENCÍ (NABÍDKY K VYŘAZENÍ):
+1. AKTIVNÍ OPERÁTOŘI NA SMĚNĚ (pole "operators"):
+   - Vytáhni všechny operátory z jednotlivých sloupců a oddělení na tabuli (HOVC, OBWI, VNA, HOVS, PUTAWAY, VAS, OBWF).
 
-PŘIŘAZENÍ K ODDĚLENÍM (departmentId):
+2. LIDÉ POD ABSENCÍ VLEVO NAHOŘE A PROBLEM SOLVEŘI (pole "absences"):
+   - KRITICKY DŮLEŽITÉ: V levém horním rohu tabule (v záhlaví nad nebo vedle sloupců, pod nadpisy jako "ABSENCE", "DOVOLENÁ", "D", "PN", "NEMOC", "NV", "OČR", "PŘEKÁŽKA" nebo se zkratkami oddělení např. "HOVC - Novák D", "Svoboda - HOVC - PN", "Novák (Dovolená)", "D: Horák, Varga", "PN: Bartko") jsou zapsáni lidé, kteří dnes nejsou přítomni na směně.
+   - TYTO LIDI VLEVO NAHOŘE POD ABSENCÍ VŽDY PEČLIVĚ PŘEČTI A UVEĎ JE DO POLE "absences"!
+   - Do pole "absences" uveď také osoby ze sekce "Problem Solver" / "PS" (obvykle vpravo nahoře).
+   - Tyto osoby nesmí skončit v poli "operators" jako přítomní na směně, ale MUSÍ být uvedeni v poli "absences", aby je dispečer mohl v aplikaci jedním kliknutím zařadit pod správnou absenci nebo dovolenou!
+   - Každá položka v "absences" obsahuje:
+     - "name": Celé jméno osoby (např. "David Svoboda", "Novák")
+     - "reason": "top_absence" nebo "problem_solver"
+     - "detail": důvod či označení z tabule (např. "Dovolená", "PN", "Absence vlevo nahoře", "Problem Solver", "HOVC - PN")
+
+3. IGNORUJ NÁPISY A ZÁHLAVÍ:
+   - Nezařazuj obecné názvy sloupců ani nadpisy (např. "OUTBOUND", "HOVC", "OBWI", "VNA", "PUTAWAY", "VAS", "HOVS", "PROBLEM SOLVER", "ABSENCE", "DOVOLENÁ", "SMĚNA A") jako jména lidí.
+
+PŘIŘAZENÍ K ODDĚLENÍM (departmentId pro pole "operators"):
 - 'hovc': Sloupce "OUTBOUND", "HOVC", "Expedice", "Balení", "Vstupní/Obalové centrum"
 - 'obwi': Sloupce "OBWI", "Outbound Web", "International", "Expedice Web"
 - 'vna': Sloupce "VNAS", "VNAC", "VNA", "Úzké uličky", vozíky V... s vysokozdvižným zakládáním
@@ -37,12 +44,23 @@ PRAVIDLA PRO STROJE A KVALIFIKACE (machineType):
 REFERENČNÍ SEZNAM PRACOVNÍKŮ ZF OSTROV (využij k přesnému doplnění a opravě překlepů z rukopisu):
 Andrii Gurkot, Barnóky Roman, Bereš Zbyněk, Bogár Alexander, BOHDAN BAIOV, Burget David, Červeňák Michael, Daduč Imrich, Daniel Šír, DAVID SVOBODA, DEMIANETS D., Faber Dominik, Fiala Ladislav, Gajdoš Slavomír, Györke Ladislav, Halimov Oleh, Havel Zdeněk, Hemzáček Lukáš, Horváth Valentin, Hosszu Radek, Hřava Dominik, Chrastina Atilla, IHOR Pozniak, IHOR Savchenko, JAKUB PFREIMER, JAKUB SKÁLA, Jiří Nečas, Jiří Teplý, Jiří Vašíček, Josef Bartko, Kateřina Novotná, Kochut Yurii, Kovalchuk O., Kryvoruchko Daria, Kurcius David, Máca Filip, Martin Mazánek, Martin Vlček, Merzliakov O., Mika Dominik, Miroslav Havlík, Miroslav Kónya, Mrhal Aleš, Müller Jan, Mykhailchuk M., Nováček M., Pacelt Jakub, Pavelka Vojtěch, Petrus Oleksandr, Popelář Hynek, Pukančík Ota, Robert Trapl, Sebastian Čermák, SIDEI BOGDAN, Simona Pyttlová, Sivák David, Sivák R., Sovadina Václav, Šándor Milan, Tomáš Bartoš, TONDA HORÁK, Velat Petr, VITALII SAVCHENKO, Vít Varga, Vojtěch Hodl, Zamrii, Serhiievych, Pitec S.
 
-Vrať VÝHRADNĚ validní JSON objekt ve tvaru {"operators": [...]}, kde každý prvek obsahuje:
+Vrať VÝHRADNĚ validní JSON objekt ve tvaru:
 {
-  "name": "Celé Jméno a Příjmení",
-  "machineType": "RTR" | "LL" | "NONE",
-  "departmentId": "hovc" | "obwi" | "vna" | "hovs" | "putaway" | "vas" | "obwf" | "unassigned",
-  "notes": "volitelná poznámka (např. V47, směna 10:00-18:00 apod.)"
+  "operators": [
+    {
+      "name": "Celé Jméno a Příjmení",
+      "machineType": "RTR" | "LL" | "NONE",
+      "departmentId": "hovc" | "obwi" | "vna" | "hovs" | "putaway" | "vas" | "obwf" | "unassigned",
+      "notes": "volitelná poznámka (např. V47, směna 10:00-18:00 apod.)"
+    }
+  ],
+  "absences": [
+    {
+      "name": "Celé Jméno",
+      "reason": "top_absence" | "problem_solver",
+      "detail": "důvod (např. Dovolená, PN, Absence vlevo nahoře, PS)"
+    }
+  ]
 }`;
 
 export type ExtractedOperator = {
@@ -308,101 +326,155 @@ export function parseTextFallback(textInput: string): {
   return { operators, filteredOut };
 }
 
-export function normalize(list: unknown): {
+export function normalize(
+  list: unknown,
+  rawAbsences?: unknown,
+): {
   operators: ExtractedOperator[];
   filteredOut: FilteredOutRecord[];
 } {
-  if (!Array.isArray(list)) return { operators: [], filteredOut: [] };
-
   const operators: ExtractedOperator[] = [];
   const filteredOut: FilteredOutRecord[] = [];
+  const seenNames = new Set<string>();
 
-  for (const raw of list) {
-    const op = raw as Record<string, unknown>;
-    const name = typeof op["name"] === "string" ? op["name"].trim() : "";
-    const dept = typeof op["departmentId"] === "string" ? op["departmentId"].toLowerCase() : "hovc";
-    const notes = typeof op["notes"] === "string" ? op["notes"] : undefined;
+  // 1. Zpracuj explicitně nalezené absence a Problem Solvery (např. z levého horního rohu)
+  if (Array.isArray(rawAbsences)) {
+    for (const raw of rawAbsences) {
+      const item = raw as Record<string, unknown>;
+      const name = typeof item["name"] === "string" ? item["name"].trim() : "";
+      if (!name || name.length <= 1 || isCategoryHeader(name)) continue;
 
-    if (!name || name.length <= 1) continue;
+      const detail =
+        typeof item["detail"] === "string" && item["detail"].trim()
+          ? item["detail"].trim()
+          : "Absence zjištěná vlevo nahoře";
+      const reasonRaw = String(item["reason"] || "").toLowerCase();
+      const reason: FilteredOutRecord["reason"] =
+        reasonRaw === "problem_solver" || isProblemSolver(name, detail)
+          ? "problem_solver"
+          : "top_absence";
 
-    if (isCategoryHeader(name)) {
-      filteredOut.push({
+      const key = name.toLowerCase();
+      if (!seenNames.has(key)) {
+        seenNames.add(key);
+        filteredOut.push({
+          name,
+          reason,
+          detail,
+        });
+      }
+    }
+  }
+
+  // 2. Zpracuj seznam operátorů přiřazených k oddělením
+  if (Array.isArray(list)) {
+    for (const raw of list) {
+      const op = raw as Record<string, unknown>;
+      const name = typeof op["name"] === "string" ? op["name"].trim() : "";
+      const dept =
+        typeof op["departmentId"] === "string" ? op["departmentId"].toLowerCase() : "hovc";
+      const notes = typeof op["notes"] === "string" ? op["notes"] : undefined;
+
+      if (!name || name.length <= 1) continue;
+
+      if (isCategoryHeader(name)) {
+        filteredOut.push({
+          name,
+          reason: "header_or_invalid",
+          detail: "Záhlaví nebo název kategorie",
+        });
+        continue;
+      }
+
+      if (isProblemSolver(name, notes, dept)) {
+        const key = name.toLowerCase();
+        if (!seenNames.has(key)) {
+          seenNames.add(key);
+          filteredOut.push({
+            name,
+            reason: "problem_solver",
+            detail: notes || "Kategorie Problem Solver",
+          });
+        }
+        continue;
+      }
+
+      if (isTopAbsenceOrAbsent(name, notes, dept)) {
+        const key = name.toLowerCase();
+        if (!seenNames.has(key)) {
+          seenNames.add(key);
+          filteredOut.push({
+            name,
+            reason: "top_absence",
+            detail: notes || "Horní lišta absencí vlevo nahoře",
+          });
+        }
+        continue;
+      }
+
+      // Bezpečnostní pojistka: pokud je zařazen do nezařazených a poznámka obsahuje absenci/dovolenou/pn
+      if (
+        dept === "unassigned" &&
+        notes &&
+        /absence|dovolen|pn|neschop|nemoc|lékař|očr/i.test(notes)
+      ) {
+        const key = name.toLowerCase();
+        if (!seenNames.has(key)) {
+          seenNames.add(key);
+          filteredOut.push({
+            name,
+            reason: "top_absence",
+            detail: notes || "Absence vlevo nahoře (nezařazeno)",
+          });
+        }
+        continue;
+      }
+
+      const combinedUpper = `${name} ${notes || ""}`.toUpperCase();
+      const hasExplicitLL =
+        combinedUpper.includes(" LL") ||
+        combinedUpper.includes("(LL)") ||
+        combinedUpper.includes("-LL") ||
+        combinedUpper.includes("NÍZKOZDVIH");
+      const hasExplicitRTR = combinedUpper.includes("RTR") || combinedUpper.includes("RETRAK");
+
+      let machineType: "LL" | "RTR" | "NONE" = "LL";
+      if (dept === "vna" || dept === "unassigned") {
+        machineType = "NONE";
+      } else if (dept === "hovs") {
+        machineType = hasExplicitRTR ? "RTR" : "LL";
+      } else if (dept === "hovc" || dept === "obwi") {
+        machineType = hasExplicitLL ? "LL" : "RTR";
+      } else if (dept === "putaway") {
+        machineType = hasExplicitRTR ? "RTR" : "LL";
+      } else {
+        const rawMachine = String(op["machineType"] ?? "").toUpperCase();
+        machineType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
+      }
+
+      operators.push({
         name,
-        reason: "header_or_invalid",
-        detail: "Záhlaví nebo název kategorie",
+        machineType,
+        departmentId: dept,
+        notes,
       });
-      continue;
     }
-
-    if (isProblemSolver(name, notes, dept)) {
-      filteredOut.push({
-        name,
-        reason: "problem_solver",
-        detail: "Kategorie Problem Solver",
-      });
-      continue;
-    }
-
-    if (isTopAbsenceOrAbsent(name, notes, dept)) {
-      filteredOut.push({
-        name,
-        reason: "top_absence",
-        detail: "Horní lišta absencí / nepřítomnost na směně",
-      });
-      continue;
-    }
-
-    // Safety check: if assigned to unassigned and notes contain absence/dovolená/pn, filter out
-    if (
-      dept === "unassigned" &&
-      notes &&
-      /absence|dovolen|pn|neschop|nemoc|lékař|očr/i.test(notes)
-    ) {
-      filteredOut.push({
-        name,
-        reason: "top_absence",
-        detail: "Horní lišta absencí (nezařazeno)",
-      });
-      continue;
-    }
-
-    const combinedUpper = `${name} ${notes || ""}`.toUpperCase();
-    const hasExplicitLL =
-      combinedUpper.includes(" LL") ||
-      combinedUpper.includes("(LL)") ||
-      combinedUpper.includes("-LL") ||
-      combinedUpper.includes("NÍZKOZDVIH");
-    const hasExplicitRTR = combinedUpper.includes("RTR") || combinedUpper.includes("RETRAK");
-
-    let machineType: "LL" | "RTR" | "NONE" = "LL";
-    if (dept === "vna" || dept === "unassigned") {
-      machineType = "NONE";
-    } else if (dept === "hovs") {
-      machineType = hasExplicitRTR ? "RTR" : "LL";
-    } else if (dept === "hovc" || dept === "obwi") {
-      machineType = hasExplicitLL ? "LL" : "RTR";
-    } else if (dept === "putaway") {
-      machineType = hasExplicitRTR ? "RTR" : "LL";
-    } else {
-      const rawMachine = String(op["machineType"] ?? "").toUpperCase();
-      machineType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
-    }
-
-    operators.push({
-      name,
-      machineType,
-      departmentId: dept,
-      notes,
-    });
   }
 
   return { operators, filteredOut };
 }
 
 export const extractOperatorsFn = createServerFn({ method: "POST" })
-  .validator((d: { imageBase64?: string; mimeType?: string; textInput?: string }) => d)
+  .validator(
+    (d: {
+      imageBase64?: string;
+      mimeType?: string;
+      textInput?: string;
+      customInstructions?: string;
+    }) => d,
+  )
   .handler(async ({ data }) => {
-    const { imageBase64, mimeType = "image/jpeg", textInput } = data;
+    const { imageBase64, mimeType = "image/jpeg", textInput, customInstructions } = data;
 
     if (!imageBase64 && !textInput) {
       throw new Error("Nebyly poskytnuty žádné obrazové ani textové údaje.");
@@ -424,9 +496,18 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
       "Content-Type": "application/json",
     };
 
+    let promptText = EXTRACTION_PROMPT;
+    if (customInstructions && customInstructions.trim()) {
+      promptText += `\n\n======================================================
+DODATEČNÉ VLASTNÍ INSTRUKCE A POKYNY OD DISPEČERA (NEJVYŠŠÍ PRIORITA):
+${customInstructions.trim()}
+======================================================\n`;
+    }
+    promptText += `\nVytáhni všechny operátory na směně ("operators") i všechny osoby v absenci ("absences") z přiloženého materiálu. Vrať striktně JSON objekt {"operators": [...], "absences": [...]}.`;
+
     const parts: Array<Record<string, unknown>> = [
       {
-        text: `${EXTRACTION_PROMPT}\nVytáhni všechny operátory z přiloženého materiálu. Vrať striktně JSON objekt {"operators": [...]}.`,
+        text: promptText,
       },
     ];
 
@@ -530,10 +611,13 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
         const rawList = Array.isArray(parsed)
           ? parsed
           : (parsed as { operators?: unknown[] })?.operators;
+        const rawAbsences = !Array.isArray(parsed)
+          ? (parsed as { absences?: unknown[] })?.absences
+          : undefined;
 
-        const extracted = normalize(rawList);
+        const extracted = normalize(rawList, rawAbsences);
         console.log(
-          `[OCR] Model ${model} úspěšně extrahoval ${extracted.operators.length} operátorů a ${extracted.filteredOut.length} vyřazených.`,
+          `[OCR] Model ${model} úspěšně extrahoval ${extracted.operators.length} operátorů a ${extracted.filteredOut.length} vyřazených/absencí.`,
         );
 
         if (extracted.operators.length > 0 || extracted.filteredOut.length > 0) {

@@ -28,6 +28,8 @@ import {
   ShieldAlert,
   CheckSquare,
   Square,
+  Brain,
+  RotateCcw,
 } from "lucide-react";
 import { DepartmentId, MachineType, Operator, AbsenceReason } from "../types";
 import { DEPARTMENTS, getDepartmentById } from "../data/departments";
@@ -47,6 +49,13 @@ import {
   GRAYSCALE_PRESET,
   applyImageAdjustments,
 } from "../utils/imagePreprocessing";
+import { subscribeToOcrInstructions, syncOcrInstructionsToCloud } from "../services/firestoreSync";
+
+export const DEFAULT_CUSTOM_OCR_INSTRUCTIONS = `1. Všechny osoby vlevo nahoře pod absencí (pod nápisy Absence, Dovolená, D, PN, Nemoc, NV, OČR nebo zkratkami oddělení např. HOVC - Novák D, Svoboda PN) VŽDY načti a zařaď do nabídky absencí.
+2. Operátoři přiřazení na HOVS mají mít po nahrání výchozí stroj LL (pokud není výslovně napsáno RTR).
+3. Operátoři na oddělení HOVC a OBWI mají mít výchozí stroj RTR (pokud není výslovně napsáno LL).
+4. Pro oddělení VNA nenastavuj žádný stroj (NONE).
+5. Kódy vozíků (např. V47, V107) uveď do poznámky.`;
 
 interface PhotoImportModalProps {
   isOpen: boolean;
@@ -94,6 +103,38 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   const [filteredOutList, setFilteredOutList] = useState<FilteredOutRecord[]>([]);
   const [showFilteredDetails, setShowFilteredDetails] = useState<boolean>(true);
   const [replaceAll, setReplaceAll] = useState<boolean>(true);
+
+  // Custom OCR instructions with memory (cloud + local storage)
+  const [customInstructions, setCustomInstructions] = useState<string>(() => {
+    return localStorage.getItem("zf_custom_ocr_instructions") || DEFAULT_CUSTOM_OCR_INSTRUCTIONS;
+  });
+  const [showCustomInstructions, setShowCustomInstructions] = useState<boolean>(false);
+  const [instructionsSavedNotice, setInstructionsSavedNotice] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsub = subscribeToOcrInstructions((cloudVal) => {
+      if (cloudVal && cloudVal.trim()) {
+        setCustomInstructions(cloudVal);
+        localStorage.setItem("zf_custom_ocr_instructions", cloudVal);
+      }
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
+
+  const handleSaveCustomInstructions = (newVal?: string) => {
+    const valToSave = newVal !== undefined ? newVal : customInstructions;
+    localStorage.setItem("zf_custom_ocr_instructions", valToSave);
+    syncOcrInstructionsToCloud(valToSave);
+    setInstructionsSavedNotice(true);
+    setTimeout(() => setInstructionsSavedNotice(false), 3000);
+  };
+
+  const handleResetCustomInstructions = () => {
+    setCustomInstructions(DEFAULT_CUSTOM_OCR_INSTRUCTIONS);
+    handleSaveCustomInstructions(DEFAULT_CUSTOM_OCR_INSTRUCTIONS);
+  };
 
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -239,7 +280,14 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const payload: { imageBase64?: string; mimeType?: string; textInput?: string } = {};
+      const payload: {
+        imageBase64?: string;
+        mimeType?: string;
+        textInput?: string;
+        customInstructions?: string;
+      } = {
+        customInstructions: customInstructions.trim() || undefined,
+      };
       if (activeTab === "photo") {
         if (!rawSourceImage && !selectedImage) {
           throw new Error("Vyberte prosím fotografii nebo vložte text se jmény.");
@@ -314,7 +362,18 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         validOps.push(op);
       }
 
-      setFilteredOutList(accumulatedFilteredOut);
+      // Deduplicate filtered out candidates (preserves first occurrence)
+      const seenFiltered = new Set<string>();
+      const dedupedFilteredOut: FilteredOutRecord[] = [];
+      for (const item of accumulatedFilteredOut) {
+        const key = item.name.toLowerCase().trim();
+        if (!seenFiltered.has(key)) {
+          seenFiltered.add(key);
+          dedupedFilteredOut.push(item);
+        }
+      }
+
+      setFilteredOutList(dedupedFilteredOut);
 
       if (validOps.length === 0) {
         if (accumulatedFilteredOut.length > 0) {
@@ -361,7 +420,11 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         const isAbsence = deptId === "unassigned";
         let detectedReason: AbsenceReason = "Absence";
         if (combined.includes("DOVOLEN")) detectedReason = "Dovolená";
-        else if (combined.includes("PN") || combined.includes("NEMOC") || combined.includes("NESCHOP"))
+        else if (
+          combined.includes("PN") ||
+          combined.includes("NEMOC") ||
+          combined.includes("NESCHOP")
+        )
           detectedReason = "PN";
 
         return {
@@ -1194,6 +1257,132 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                 </div>
               )}
 
+              {/* AI Instructions & Rules with Memory (stored in cloud & local) */}
+              <div className="border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-50/70 to-blue-50/50 dark:from-indigo-950/30 dark:to-slate-900/40 rounded-2xl p-3.5 transition-all shadow-xs">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomInstructions(!showCustomInstructions)}
+                    className="flex items-center gap-2 text-left group cursor-pointer"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                      <Brain className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs sm:text-sm font-black text-indigo-950 dark:text-indigo-200">
+                          Příkazy a trvalá paměť pro AI (OCR)
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                          Cloudová paměť
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Zadání instrukcí pro OCR přímo na webu – bez nutnosti nového nasazování
+                      </p>
+                    </div>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    {instructionsSavedNotice && (
+                      <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 animate-in fade-in">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Uloženo v paměti</span>
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomInstructions(!showCustomInstructions)}
+                      className="px-2.5 py-1 text-xs font-semibold rounded-lg text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800/80 hover:bg-indigo-50 dark:hover:bg-slate-700 flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>{showCustomInstructions ? "Skrýt" : "Upravit pravidla"}</span>
+                      {showCustomInstructions ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {showCustomInstructions && (
+                  <div className="mt-3 pt-3 border-t border-indigo-100 dark:border-indigo-900/50 space-y-2.5">
+                    <div className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                      Zde můžete AI modelu zadat libovolná specifická pravidla (např. které sekce
+                      tabule číst, výchozí stroje pro oddělení, co zařadit do absencí). Pokyny se
+                      ukládají do databáze a AI je dostane s <strong>nejvyšší prioritou</strong>.
+                    </div>
+
+                    <textarea
+                      value={customInstructions}
+                      onChange={(e) => setCustomInstructions(e.target.value)}
+                      rows={5}
+                      placeholder="Zadejte pravidla pro AI model..."
+                      className="w-full text-xs font-mono p-3 rounded-xl border border-indigo-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 resize-y"
+                    />
+
+                    <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase">
+                          Rychlé přidání:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const snippet =
+                              "\n- Všechny osoby vlevo nahoře pod absencí VŽDY uveď v seznamu absencí.";
+                            if (!customInstructions.includes("vlevo nahoře")) {
+                              const next = customInstructions + snippet;
+                              setCustomInstructions(next);
+                              handleSaveCustomInstructions(next);
+                            }
+                          }}
+                          className="text-[10px] px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300 cursor-pointer"
+                        >
+                          + Lidé pod absencí vlevo nahoře
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const snippet =
+                              "\n- Operátoři na HOVS mají mít výchozí stroj LL (pokud není výslovně napsáno RTR).";
+                            if (!customInstructions.includes("HOVS mají mít výchozí")) {
+                              const next = customInstructions + snippet;
+                              setCustomInstructions(next);
+                              handleSaveCustomInstructions(next);
+                            }
+                          }}
+                          className="text-[10px] px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300 cursor-pointer"
+                        >
+                          + HOVS výchozí LL
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleResetCustomInstructions}
+                          className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center gap-1 cursor-pointer"
+                          title="Vrátit na výchozí osvědčená pravidla"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Reset</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSaveCustomInstructions()}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95 transition-transform"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Uložit do paměti</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="pt-2">
                 <button
                   id="start-extraction-btn"
@@ -1237,6 +1426,16 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
 
                 <div className="flex items-center gap-2">
                   <button
+                    type="button"
+                    onClick={() => setShowCustomInstructions(!showCustomInstructions)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+                    title="Upravit paměť pravidel pro AI"
+                  >
+                    <Brain className="w-3.5 h-3.5" />
+                    <span>Pravidla AI</span>
+                  </button>
+
+                  <button
                     onClick={addNewRow}
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
                   >
@@ -1258,6 +1457,39 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Collapsible custom instructions editor in Step 2 */}
+              {showCustomInstructions && (
+                <div className="p-3 bg-indigo-50/80 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 rounded-xl space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                      <Brain className="w-4 h-4 text-indigo-600" />
+                      Pravidla a paměť pro AI (OCR):
+                    </span>
+                    {instructionsSavedNotice && (
+                      <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
+                        Uloženo v cloudu!
+                      </span>
+                    )}
+                  </div>
+                  <textarea
+                    value={customInstructions}
+                    onChange={(e) => setCustomInstructions(e.target.value)}
+                    rows={4}
+                    className="w-full text-xs font-mono p-2.5 rounded-lg border border-indigo-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 resize-y"
+                  />
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveCustomInstructions()}
+                      className="px-3 py-1 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Uložit pravidla
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Section with auto-filtered entries (Problem Solver & Top Absences) */}
               {filteredOutList.length > 0 && (
@@ -1355,12 +1587,15 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                                 }`}
                               >
                                 {item.reason === "problem_solver"
-                                  ? "Problem Solver"
+                                  ? "Problem Solver (vpravo)"
                                   : /dovol/i.test(item.detail)
                                     ? "Dovolená"
                                     : /pn|nemoc/i.test(item.detail)
                                       ? "PN / Nemoc"
-                                      : "Absence"}
+                                      : item.reason === "top_absence" ||
+                                          /vlevo|horní/i.test(item.detail)
+                                        ? "Absence vlevo nahoře"
+                                        : "Absence"}
                               </span>
                               {item.detail && (
                                 <span
@@ -1544,9 +1779,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                           <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
                             <button
                               type="button"
-                              onClick={() =>
-                                updateDraft(item.tempId, { absenceReason: "Absence" })
-                              }
+                              onClick={() => updateDraft(item.tempId, { absenceReason: "Absence" })}
                               className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
                                 (item.absenceReason || "Absence") === "Absence"
                                   ? "bg-amber-500 text-white shadow-2xs"

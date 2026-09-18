@@ -275,3 +275,36 @@ export async function deleteCustomDepartmentFromCloud(deptId: string): Promise<v
     handleFirestoreError(error, OperationType.DELETE, `custom_departments/${deptId}`);
   }
 }
+
+// ---------- Nastavení OCR instrukcí pro AI (s pamětí) ----------
+export function subscribeToOcrInstructions(
+  onUpdate: (instructions: string) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    getDocRef("settings", "ocr_instructions"),
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as { value?: string };
+        if (typeof data.value === "string") {
+          onUpdate(data.value);
+        }
+      }
+    },
+    (error) => {
+      console.warn("Chyba při načítání OCR instrukcí z cloudu:", error);
+      if (onError) onError(error);
+    },
+  );
+}
+
+export async function syncOcrInstructionsToCloud(instructions: string): Promise<void> {
+  try {
+    await setDoc(getDocRef("settings", "ocr_instructions"), {
+      value: instructions,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.warn("Chyba při ukládání OCR instrukcí do cloudu:", error);
+  }
+}

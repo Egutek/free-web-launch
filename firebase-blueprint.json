@@ -68,6 +68,15 @@
         "createdAt": { "type": "string", "maxLength": 50 }
       },
       "required": ["name", "fullName", "code", "createdAt"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "Workspace settings",
+      "type": "object",
+      "properties": {
+        "value": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -86,6 +95,10 @@
     "custom_departments/{deptId}": {
       "schema": { "$ref": "#/entities/CustomDepartment" },
       "description": "Custom departments"
+    },
+    "settings/{settingId}": {
+      "schema": { "$ref": "#/entities/Setting" },
+      "description": "Workspace settings"
     }
   }
 }
