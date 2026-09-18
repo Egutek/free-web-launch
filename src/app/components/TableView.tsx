@@ -16,6 +16,7 @@ interface TableViewProps {
   onChangeStatus?: (operatorId: string, status: OperatorStatus) => void;
   onChangeMachineType?: (operatorId: string, machineType: MachineType) => void;
   onDeleteOperator?: (operatorId: string) => void;
+  onDeleteMultipleOperators?: (ids: string[]) => void;
 }
 
 export const TableView: React.FC<TableViewProps> = ({
@@ -30,12 +31,40 @@ export const TableView: React.FC<TableViewProps> = ({
   onChangeDepartment,
   onChangeMachineType,
   onDeleteOperator,
+  onDeleteMultipleOperators,
 }) => {
   const isAllSelected = operators.length > 0 && operators.every((o) => bulkSelectedIds?.has(o.id));
   const isSomeSelected = operators.some((o) => bulkSelectedIds?.has(o.id));
+  const selectedCount = bulkSelectedIds?.size || 0;
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
+    <div className="space-y-2">
+      {selectedCount > 0 && onDeleteMultipleOperators && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs">
+          <span className="font-bold text-rose-800 dark:text-rose-200">
+            Označeno v tabulce: {selectedCount} operátorů
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onDeleteMultipleOperators(Array.from(bulkSelectedIds!))}
+              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95 transition-all"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Smazat označené ({selectedCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClearSelection}
+              className="px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 font-semibold cursor-pointer"
+            >
+              Zrušit výběr
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs sm:text-sm border-collapse">
           <thead>
@@ -252,5 +281,6 @@ export const TableView: React.FC<TableViewProps> = ({
         </table>
       </div>
     </div>
-  );
+  </div>
+);
 };

@@ -26,8 +26,10 @@ import {
   SplitSquareVertical,
   Columns,
   ShieldAlert,
+  CheckSquare,
+  Square,
 } from "lucide-react";
-import { DepartmentId, MachineType, Operator } from "../types";
+import { DepartmentId, MachineType, Operator, AbsenceReason } from "../types";
 import { DEPARTMENTS, getDepartmentById } from "../data/departments";
 import {
   extractOperatorsFn,
@@ -49,7 +51,11 @@ import {
 interface PhotoImportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onImportOperators: (newOperators: Operator[], replaceAll: boolean) => void;
+  onImportOperators: (
+    newOperators: Operator[],
+    replaceAll: boolean,
+    omittedCandidates?: FilteredOutRecord[],
+  ) => void;
   currentCount: number;
 }
 
@@ -59,6 +65,7 @@ interface DraftOperator {
   machineType: MachineType;
   departmentId: DepartmentId;
   notes?: string;
+  absenceReason?: AbsenceReason;
 }
 
 export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
@@ -83,8 +90,9 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [extractedList, setExtractedList] = useState<DraftOperator[]>([]);
+  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set());
   const [filteredOutList, setFilteredOutList] = useState<FilteredOutRecord[]>([]);
-  const [showFilteredDetails, setShowFilteredDetails] = useState<boolean>(false);
+  const [showFilteredDetails, setShowFilteredDetails] = useState<boolean>(true);
   const [replaceAll, setReplaceAll] = useState<boolean>(true);
 
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -340,7 +348,9 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         let mType: "LL" | "RTR" | "NONE" = "LL";
         if (deptId === "vna" || deptId === "unassigned") {
           mType = "NONE";
-        } else if (deptId === "hovc" || deptId === "obwi" || deptId === "hovs") {
+        } else if (deptId === "hovs") {
+          mType = hasExplicitRTR ? "RTR" : "LL";
+        } else if (deptId === "hovc" || deptId === "obwi") {
           mType = hasExplicitLL ? "LL" : "RTR";
         } else if (deptId === "putaway") {
           mType = hasExplicitRTR ? "RTR" : "LL";
@@ -348,12 +358,19 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
           mType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
         }
 
+        const isAbsence = deptId === "unassigned";
+        let detectedReason: AbsenceReason = "Absence";
+        if (combined.includes("DOVOLEN")) detectedReason = "Dovolená";
+        else if (combined.includes("PN") || combined.includes("NEMOC") || combined.includes("NESCHOP"))
+          detectedReason = "PN";
+
         return {
           tempId: `draft-${Date.now()}-${index}`,
           name: op.name || `Operátor ${index + 1}`,
           machineType: mType,
           departmentId: deptId,
           notes: op.notes || "Extrahováno ze snímku ZF",
+          absenceReason: isAbsence ? detectedReason : undefined,
         };
       });
 
@@ -390,6 +407,110 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
 
   const removeDraft = (tempId: string) => {
     setExtractedList((prev) => prev.filter((item) => item.tempId !== tempId));
+    setSelectedDraftIds((prev) => {
+      const next = new Set(prev);
+      next.delete(tempId);
+      return next;
+    });
+  };
+
+  const toggleSelectDraft = (tempId: string) => {
+    setSelectedDraftIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tempId)) {
+        next.delete(tempId);
+      } else {
+        next.add(tempId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllDrafts = () => {
+    if (selectedDraftIds.size === extractedList.length) {
+      setSelectedDraftIds(new Set());
+    } else {
+      setSelectedDraftIds(new Set(extractedList.map((d) => d.tempId)));
+    }
+  };
+
+  const handleDeleteSelectedDrafts = () => {
+    if (selectedDraftIds.size === 0) return;
+    setExtractedList((prev) => prev.filter((d) => !selectedDraftIds.has(d.tempId)));
+    setSelectedDraftIds(new Set());
+  };
+
+  const handleBulkSetMachineForDrafts = (machine: MachineType) => {
+    if (selectedDraftIds.size === 0) return;
+    setExtractedList((prev) =>
+      prev.map((d) => (selectedDraftIds.has(d.tempId) ? { ...d, machineType: machine } : d)),
+    );
+  };
+
+  const handleAddFilteredToAbsence = (item: FilteredOutRecord, reason: AbsenceReason) => {
+    setExtractedList((prev) => [
+      ...prev,
+      {
+        tempId: `draft-absence-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        name: item.name,
+        machineType: "NONE",
+        departmentId: "unassigned",
+        notes: item.detail || "Absence z fotky",
+        absenceReason: reason,
+      },
+    ]);
+    setFilteredOutList((prev) => prev.filter((f) => f.name !== item.name));
+  };
+
+  const handleAddFilteredToDept = (item: FilteredOutRecord, deptId: DepartmentId = "hovc") => {
+    setExtractedList((prev) => [
+      ...prev,
+      {
+        tempId: `draft-dept-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        name: item.name,
+        machineType:
+          deptId === "hovs"
+            ? "LL"
+            : deptId === "hovc" || deptId === "obwi"
+              ? "RTR"
+              : deptId === "vna" || deptId === "unassigned"
+                ? "NONE"
+                : "LL",
+        departmentId: deptId,
+        notes: item.detail,
+        absenceReason: deptId === "unassigned" ? "Absence" : undefined,
+      },
+    ]);
+    setFilteredOutList((prev) => prev.filter((f) => f.name !== item.name));
+  };
+
+  const handleAddAllFilteredToAbsence = (forcedReason?: AbsenceReason) => {
+    if (filteredOutList.length === 0) return;
+    const newDrafts: DraftOperator[] = filteredOutList.map((item, idx) => {
+      let reason: AbsenceReason = forcedReason || "Absence";
+      if (!forcedReason) {
+        const combined = `${item.name} ${item.detail}`.toLowerCase();
+        if (combined.includes("dovol")) {
+          reason = "Dovolená";
+        } else if (
+          combined.includes("pn") ||
+          combined.includes("nemoc") ||
+          combined.includes("neschop")
+        ) {
+          reason = "PN";
+        }
+      }
+      return {
+        tempId: `draft-all-abs-${Date.now()}-${idx}`,
+        name: item.name,
+        machineType: "NONE",
+        departmentId: "unassigned",
+        notes: item.detail,
+        absenceReason: reason,
+      };
+    });
+    setExtractedList((prev) => [...prev, ...newDrafts]);
+    setFilteredOutList([]);
   };
 
   const addNewRow = () => {
@@ -411,15 +532,17 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
     const finalOps: Operator[] = extractedList.map((draft, idx) => ({
       id: `op-imported-${Date.now()}-${idx + 1}`,
       name: draft.name.trim(),
-      machineType: draft.machineType,
+      machineType: draft.departmentId === "unassigned" ? "NONE" : draft.machineType,
       departmentId: draft.departmentId,
       isVnaOnly: false,
       status: draft.departmentId === "unassigned" ? "absence" : "active",
+      absenceReason:
+        draft.departmentId === "unassigned" ? draft.absenceReason || "Absence" : undefined,
       notes: draft.notes,
       lastMovedAt: new Date().toISOString(),
     }));
 
-    onImportOperators(finalOps, replaceAll);
+    onImportOperators(finalOps, replaceAll, filteredOutList);
     onClose();
   };
 
@@ -1136,90 +1259,163 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                 </div>
               </div>
 
-              {/* Banner with auto-filtered entries (Problem Solver & Top Absences) */}
+              {/* Section with auto-filtered entries (Problem Solver & Top Absences) */}
               {filteredOutList.length > 0 && (
-                <div className="p-3 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-xl text-xs text-amber-900 dark:text-amber-200 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
+                <div className="p-3.5 bg-amber-50/95 dark:bg-amber-950/40 border-2 border-amber-300/80 dark:border-amber-700/80 rounded-2xl text-xs text-amber-950 dark:text-amber-100 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2">
-                      <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <span className="font-semibold">
-                        Automaticky odfiltrováno {filteredOutList.length}{" "}
-                        {filteredOutList.length === 1
-                          ? "jméno"
-                          : filteredOutList.length < 5
-                            ? "jména"
-                            : "jmen"}
-                      </span>
-                      <span className="text-[11px] text-amber-700/80 dark:text-amber-300/80 hidden sm:inline">
-                        (Problem Solver & horní lišta absencí vyřazeny z oddělení)
-                      </span>
+                      <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                        <ShieldAlert className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-xs sm:text-sm text-amber-900 dark:text-amber-200">
+                          Vynechaní pracovníci / Zjištěné absence ({filteredOutList.length})
+                        </h4>
+                        <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                          Lidé z horní lišty absencí nebo Problem Solver. Kliknutím je zařadíte pod
+                          správný důvod:
+                        </p>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowFilteredDetails(!showFilteredDetails)}
-                      className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>{showFilteredDetails ? "Skrýt" : "Zobrazit podrobnosti"}</span>
-                      {showFilteredDetails ? (
-                        <ChevronUp className="w-3.5 h-3.5" />
-                      ) : (
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleAddAllFilteredToAbsence()}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-2xs flex items-center gap-1 cursor-pointer transition-transform active:scale-95"
+                        title="Přidat všechny do seznamu se zjištěným důvodem (Absence/PN/Dovolená)"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>⚡ Přidat všechny do absencí</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowFilteredDetails(!showFilteredDetails)}
+                        className="p-1.5 rounded-lg text-amber-800 dark:text-amber-200 hover:bg-amber-200/50 dark:hover:bg-amber-800/40 cursor-pointer"
+                        title={showFilteredDetails ? "Sbalit" : "Rozbalit"}
+                      >
+                        {showFilteredDetails ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {showFilteredDetails && (
-                    <div className="pt-2 border-t border-amber-200/60 dark:border-amber-800/60 space-y-1.5 max-h-40 overflow-y-auto">
-                      <p className="text-[11px] text-amber-700 dark:text-amber-300">
-                        Tyto osoby byly v obrazu detekovány, ale systém je automaticky nezapsal do
-                        seznamu na směně, aby nedošlo k jejich chybnému zařazení do oddělení.
-                      </p>
-                      <div className="divide-y divide-amber-200/40 dark:divide-amber-800/40">
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center gap-1.5 flex-wrap pb-1 border-b border-amber-200/60 dark:border-amber-800/60">
+                        <span className="text-[10px] font-bold uppercase text-amber-800/70 dark:text-amber-400">
+                          Hromadně:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAddAllFilteredToAbsence("Absence")}
+                          className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-100 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 hover:bg-amber-200 cursor-pointer"
+                        >
+                          Vše jako Absence
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddAllFilteredToAbsence("Dovolená")}
+                          className="px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-700 hover:bg-sky-200 cursor-pointer"
+                        >
+                          Vše jako Dovolená
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddAllFilteredToAbsence("PN")}
+                          className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700 hover:bg-rose-200 cursor-pointer"
+                        >
+                          Vše jako PN
+                        </button>
+                      </div>
+
+                      <div className="max-h-52 overflow-y-auto divide-y divide-amber-200/50 dark:divide-amber-800/40 pr-1">
                         {filteredOutList.map((item, idx) => (
                           <div
                             key={`filtered-${idx}`}
-                            className="py-1.5 flex items-center justify-between gap-2 text-xs"
+                            className="py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-amber-100/40 dark:hover:bg-amber-900/20 px-1 rounded-lg transition-colors"
                           >
                             <div className="flex items-center gap-2 min-w-0">
-                              <span className="font-semibold truncate">{item.name}</span>
+                              <span className="font-bold text-xs sm:text-sm truncate text-slate-900 dark:text-white">
+                                {item.name}
+                              </span>
                               <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
                                   item.reason === "problem_solver"
                                     ? "bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
-                                    : item.reason === "top_absence"
-                                      ? "bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
-                                      : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                                    : /dovol/i.test(item.detail)
+                                      ? "bg-sky-100 text-sky-800 dark:bg-sky-950/80 dark:text-sky-300 border border-sky-200 dark:border-sky-800"
+                                      : /pn|nemoc/i.test(item.detail)
+                                        ? "bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
                                 }`}
                               >
                                 {item.reason === "problem_solver"
                                   ? "Problem Solver"
-                                  : item.reason === "top_absence"
-                                    ? "Horní lišta / Absence"
-                                    : "Záhlaví"}
+                                  : /dovol/i.test(item.detail)
+                                    ? "Dovolená"
+                                    : /pn|nemoc/i.test(item.detail)
+                                      ? "PN / Nemoc"
+                                      : "Absence"}
                               </span>
-                              <span className="text-[10px] text-slate-500 truncate hidden sm:inline">
-                                {item.detail}
-                              </span>
+                              {item.detail && (
+                                <span
+                                  className="text-[10px] text-amber-900/70 dark:text-amber-400 truncate max-w-[140px] hidden md:inline"
+                                  title={item.detail}
+                                >
+                                  {item.detail}
+                                </span>
+                              )}
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setExtractedList((prev) => [
-                                  ...prev,
-                                  {
-                                    tempId: `draft-restored-${Date.now()}-${idx}`,
-                                    name: item.name,
-                                    machineType: "NONE",
-                                    departmentId: "unassigned",
-                                    notes: item.detail,
-                                  },
-                                ]);
-                                setFilteredOutList((prev) => prev.filter((_, i) => i !== idx));
-                              }}
-                              className="shrink-0 text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 underline cursor-pointer"
-                            >
-                              + Přidat do seznamu
-                            </button>
+
+                            <div className="flex items-center gap-1 shrink-0 self-end sm:self-auto flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => handleAddFilteredToAbsence(item, "Absence")}
+                                className="px-2 py-1 rounded text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 dark:text-amber-200 border border-amber-400/50 cursor-pointer transition-colors"
+                                title="Zařadit pod Absence"
+                              >
+                                + Absence
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAddFilteredToAbsence(item, "Dovolená")}
+                                className="px-2 py-1 rounded text-[11px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-900 dark:text-sky-200 border border-sky-400/50 cursor-pointer transition-colors"
+                                title="Zařadit pod Dovolená"
+                              >
+                                + Dovolená
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAddFilteredToAbsence(item, "PN")}
+                                className="px-2 py-1 rounded text-[11px] font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-900 dark:text-rose-200 border border-rose-400/50 cursor-pointer transition-colors"
+                                title="Zařadit pod PN (pracovní neschopnost)"
+                              >
+                                + PN
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAddFilteredToDept(item, "hovc")}
+                                className="px-2 py-1 rounded text-[11px] font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-900 dark:text-emerald-200 border border-emerald-400/50 cursor-pointer transition-colors"
+                                title="Zařadit do směny (HOVC)"
+                              >
+                                + HOVC
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFilteredOutList((prev) => prev.filter((_, i) => i !== idx))
+                                }
+                                className="p-1 rounded text-slate-400 hover:text-rose-500 cursor-pointer"
+                                title="Vyřadit ze seznamu"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1228,108 +1424,243 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                 </div>
               )}
 
-              {/* Table of extracted operators */}
-              <div className="max-h-72 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                {extractedList.map((item, index) => (
-                  <div
-                    key={item.tempId}
-                    className="p-2.5 sm:p-3 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                  >
-                    <span className="text-xs font-mono font-bold text-slate-400 w-6 shrink-0">
-                      {index + 1}.
+              {/* Bulk actions bar for selected OCR drafts */}
+              {selectedDraftIds.size > 0 && (
+                <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 rounded-xl flex items-center justify-between gap-2 flex-wrap text-xs animate-in fade-in">
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-rose-900 dark:text-rose-200">
+                      Vybráno {selectedDraftIds.size} z {extractedList.length} operátorů
                     </span>
-
-                    {/* Name input */}
-                    <div className="flex-1 min-w-[130px]">
-                      <input
-                        type="text"
-                        value={item.name}
-                        onChange={(e) => updateDraft(item.tempId, { name: e.target.value })}
-                        className="w-full text-xs sm:text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {/* Machine Type (LL / RTR / NONE for VNA/Absence) */}
-                    <div className="shrink-0 flex items-center gap-1 min-w-[76px] justify-center">
-                      {item.departmentId === "vna" ? (
-                        <span className="px-2 py-0.5 text-[11px] font-bold rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                          VNA
-                        </span>
-                      ) : item.departmentId === "unassigned" ? (
-                        <span className="px-2 py-0.5 text-[11px] font-medium rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                          Bez stroje
-                        </span>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => updateDraft(item.tempId, { machineType: "LL" })}
-                            className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
-                              item.machineType === "LL"
-                                ? "bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-300 dark:border-amber-700"
-                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200"
-                            }`}
-                          >
-                            LL
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateDraft(item.tempId, { machineType: "RTR" })}
-                            className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
-                              item.machineType === "RTR"
-                                ? "bg-blue-100 text-blue-900 dark:bg-blue-900/60 dark:text-blue-200 border border-blue-300 dark:border-blue-700"
-                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200"
-                            }`}
-                          >
-                            RTR
-                          </button>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Department Dropdown */}
-                    <div className="shrink-0 w-28 sm:w-36">
-                      <select
-                        value={item.departmentId}
-                        onChange={(e) => {
-                          const newDept = e.target.value as DepartmentId;
-                          let newMachine = item.machineType;
-                          if (newDept === "vna" || newDept === "unassigned") {
-                            newMachine = "NONE";
-                          } else if (
-                            (newDept === "hovc" || newDept === "obwi" || newDept === "hovs") &&
-                            newMachine === "NONE"
-                          ) {
-                            newMachine = "RTR";
-                          } else if (newDept === "putaway" && newMachine === "NONE") {
-                            newMachine = "LL";
-                          }
-                          updateDraft(item.tempId, {
-                            departmentId: newDept,
-                            machineType: newMachine,
-                          });
-                        }}
-                        className="w-full text-xs font-medium px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                      >
-                        {DEPARTMENTS.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Delete row */}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => removeDraft(item.tempId)}
-                      className="p-1 text-slate-400 hover:text-rose-500 transition-colors"
-                      title="Smazat řádek"
+                      onClick={handleDeleteSelectedDrafts}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-xs flex items-center gap-1.5 cursor-pointer transition-transform active:scale-95"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Smazat vybrané ({selectedDraftIds.size})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkSetMachineForDrafts("LL")}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/60 dark:hover:bg-amber-800/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 cursor-pointer"
+                    >
+                      Nastavit všem LL
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkSetMachineForDrafts("RTR")}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800/60 text-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-700 cursor-pointer"
+                    >
+                      Nastavit všem RTR
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDraftIds(new Set())}
+                      className="px-2 py-1.5 rounded-lg text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                    >
+                      Zrušit výběr
                     </button>
                   </div>
-                ))}
+                </div>
+              )}
+
+              {/* Table of extracted operators */}
+              <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
+                {/* Table Header with Select All */}
+                <div className="p-2.5 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAllDrafts}
+                      className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer flex items-center gap-1.5 text-slate-700 dark:text-slate-200"
+                      title={
+                        selectedDraftIds.size === extractedList.length
+                          ? "Odznačit vše"
+                          : "Označit vše pro hromadné smazání"
+                      }
+                    >
+                      {selectedDraftIds.size > 0 &&
+                      selectedDraftIds.size === extractedList.length ? (
+                        <CheckSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      ) : selectedDraftIds.size > 0 ? (
+                        <CheckSquare className="w-4 h-4 text-slate-500" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-400" />
+                      )}
+                      <span>Vybrat vše ({extractedList.length})</span>
+                    </button>
+                  </div>
+
+                  <div className="hidden sm:flex items-center gap-4 text-[11px] text-slate-500">
+                    <span>Stroj / Důvod</span>
+                    <span>Oddělení</span>
+                  </div>
+                </div>
+
+                {/* Rows */}
+                <div className="max-h-72 overflow-y-auto divide-y divide-slate-200 dark:divide-slate-800">
+                  {extractedList.map((item, index) => (
+                    <div
+                      key={item.tempId}
+                      className={`p-2.5 sm:p-3 flex items-center justify-between gap-2.5 transition-colors ${
+                        selectedDraftIds.has(item.tempId)
+                          ? "bg-rose-50/70 dark:bg-rose-950/30"
+                          : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      }`}
+                    >
+                      {/* Selection Checkbox */}
+                      <button
+                        type="button"
+                        onClick={() => toggleSelectDraft(item.tempId)}
+                        className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer shrink-0"
+                        title="Označit řádek"
+                      >
+                        {selectedDraftIds.has(item.tempId) ? (
+                          <CheckSquare className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-300 dark:text-slate-600" />
+                        )}
+                      </button>
+
+                      <span className="text-xs font-mono font-bold text-slate-400 w-5 shrink-0 text-center">
+                        {index + 1}.
+                      </span>
+
+                      {/* Name input */}
+                      <div className="flex-1 min-w-[120px]">
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => updateDraft(item.tempId, { name: e.target.value })}
+                          className="w-full text-xs sm:text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-white"
+                        />
+                      </div>
+
+                      {/* Machine Type or Absence Reason */}
+                      <div className="shrink-0 flex items-center gap-1 justify-center">
+                        {item.departmentId === "unassigned" ? (
+                          <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateDraft(item.tempId, { absenceReason: "Absence" })
+                              }
+                              className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
+                                (item.absenceReason || "Absence") === "Absence"
+                                  ? "bg-amber-500 text-white shadow-2xs"
+                                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                              }`}
+                            >
+                              Abs
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateDraft(item.tempId, { absenceReason: "Dovolená" })
+                              }
+                              className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
+                                item.absenceReason === "Dovolená"
+                                  ? "bg-sky-500 text-white shadow-2xs"
+                                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                              }`}
+                            >
+                              Dov
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateDraft(item.tempId, { absenceReason: "PN" })}
+                              className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
+                                item.absenceReason === "PN"
+                                  ? "bg-rose-500 text-white shadow-2xs"
+                                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                              }`}
+                            >
+                              PN
+                            </button>
+                          </div>
+                        ) : item.departmentId === "vna" ? (
+                          <span className="px-2 py-0.5 text-[11px] font-bold rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                            VNA
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => updateDraft(item.tempId, { machineType: "LL" })}
+                              className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
+                                item.machineType === "LL"
+                                  ? "bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-300 dark:border-amber-700"
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200"
+                              }`}
+                            >
+                              LL
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateDraft(item.tempId, { machineType: "RTR" })}
+                              className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
+                                item.machineType === "RTR"
+                                  ? "bg-blue-100 text-blue-900 dark:bg-blue-900/60 dark:text-blue-200 border border-blue-300 dark:border-blue-700"
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200"
+                              }`}
+                            >
+                              RTR
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Department Dropdown */}
+                      <div className="shrink-0 w-28 sm:w-36">
+                        <select
+                          value={item.departmentId}
+                          onChange={(e) => {
+                            const newDept = e.target.value as DepartmentId;
+                            let newMachine = item.machineType;
+                            let newReason = item.absenceReason;
+                            if (newDept === "vna" || newDept === "unassigned") {
+                              newMachine = "NONE";
+                              if (newDept === "unassigned" && !newReason) newReason = "Absence";
+                            } else if (newDept === "hovs") {
+                              newMachine = "LL";
+                            } else if (
+                              (newDept === "hovc" || newDept === "obwi") &&
+                              newMachine === "NONE"
+                            ) {
+                              newMachine = "RTR";
+                            } else if (newDept === "putaway" && newMachine === "NONE") {
+                              newMachine = "LL";
+                            }
+                            updateDraft(item.tempId, {
+                              departmentId: newDept,
+                              machineType: newMachine,
+                              absenceReason: newReason,
+                            });
+                          }}
+                          className="w-full text-xs font-medium px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                        >
+                          {DEPARTMENTS.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Delete row */}
+                      <button
+                        type="button"
+                        onClick={() => removeDraft(item.tempId)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors shrink-0 cursor-pointer"
+                        title="Smazat tohoto operátora ze seznamu"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* Replace vs Append choice */}

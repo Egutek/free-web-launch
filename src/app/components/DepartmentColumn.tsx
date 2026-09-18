@@ -42,6 +42,7 @@ interface DepartmentColumnProps {
   onAddOperatorToDept: (deptId: DepartmentId) => void;
   onDropOperator: (operatorIds: string[], targetDeptId: DepartmentId) => void;
   onDeleteDepartment?: (deptId: DepartmentId) => void;
+  onDeleteMultipleOperators?: (ids: string[]) => void;
 }
 
 // Vibrant department header color configurations
@@ -201,6 +202,7 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
   onAddOperatorToDept,
   onDropOperator,
   onDeleteDepartment,
+  onDeleteMultipleOperators,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [absenceFilter, setAbsenceFilter] = useState<"ALL" | AbsenceReason>("ALL");
@@ -383,6 +385,27 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
                 <CheckSquare className="w-4 h-4" />
               </button>
             )}
+
+            {/* Quick bulk delete button for selected operators in this department */}
+            {onDeleteMultipleOperators &&
+              (() => {
+                const selectedInDept = operators.filter((o) => bulkSelectedIds?.has(o.id));
+                if (selectedInDept.length === 0) return null;
+                return (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteMultipleOperators(selectedInDept.map((o) => o.id));
+                    }}
+                    className="px-2 py-1 rounded-lg text-white font-black text-xs bg-rose-600 hover:bg-rose-500 border border-rose-300/60 shadow-xs flex items-center gap-1 cursor-pointer transition-all active:scale-95 animate-in fade-in"
+                    title={`Smazat ${selectedInDept.length} označených operátorů z oddělení ${department.name}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{selectedInDept.length}</span>
+                  </button>
+                );
+              })()}
 
             {/* Simple clean + button */}
             <button

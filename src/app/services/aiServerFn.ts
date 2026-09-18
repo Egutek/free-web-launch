@@ -32,8 +32,7 @@ PŘIŘAZENÍ K ODDĚLENÍM (departmentId):
 PRAVIDLA PRO STROJE A KVALIFIKACE (machineType):
 - 'NONE': Pro oddělení VNA ('vna') a Nezařazeno ('unassigned') VŽDY nastav 'NONE'! U VNA se automaticky počítá, že jsou na VNA a nepřiřazuje se jim LL ani RTR.
 - 'RTR': Pro Outbound / HOVC ('hovc') a OBWI ('obwi') VŽDY AUTOMATICKY PŘIŘAĎ 'RTR'! Může se stát, že tam bude výjimečně někdo s LL – POUZE pokud je u jména výslovně napsáno "LL", "LL:", "(LL)" nebo "nízkozdvih", přiřaď 'LL', jinak VŽDY přiřaď 'RTR'.
-  Pro HOVS ('hovs') rovněž automaticky přiřaď 'RTR' (pokud není výslovně uvedeno LL).
-- 'LL': Pro Putaway ('putaway') nastav 'LL' (pokud není výslovně uveden RTR/Retrak), nebo pokud je u pracovníka výslovně napsáno LL.
+- 'LL': Pro HOVS ('hovs') a Putaway ('putaway') VŽDY AUTOMATICKY PŘIŘAĎ 'LL'! (Operátoři na HOVS mají většinou nízkozdvih LL. Pouze pokud je u jména výslovně napsáno "RTR", "(RTR)", "Retrak", přiřaď 'RTR', jinak VŽDY přiřaď 'LL').
 
 REFERENČNÍ SEZNAM PRACOVNÍKŮ ZF OSTROV (využij k přesnému doplnění a opravě překlepů z rukopisu):
 Andrii Gurkot, Barnóky Roman, Bereš Zbyněk, Bogár Alexander, BOHDAN BAIOV, Burget David, Červeňák Michael, Daduč Imrich, Daniel Šír, DAVID SVOBODA, DEMIANETS D., Faber Dominik, Fiala Ladislav, Gajdoš Slavomír, Györke Ladislav, Halimov Oleh, Havel Zdeněk, Hemzáček Lukáš, Horváth Valentin, Hosszu Radek, Hřava Dominik, Chrastina Atilla, IHOR Pozniak, IHOR Savchenko, JAKUB PFREIMER, JAKUB SKÁLA, Jiří Nečas, Jiří Teplý, Jiří Vašíček, Josef Bartko, Kateřina Novotná, Kochut Yurii, Kovalchuk O., Kryvoruchko Daria, Kurcius David, Máca Filip, Martin Mazánek, Martin Vlček, Merzliakov O., Mika Dominik, Miroslav Havlík, Miroslav Kónya, Mrhal Aleš, Müller Jan, Mykhailchuk M., Nováček M., Pacelt Jakub, Pavelka Vojtěch, Petrus Oleksandr, Popelář Hynek, Pukančík Ota, Robert Trapl, Sebastian Čermák, SIDEI BOGDAN, Simona Pyttlová, Sivák David, Sivák R., Sovadina Václav, Šándor Milan, Tomáš Bartoš, TONDA HORÁK, Velat Petr, VITALII SAVCHENKO, Vít Varga, Vojtěch Hodl, Zamrii, Serhiievych, Pitec S.
@@ -284,7 +283,9 @@ export function parseTextFallback(textInput: string): {
     let machineType: "LL" | "RTR" | "NONE" = "LL";
     if (departmentId === "vna" || departmentId === "unassigned") {
       machineType = "NONE";
-    } else if (departmentId === "hovc" || departmentId === "obwi" || departmentId === "hovs") {
+    } else if (departmentId === "hovs") {
+      machineType = hasExplicitRTR ? "RTR" : "LL";
+    } else if (departmentId === "hovc" || departmentId === "obwi") {
       machineType = hasExplicitLL ? "LL" : "RTR";
     } else if (departmentId === "putaway") {
       machineType = hasExplicitRTR ? "RTR" : "LL";
@@ -376,7 +377,9 @@ export function normalize(list: unknown): {
     let machineType: "LL" | "RTR" | "NONE" = "LL";
     if (dept === "vna" || dept === "unassigned") {
       machineType = "NONE";
-    } else if (dept === "hovc" || dept === "obwi" || dept === "hovs") {
+    } else if (dept === "hovs") {
+      machineType = hasExplicitRTR ? "RTR" : "LL";
+    } else if (dept === "hovc" || dept === "obwi") {
       machineType = hasExplicitLL ? "LL" : "RTR";
     } else if (dept === "putaway") {
       machineType = hasExplicitRTR ? "RTR" : "LL";

@@ -54,7 +54,11 @@ import {
   Wrench,
   Users,
   CheckSquare,
+  Trash2,
+  Sparkles,
+  X,
 } from "lucide-react";
+import { FilteredOutRecord } from "./services/aiServerFn";
 import {
   resolveOperatorFromDrop,
   resolveOperatorIdsFromDrop,
@@ -218,6 +222,7 @@ export default function App() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isPhotoImportOpen, setIsPhotoImportOpen] = useState(false);
+  const [omittedFromImport, setOmittedFromImport] = useState<FilteredOutRecord[]>([]);
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [isAddCustomDeptOpen, setIsAddCustomDeptOpen] = useState(false);
   const [deptToDeleteConfirm, setDeptToDeleteConfirm] = useState<Department | null>(null);
@@ -571,7 +576,9 @@ export default function App() {
           o.departmentId === "unassigned" ||
           finalMachineType === "NONE"
         ) {
-          if (targetDeptId === "hovc" || targetDeptId === "obwi" || targetDeptId === "hovs") {
+          if (targetDeptId === "hovs") {
+            finalMachineType = "LL";
+          } else if (targetDeptId === "hovc" || targetDeptId === "obwi") {
             finalMachineType = "RTR";
           } else {
             finalMachineType = "LL";
@@ -743,7 +750,9 @@ export default function App() {
       targetOp.departmentId === "unassigned" ||
       finalMachineType === "NONE"
     ) {
-      if (targetDeptId === "hovc" || targetDeptId === "obwi" || targetDeptId === "hovs") {
+      if (targetDeptId === "hovs") {
+        finalMachineType = "LL";
+      } else if (targetDeptId === "hovc" || targetDeptId === "obwi") {
         finalMachineType = "RTR";
       } else {
         finalMachineType = "LL";
@@ -942,7 +951,9 @@ export default function App() {
     if (targetDeptId === "unassigned" || newStatus === "absence") {
       targetMachine = "NONE";
     } else if (targetOp.departmentId === "unassigned" || targetMachine === "NONE") {
-      if (targetDeptId === "hovc" || targetDeptId === "obwi" || targetDeptId === "hovs") {
+      if (targetDeptId === "hovs") {
+        targetMachine = "LL";
+      } else if (targetDeptId === "hovc" || targetDeptId === "obwi") {
         targetMachine = "RTR";
       } else if (targetDeptId === "vna") {
         targetMachine = "NONE";
@@ -1111,18 +1122,34 @@ export default function App() {
   };
 
   // Import operators from photo OCR or text list
-  const handleImportOperators = async (newOps: Operator[], replaceAll: boolean) => {
+  const handleImportOperators = async (
+    newOps: Operator[],
+    replaceAll: boolean,
+    omittedCandidates?: FilteredOutRecord[],
+  ) => {
+    // If candidates were filtered out during OCR, save them for quick one-click absence addition
+    if (omittedCandidates && omittedCandidates.length > 0) {
+      setOmittedFromImport(omittedCandidates);
+    } else {
+      setOmittedFromImport([]);
+    }
+
     // Ensure all new operators are assigned to the current active shift and have correct machine types
     const shiftedOps = newOps.map((op) => {
       const deptId = op.departmentId || "hovc";
       let machine = op.machineType;
       if (deptId === "vna" || deptId === "unassigned") {
         machine = "NONE";
+      } else if (deptId === "hovs") {
+        // HOVS department operators mostly drive LL unless RTR was detected
+        machine = machine === "RTR" ? "RTR" : "LL";
       } else if (
-        (deptId === "hovc" || deptId === "obwi" || deptId === "hovs") &&
+        (deptId === "hovc" || deptId === "obwi") &&
         (!machine || machine === "NONE")
       ) {
         machine = "RTR";
+      } else if (!machine) {
+        machine = "LL";
       }
       return {
         ...op,
@@ -1164,6 +1191,108 @@ export default function App() {
       );
     }
     setIsPhotoImportOpen(false);
+  };
+
+  // Quick addition of an omitted candidate from the import banner directly into absences
+  const handleAddOmittedToAbsence = (item: FilteredOutRecord, reason: AbsenceReason) => {
+    const newOp: Operator = {
+      id: `op-omitted-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: item.name,
+      machineType: "NONE",
+      departmentId: "unassigned",
+      isVnaOnly: false,
+      status: "absence",
+      absenceReason: reason,
+      notes: item.detail || "Absence zjištěná z importu",
+      shift: activeShift,
+      lastMovedAt: new Date().toISOString(),
+    };
+    const updated = [newOp, ...operators];
+    setOperators(updated);
+    saveOperators(updated);
+    syncOperatorToCloud(newOp).catch((e) => console.warn("Cloud sync error:", e));
+    setOmittedFromImport((prev) => prev.filter((f) => f.name !== item.name));
+    showToast(`${item.name} zařazen(a) pod Absenci (${reason})`);
+  };
+
+  // Add all remaining omitted candidates from the import banner directly into absences
+  const handleAddAllOmittedToAbsence = () => {
+    if (omittedFromImport.length === 0) return;
+    const newOps: Operator[] = omittedFromImport.map((item, idx) => {
+      let reason: AbsenceReason = "Absence";
+      const combined = `${item.name} ${item.detail}`.toLowerCase();
+      if (combined.includes("dovol")) {
+        reason = "Dovolená";
+      } else if (
+        combined.includes("pn") ||
+        combined.includes("nemoc") ||
+        combined.includes("neschop")
+      ) {
+        reason = "PN";
+      }
+      return {
+        id: `op-omitted-all-${Date.now()}-${idx}`,
+        name: item.name,
+        machineType: "NONE",
+        departmentId: "unassigned",
+        isVnaOnly: false,
+        status: "absence",
+        absenceReason: reason,
+        notes: item.detail || "Absence z importu",
+        shift: activeShift,
+        lastMovedAt: new Date().toISOString(),
+      };
+    });
+
+    const updated = [...newOps, ...operators];
+    setOperators(updated);
+    saveOperators(updated);
+    bulkSyncOperatorsToCloud(newOps).catch((e) => console.warn("Cloud sync error:", e));
+    showToast(`Všech ${newOps.length} vynechaných pracovníků bylo zařazeno do absencí.`);
+    setOmittedFromImport([]);
+  };
+
+  // Bulk delete operators (from selection or from a specific department)
+  const handleBulkDeleteOperators = (idsToDelete?: string[]) => {
+    const targetIds = idsToDelete || Array.from(bulkSelectedIds);
+    if (targetIds.length === 0) return;
+
+    const idSet = new Set(targetIds);
+    const toDelete = operators.filter((o) => idSet.has(o.id));
+    if (toDelete.length === 0) return;
+
+    const count = toDelete.length;
+    const namesPreview =
+      toDelete.length <= 3
+        ? toDelete.map((o) => o.name).join(", ")
+        : `${toDelete.slice(0, 2).map((o) => o.name).join(", ")} a dalších ${count - 2}`;
+
+    const confirmed = window.confirm(
+      `Opravdu chcete hromadně smazat ${count} operátorů (${namesPreview}) ze směny ${activeShift}?`,
+    );
+    if (!confirmed) return;
+
+    const updated = operators.filter((o) => !idSet.has(o.id));
+    setOperators(updated);
+    saveOperators(updated);
+
+    targetIds.forEach((id) => {
+      deleteOperatorFromCloud(id).catch((e) =>
+        console.warn("Cloud operator delete error:", e),
+      );
+    });
+
+    setBulkSelectedIds((prev) => {
+      const next = new Set(prev);
+      targetIds.forEach((id) => next.delete(id));
+      return next;
+    });
+
+    if (selectedOperatorId && idSet.has(selectedOperatorId)) {
+      setSelectedOperatorId(null);
+    }
+
+    showToast(`Hromadně smazáno ${count} operátorů ze směny.`);
   };
 
   // Delete operator
@@ -1593,6 +1722,15 @@ export default function App() {
                     </button>
                     <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
                     <button
+                      id="jump-bar-delete-bulk-btn"
+                      onClick={() => handleBulkDeleteOperators()}
+                      className="px-2 py-1 text-[11px] font-bold rounded-lg bg-rose-600 hover:bg-rose-500 text-white shadow-xs transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                      title="Smazat všechny vybrané operátory ze směny"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Smazat ({bulkSelectedIds.size})</span>
+                    </button>
+                    <button
                       id="jump-bar-select-all-btn"
                       onClick={handleSelectAll}
                       className="px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-all cursor-pointer"
@@ -1641,6 +1779,97 @@ export default function App() {
               </div>
             </div>
 
+            {/* Omitted/Absence notification banner after OCR import */}
+            {omittedFromImport.length > 0 && (
+              <div
+                id="omitted-import-banner"
+                className="p-3 sm:p-3.5 bg-amber-50/95 dark:bg-amber-950/50 border-2 border-amber-300 dark:border-amber-700/80 rounded-2xl text-xs text-amber-950 dark:text-amber-100 shadow-sm space-y-2 animate-in fade-in"
+              >
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-extrabold text-xs sm:text-sm text-amber-900 dark:text-amber-200">
+                        Zjištěné vynechané osoby ze snímku ({omittedFromImport.length})
+                      </span>
+                      <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                        Tyto lidi OCR vynechalo (Absence, PN, Dovolená, PS). Kliknutím je můžete rovnou naklikat pod absenci:
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      id="omitted-add-all-btn"
+                      onClick={handleAddAllOmittedToAbsence}
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-transform"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>⚡ Přidat všechny do Absencí</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOmittedFromImport([])}
+                      className="p-1.5 rounded-xl text-amber-800 dark:text-amber-300 hover:bg-amber-200/60 dark:hover:bg-amber-800/40 cursor-pointer"
+                      title="Zavřít lištu"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 scrollbar-thin">
+                  {omittedFromImport.map((item, idx) => (
+                    <div
+                      key={`omitted-top-${idx}`}
+                      className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800/80 shadow-2xs text-xs"
+                    >
+                      <span className="font-bold text-slate-800 dark:text-slate-200 mr-1">
+                        {item.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleAddOmittedToAbsence(item, "Absence")}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 dark:text-amber-200 border border-amber-400/50 cursor-pointer"
+                        title="Přidat pod standardní Absenci"
+                      >
+                        + Absence
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAddOmittedToAbsence(item, "Dovolená")}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-900 dark:text-sky-200 border border-sky-400/50 cursor-pointer"
+                        title="Přidat pod Dovolená"
+                      >
+                        + Dovolená
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAddOmittedToAbsence(item, "PN")}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-900 dark:text-rose-200 border border-rose-400/50 cursor-pointer"
+                        title="Přidat pod PN"
+                      >
+                        + PN
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOmittedFromImport((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        className="p-0.5 text-slate-400 hover:text-rose-500 cursor-pointer ml-0.5"
+                        title="Odebrat z nabídky"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Notice bar */}
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
               <div className="flex items-center gap-2">
@@ -1683,6 +1912,16 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    id="bulk-selected-delete-btn"
+                    onClick={() => handleBulkDeleteOperators()}
+                    className="px-3 py-1 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-500 text-white transition-all cursor-pointer border border-rose-400/80 shadow-md active:scale-95 flex items-center gap-1.5"
+                    title={`Smazat ${bulkSelectedIds.size} vybraných operátorů`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Smazat vybrané ({bulkSelectedIds.size})</span>
+                  </button>
                   {bulkSelectedIds.size < shiftOperators.length && (
                     <button
                       type="button"
@@ -1811,6 +2050,7 @@ export default function App() {
                     onDeleteDepartment={
                       dept.isCustom ? () => handleDeleteCustomDepartment(dept.id) : undefined
                     }
+                    onDeleteMultipleOperators={handleBulkDeleteOperators}
                   />
                 );
               })}
@@ -1878,6 +2118,7 @@ export default function App() {
             onChangeStatus={handleChangeStatus}
             onChangeMachineType={handleChangeMachineType}
             onDeleteOperator={handleDeleteOperator}
+            onDeleteMultipleOperators={handleBulkDeleteOperators}
           />
         )}
       </main>
