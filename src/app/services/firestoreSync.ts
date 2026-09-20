@@ -103,14 +103,22 @@ export async function deleteOperatorFromCloud(operatorId: string): Promise<void>
 }
 
 export async function bulkSyncOperatorsToCloud(operators: Operator[]): Promise<void> {
-  const batch = writeBatch(db);
-  for (const op of operators) {
-    const cleanOp: Record<string, unknown> = { ...op, shift: op.shift || "A" };
-    Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
-    batch.set(getDocRef("operators", op.id), cleanOp);
-  }
+  if (operators.length === 0) return;
+
   try {
-    await batch.commit();
+    // Firestore limits a batch to 500 writes; keep headroom for future changes.
+    for (let start = 0; start < operators.length; start += 400) {
+      const batch = writeBatch(db);
+      const chunk = operators.slice(start, start + 400);
+
+      for (const op of chunk) {
+        const cleanOp: Record<string, unknown> = { ...op, shift: op.shift || "A" };
+        Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
+        batch.set(getDocRef("operators", op.id), cleanOp);
+      }
+
+      await batch.commit();
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, "operators(batch)");
   }
