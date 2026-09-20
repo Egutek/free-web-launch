@@ -1,18 +1,18 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-import tsconfigPaths from "vite-tsconfig-paths";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import viteReact from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import tsConfigPaths from "vite-tsconfig-paths";
+import { nitro } from "nitro/vite";
 
 export default defineConfig({
   plugins: [
+    tsConfigPaths(),
     tanstackStart(),
-    react(),
+    nitro({
+      preset: process.env.NETLIFY ? "netlify" : "node-server",
+    }),
+    viteReact(),
     tailwindcss(),
-    tsconfigPaths(),
   ],
-  nitro: {
-    preset: process.env.NETLIFY ? "netlify" : "node-server",
-    output: process.env.NETLIFY ? undefined : { dir: "dist" },
-  },
 });
