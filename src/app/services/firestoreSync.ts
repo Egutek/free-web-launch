@@ -198,6 +198,20 @@ export function subscribeToHistory(
   );
 }
 
+export async function clearHistoryFromCloud(): Promise<void> {
+  try {
+    const snapshot = await getDocs(getCollectionRef("history"));
+
+    for (let start = 0; start < snapshot.docs.length; start += 400) {
+      const batch = writeBatch(db);
+      snapshot.docs.slice(start, start + 400).forEach((docSnap) => batch.delete(docSnap.ref));
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, "history(clear)");
+  }
+}
+
 export async function syncHistoryRecordToCloud(record: MoveHistoryRecord): Promise<void> {
   try {
     const cleanRecord: Record<string, unknown> = { ...record };
