@@ -183,8 +183,9 @@ export function subscribeToHistory(
       onUpdate(records);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "history");
-      if (onError) onError(error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("Firestore history subscription error:", err);
+      onError?.(err);
     },
   );
 }
@@ -214,8 +215,9 @@ export function subscribeToTemplates(
       onUpdate(templates);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "templates");
-      if (onError) onError(error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("Firestore templates subscription error:", err);
+      onError?.(err);
     },
   );
 }
@@ -253,8 +255,9 @@ export function subscribeToCustomDepartments(
       onUpdate(depts);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "custom_departments");
-      if (onError) onError(error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("Firestore custom departments subscription error:", err);
+      onError?.(err);
     },
   );
 }
