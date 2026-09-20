@@ -71,6 +71,7 @@ import {
   replaceOperatorsInCloud,
   deleteOperatorFromCloud,
   syncHistoryRecordToCloud,
+  clearHistoryFromCloud,
   subscribeToHistory,
   subscribeToCustomDepartments,
   syncCustomDepartmentToCloud,
@@ -1391,7 +1392,10 @@ export default function App() {
     setHistory([]);
     saveHistory([]);
     setUndoStack([]);
-    await replaceOperatorsInCloud(reset).catch((e) => console.warn("Cloud reset sync error:", e));
+    await Promise.all([
+      replaceOperatorsInCloud(reset).catch((e) => console.warn("Cloud reset sync error:", e)),
+      clearHistoryFromCloud().catch((e) => console.warn("Cloud history reset error:", e)),
+    ]);
     showToast("Data obnovena na 65 operátorů oddělení PICK.");
   };
 
