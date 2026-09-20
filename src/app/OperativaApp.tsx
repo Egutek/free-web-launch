@@ -367,19 +367,22 @@ export default function App() {
       if (currentStack.length === 0) return currentStack;
       const [lastOp, ...remainingStack] = currentStack;
 
-      setOperators((prevOperators) =>
-        prevOperators.map((o) =>
-          o.id === lastOp.operatorId
-            ? {
-                ...o,
-                departmentId: lastOp.fromDept,
-                status:
-                  lastOp.fromStatus ?? (lastOp.fromDept === "unassigned" ? "absence" : "active"),
-                lastMovedAt: new Date().toISOString(),
-              }
-            : o,
-        ),
+      const undoTimestamp = new Date().toISOString();
+      const updatedOperators = operatorsRef.current.map((o) =>
+        o.id === lastOp.operatorId
+          ? {
+              ...o,
+              departmentId: lastOp.fromDept,
+              machineType: lastOp.machineType,
+              status:
+                lastOp.fromStatus ?? (lastOp.fromDept === "unassigned" ? "absence" : "active"),
+              absenceReason: lastOp.fromAbsenceReason,
+              lastMovedAt: undoTimestamp,
+            }
+          : o,
       );
+      setOperators(updatedOperators);
+      saveOperators(updatedOperators);
 
       const fromDept = getDepartmentById(lastOp.fromDept);
       const toDept = getDepartmentById(lastOp.toDept);
@@ -397,14 +400,11 @@ export default function App() {
       setHistory((prev) => [historyItem, ...prev]);
 
       // Cloud synchronization for undo
-      const revertedOp = operatorsRef.current.find((o) => o.id === lastOp.operatorId);
+      const revertedOp = updatedOperators.find((o) => o.id === lastOp.operatorId);
       if (revertedOp) {
-        syncOperatorToCloud({
-          ...revertedOp,
-          departmentId: lastOp.fromDept,
-          status: lastOp.fromStatus ?? (lastOp.fromDept === "unassigned" ? "absence" : "active"),
-          lastMovedAt: new Date().toISOString(),
-        }).catch((e) => console.warn("Cloud undo sync error:", e));
+        syncOperatorToCloud(revertedOp).catch((e) =>
+          console.warn("Cloud undo sync error:", e),
+        );
       }
       syncHistoryRecordToCloud(historyItem).catch((e) =>
         console.warn("Cloud history sync error:", e),
@@ -426,23 +426,22 @@ export default function App() {
         const opsToRevert = currentStack.slice(0, countToRevert);
         const remainingStack = currentStack.slice(countToRevert);
 
-        // Apply reversions in order from newest to oldest
-        setOperators((prevOperators) => {
-          let updated = [...prevOperators];
-          for (const op of opsToRevert) {
-            updated = updated.map((o) =>
-              o.id === op.operatorId
-                ? {
-                    ...o,
-                    departmentId: op.fromDept,
-                    status: op.fromStatus ?? (op.fromDept === "unassigned" ? "absence" : "active"),
-                    lastMovedAt: new Date().toISOString(),
-                  }
-                : o,
-            );
-          }
-          return updated;
+        // Apply reversions in order from newest to oldest and persist immediately.
+        const undoTimestamp = new Date().toISOString();
+        const updatedOperators = operatorsRef.current.map((o) => {
+          const op = opsToRevert.find((candidate) => candidate.operatorId === o.id);
+          if (!op) return o;
+          return {
+            ...o,
+            departmentId: op.fromDept,
+            machineType: op.machineType,
+            status: op.fromStatus ?? (op.fromDept === "unassigned" ? "absence" : "active"),
+            absenceReason: op.fromAbsenceReason,
+            lastMovedAt: undoTimestamp,
+          };
         });
+        setOperators(updatedOperators);
+        saveOperators(updatedOperators);
 
         // Record bulk undo in history
         const historyEntries: MoveHistoryRecord[] = opsToRevert.map((op, i) => ({
@@ -458,18 +457,9 @@ export default function App() {
         setHistory((prev) => [...historyEntries, ...prev]);
 
         // Cloud synchronization for bulk undo
-        const revertedOps: Operator[] = [];
-        for (const op of opsToRevert) {
-          const found = operatorsRef.current.find((o) => o.id === op.operatorId);
-          if (found) {
-            revertedOps.push({
-              ...found,
-              departmentId: op.fromDept,
-              status: op.fromStatus ?? (op.fromDept === "unassigned" ? "absence" : "active"),
-              lastMovedAt: new Date().toISOString(),
-            });
-          }
-        }
+        const revertedOps: Operator[] = updatedOperators.filter((o) =>
+          opsToRevert.some((op) => op.operatorId === o.id),
+        );
         if (revertedOps.length > 0) {
           bulkSyncOperatorsToCloud(revertedOps).catch((e) =>
             console.warn("Cloud bulk undo sync error:", e),
@@ -791,6 +781,11 @@ export default function App() {
       toDept: targetDeptId,
       fromStatus: targetOp.status,
       toStatus: newStatus,
+      fromAbsenceReason: targetOp.absenceReason,
+      toAbsenceReason:
+        targetDeptId === "unassigned"
+          ? absenceReason || targetOp.absenceReason || "Absence"
+          : undefined,
       timestamp: new Date().toISOString(),
     };
     setUndoStack((prev) => [undoOp, ...prev.slice(0, 4)]);
