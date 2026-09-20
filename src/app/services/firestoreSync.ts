@@ -77,8 +77,9 @@ export function subscribeToOperators(
       onUpdate(ops);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "operators");
-      if (onError) onError(error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("Firestore operators subscription error:", err);
+      onError?.(err);
     },
   );
 }
