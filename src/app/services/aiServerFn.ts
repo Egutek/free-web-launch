@@ -528,8 +528,8 @@ ${customInstructions.trim()}
     let operators: ExtractedOperator[] = [];
     let filteredOut: FilteredOutRecord[] = [];
 
-    // Prioritized working Gemini models (gemini-3.6-flash is primary, 3.1-flash-lite is backup)
-    const modelsToTry = ["gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash"];
+    // Stable multimodal Gemini models, newest first with production-safe fallbacks.
+    const modelsToTry = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite"];
     let lastError: Error | null = null;
 
     for (const model of modelsToTry) {
@@ -543,7 +543,6 @@ ${customInstructions.trim()}
             contents: [{ parts }],
             generationConfig: {
               responseMimeType: "application/json",
-              temperature: 0.1,
             },
           }),
           signal: AbortSignal.timeout(20000),
