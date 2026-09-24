@@ -59,6 +59,7 @@ import {
   X,
 } from "lucide-react";
 import { FilteredOutRecord } from "./services/aiServerFn";
+import { ensureFirebaseAuth } from "./firebase";
 import {
   resolveOperatorFromDrop,
   resolveOperatorIdsFromDrop,
@@ -259,49 +260,98 @@ export default function App() {
     saveUndoStack(undoStack);
   }, [undoStack]);
 
-  // Real-time sync for Operators for everyone with the link
+  // Login-free Firebase authentication + real-time cloud sync.
+  // Anonymous auth runs before Firestore listeners so rules can safely require
+  // request.auth without introducing a visible login screen.
   useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | null = null;
+
     setIsCloudSyncing(true);
-    const unsub = subscribeToOperators(
-      (cloudOps) => {
+    ensureFirebaseAuth()
+      .then(() => {
+        if (cancelled) return;
+        unsub = subscribeToOperators(
+          (cloudOps) => {
+            setIsCloudSyncing(false);
+            setIsCloudConnected(true);
+            if (cloudOps.length > 0) {
+              setOperators(cloudOps);
+              saveOperators(cloudOps);
+            } else {
+              // If cloud is empty on first setup, seed initial operators.
+              bulkSyncOperatorsToCloud(operatorsRef.current).catch((err) =>
+                console.warn("Initial cloud seed failed:", err),
+              );
+            }
+          },
+          (err) => {
+            setIsCloudSyncing(false);
+            setIsCloudConnected(false);
+            console.warn("Firestore subscription error:", err);
+          },
+        );
+      })
+      .catch((err) => {
         setIsCloudSyncing(false);
-        setIsCloudConnected(true);
-        if (cloudOps.length > 0) {
-          setOperators(cloudOps);
-          saveOperators(cloudOps);
-        } else {
-          // If cloud is empty on first setup, seed initial operators
-          bulkSyncOperatorsToCloud(operatorsRef.current).catch((err) =>
-            console.warn("Initial cloud seed failed:", err),
-          );
-        }
-      },
-      (err) => {
-        setIsCloudSyncing(false);
-        console.warn("Firestore subscription error:", err);
-      },
-    );
-    return () => unsub();
+        setIsCloudConnected(false);
+        console.warn("Firebase anonymous authentication failed:", err);
+      });
+
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   }, []);
 
-  // Real-time Firestore sync for History for everyone with the link
+  // Real-time Firestore sync for History.
   useEffect(() => {
-    const unsub = subscribeToHistory((cloudHistory) => {
-      if (cloudHistory.length > 0) {
-        setHistory(cloudHistory);
-        saveHistory(cloudHistory);
-      }
-    });
-    return () => unsub();
+    let cancelled = false;
+    let unsub: (() => void) | null = null;
+
+    ensureFirebaseAuth()
+      .then(() => {
+        if (cancelled) return;
+        unsub = subscribeToHistory(
+          (cloudHistory) => {
+            // An empty cloud collection is meaningful (for example after reset)
+            // and must clear the local history as well.
+            setHistory(cloudHistory);
+            saveHistory(cloudHistory);
+          },
+          (err) => console.warn("Firestore history subscription error:", err),
+        );
+      })
+      .catch((err) => console.warn("Firebase history authentication failed:", err));
+
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   }, []);
 
-  // Real-time Firestore sync for Custom Departments for everyone with the link
+  // Real-time Firestore sync for Custom Departments.
   useEffect(() => {
-    const unsub = subscribeToCustomDepartments((cloudCustomDepts) => {
-      setCustomDepartments(cloudCustomDepts);
-      saveCustomDepartments(cloudCustomDepts);
-    });
-    return () => unsub();
+    let cancelled = false;
+    let unsub: (() => void) | null = null;
+
+    ensureFirebaseAuth()
+      .then(() => {
+        if (cancelled) return;
+        unsub = subscribeToCustomDepartments(
+          (cloudCustomDepts) => {
+            setCustomDepartments(cloudCustomDepts);
+            saveCustomDepartments(cloudCustomDepts);
+          },
+          (err) => console.warn("Firestore custom departments subscription error:", err),
+        );
+      })
+      .catch((err) => console.warn("Firebase custom-department authentication failed:", err));
+
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   }, []);
 
   // Persist view mode
