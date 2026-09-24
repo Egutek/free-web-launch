@@ -276,8 +276,21 @@ export default function App() {
             setIsCloudSyncing(false);
             setIsCloudConnected(true);
             if (cloudOps.length > 0) {
-              setOperators(cloudOps);
-              saveOperators(cloudOps);
+              // Do not let an older snapshot arriving over the network overwrite
+              // a newer local edit that is still being synchronized.
+              const localById = new Map(operatorsRef.current.map((op) => [op.id, op]));
+              const mergedOps = cloudOps.map((cloudOp) => {
+                const localOp = localById.get(cloudOp.id);
+                if (
+                  localOp &&
+                  new Date(localOp.lastMovedAt).getTime() > new Date(cloudOp.lastMovedAt).getTime()
+                ) {
+                  return localOp;
+                }
+                return cloudOp;
+              });
+              setOperators(mergedOps);
+              saveOperators(mergedOps);
             } else {
               // If cloud is empty on first setup, seed initial operators.
               bulkSyncOperatorsToCloud(operatorsRef.current).catch((err) =>
