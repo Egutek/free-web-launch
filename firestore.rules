@@ -5,7 +5,7 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    function isSignedIn() { return true; }
+    function isSignedIn() { return request.auth != null; }
 
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
