@@ -73,6 +73,9 @@ export function subscribeToOperators(
   const q = query(getCollectionRef("operators"), limit(2000));
   return onSnapshot(
     q,
+    // Receive metadata-only transitions as well: the document contents may be
+    // identical while Firestore changes from cache to server (or vice versa).
+    { includeMetadataChanges: true },
     (snapshot) => {
       const ops = snapshot.docs.map((doc) => doc.data() as Operator);
       // A cached snapshot is not proof of a live Firestore connection.\n      onUpdate(ops, snapshot.metadata.fromCache);
