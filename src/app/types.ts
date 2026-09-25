@@ -39,6 +39,8 @@ export interface Operator {
   absenceReason?: AbsenceReason; // 'Absence' | 'Dovolená' | 'PN'
   notes?: string;
   lastMovedAt: string; // ISO string
+  /** Monotonically increasing cloud revision used to protect concurrent edits. */
+  revision?: number;
 }
 
 export interface MoveHistoryRecord {
