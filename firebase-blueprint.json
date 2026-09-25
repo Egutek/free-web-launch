@@ -80,23 +80,23 @@
     }
   },
   "firestore": {
-    "operators/{operatorId}": {
+    "workspaces/zf_ostrov/operators/{operatorId}": {
       "schema": { "$ref": "#/entities/Operator" },
       "description": "All operators"
     },
-    "history/{historyId}": {
+    "workspaces/zf_ostrov/history/{historyId}": {
       "schema": { "$ref": "#/entities/HistoryRecord" },
       "description": "History records"
     },
-    "templates/{templateId}": {
+    "workspaces/zf_ostrov/templates/{templateId}": {
       "schema": { "$ref": "#/entities/ShiftTemplate" },
       "description": "Shift templates"
     },
-    "custom_departments/{deptId}": {
+    "workspaces/zf_ostrov/custom_departments/{deptId}": {
       "schema": { "$ref": "#/entities/CustomDepartment" },
       "description": "Custom departments"
     },
-    "settings/{settingId}": {
+    "workspaces/zf_ostrov/settings/{settingId}": {
       "schema": { "$ref": "#/entities/Setting" },
       "description": "Workspace settings"
     }
