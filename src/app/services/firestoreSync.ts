@@ -67,7 +67,7 @@ export function handleFirestoreError(
 
 // ---------- Operátoři ----------
 export function subscribeToOperators(
-  onUpdate: (operators: Operator[]) => void,
+  onUpdate: (operators: Operator[], fromCache: boolean) => void,
   onError?: (err: Error) => void,
 ): Unsubscribe {
   const q = query(getCollectionRef("operators"), limit(2000));
@@ -75,7 +75,7 @@ export function subscribeToOperators(
     q,
     (snapshot) => {
       const ops = snapshot.docs.map((doc) => doc.data() as Operator);
-      onUpdate(ops);
+      // A cached snapshot is not proof of a live Firestore connection.\n      onUpdate(ops, snapshot.metadata.fromCache);
     },
     (error) => {
       const err = error instanceof Error ? error : new Error(String(error));
