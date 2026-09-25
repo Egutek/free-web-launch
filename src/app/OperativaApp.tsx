@@ -272,9 +272,11 @@ export default function App() {
       .then(() => {
         if (cancelled) return;
         unsub = subscribeToOperators(
-          (cloudOps) => {
-            setIsCloudSyncing(false);
-            setIsCloudConnected(true);
+          (cloudOps, fromCache) => {
+            // Do not report an online connection until Firestore confirms a
+            // server-backed snapshot. Cached data remains usable offline.
+            setIsCloudSyncing(fromCache);
+            setIsCloudConnected(!fromCache);
             if (cloudOps.length > 0) {
               // Do not let an older snapshot arriving over the network overwrite
               // a newer local edit that is still being synchronized.
