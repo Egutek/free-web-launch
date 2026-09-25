@@ -12,6 +12,7 @@ import {
   orderBy,
   limit,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
 import { db, auth, ensureFirebaseAuth } from "../firebase";
 import { Operator, MoveHistoryRecord, ShiftTemplate, Department, ShiftCode } from "../types";
@@ -87,9 +88,22 @@ export function subscribeToOperators(
 export async function syncOperatorToCloud(operator: Operator): Promise<void> {
   await ensureFirebaseAuth();
   try {
-    const cleanOp: Record<string, unknown> = { ...operator };
-    Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
-    await setDoc(getDocRef("operators", operator.id), cleanOp);
+    const operatorRef = getDocRef("operators", operator.id);
+
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(operatorRef);
+      const currentRevision =
+        snapshot.exists() && typeof snapshot.data().revision === "number"
+          ? snapshot.data().revision
+          : 0;
+
+      const cleanOp: Record<string, unknown> = {
+        ...operator,
+        revision: currentRevision + 1,
+      };
+      Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
+      transaction.set(operatorRef, cleanOp);
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `operators/${operator.id}`);
   }
@@ -109,21 +123,15 @@ export async function bulkSyncOperatorsToCloud(operators: Operator[]): Promise<v
   if (operators.length === 0) return;
 
   try {
-    // Firestore limits a batch to 500 writes; keep headroom for future changes.
-    for (let start = 0; start < operators.length; start += 400) {
-      const batch = writeBatch(db);
-      const chunk = operators.slice(start, start + 400);
-
-      for (const op of chunk) {
-        const cleanOp: Record<string, unknown> = { ...op, shift: op.shift || "A" };
-        Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
-        batch.set(getDocRef("operators", op.id), cleanOp);
-      }
-
-      await batch.commit();
+    // Use the same per-document transaction as single moves so a stale client
+    // cannot overwrite a newer edit made on another device.
+    const concurrency = 20;
+    for (let start = 0; start < operators.length; start += concurrency) {
+      const chunk = operators.slice(start, start + concurrency);
+      await Promise.all(chunk.map((operator) => syncOperatorToCloud(operator)));
     }
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, "operators(batch)");
+    handleFirestoreError(error, OperationType.WRITE, "operators(transaction-batch)");
   }
 }
 
