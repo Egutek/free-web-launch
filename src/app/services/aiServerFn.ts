@@ -1,3 +1,8 @@
+const MAX_IMAGE_BASE64_LENGTH = 12_000_000; // ~9 MB of binary image data
+const MAX_TEXT_INPUT_LENGTH = 50_000;
+const MAX_CUSTOM_INSTRUCTIONS_LENGTH = 10_000;
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
 import { createServerFn } from "@tanstack/react-start";
 
 const EXTRACTION_PROMPT = `Jsi špičkový expert na počítačové vidění (OCR) a čtení rukopisu pro logistické centrum ZF Aftermarket v Ostrově.
@@ -478,6 +483,22 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
 
     if (!imageBase64 && !textInput) {
       throw new Error("Nebyly poskytnuty žádné obrazové ani textové údaje.");
+    }
+
+    if (imageBase64 && imageBase64.length > MAX_IMAGE_BASE64_LENGTH) {
+      throw new Error("Obrázek je příliš velký. Zmenšete fotografii a zkuste to znovu.");
+    }
+
+    if (textInput && textInput.length > MAX_TEXT_INPUT_LENGTH) {
+      throw new Error("Vstupní text je příliš dlouhý.");
+    }
+
+    if (customInstructions && customInstructions.length > MAX_CUSTOM_INSTRUCTIONS_LENGTH) {
+      throw new Error("Vlastní instrukce jsou příliš dlouhé.");
+    }
+
+    if (imageBase64 && !ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
+      throw new Error("Nepodporovaný typ obrázku. Použijte JPG, PNG nebo WebP.");
     }
 
     const geminiKey = process.env["GEMINI_API_KEY"];
