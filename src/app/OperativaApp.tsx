@@ -281,11 +281,20 @@ export default function App() {
               const localById = new Map(operatorsRef.current.map((op) => [op.id, op]));
               const mergedOps = cloudOps.map((cloudOp) => {
                 const localOp = localById.get(cloudOp.id);
-                if (
-                  localOp &&
-                  new Date(localOp.lastMovedAt).getTime() > new Date(cloudOp.lastMovedAt).getTime()
-                ) {
-                  return localOp;
+                if (localOp) {
+                  if (
+                    typeof localOp.revision === "number" &&
+                    typeof cloudOp.revision === "number"
+                  ) {
+                    return localOp.revision > cloudOp.revision ? localOp : cloudOp;
+                  }
+
+                  // Local edits made before the first revisioned cloud write do not
+                  // have a revision yet, so fall back to the existing timestamp.
+                  return new Date(localOp.lastMovedAt).getTime() >
+                    new Date(cloudOp.lastMovedAt).getTime()
+                    ? localOp
+                    : cloudOp;
                 }
                 return cloudOp;
               });
