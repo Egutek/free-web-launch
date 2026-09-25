@@ -16,3 +16,22 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## Firebase synchronizace
+
+Aplikace používá pojmenovanou Firestore databázi
+`ai-studio-freeweblaunch-d9175b45-6e54-4972-beec-44998053c0cc`, nikoliv
+výchozí `(default)` databázi. Před prvním použitím v Firebase Console zapněte
+**Authentication → Sign-in method → Anonymous**. Bez tohoto poskytovatele se
+klient nemůže přihlásit a pravidla Firestore mu záměrně odepřou přístup.
+
+Pravidla jsou uložená v `firestore.rules` a jsou namapovaná na správnou
+pojmenovanou databázi v `firebase.json`. Po změně pravidel je nasaďte:
+
+```sh
+npx firebase-tools@latest login
+npx firebase-tools@latest deploy --only firestore:rules
+```
+
+Nasazení webu z GitHubu (např. do Netlify) pravidla Firestore automaticky
+nenasazuje; jde o samostatné nasazení Firebase.
