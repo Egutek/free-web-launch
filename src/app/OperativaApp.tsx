@@ -59,6 +59,7 @@ import {
   X,
 } from "lucide-react";
 import { FilteredOutRecord } from "./services/aiServerFn";
+import { ensureFirebaseAuth } from "./firebase";
 import {
   resolveOperatorFromDrop,
   resolveOperatorIdsFromDrop,
@@ -71,6 +72,7 @@ import {
   replaceOperatorsInCloud,
   deleteOperatorFromCloud,
   syncHistoryRecordToCloud,
+  clearHistoryFromCloud,
   subscribeToHistory,
   subscribeToCustomDepartments,
   syncCustomDepartmentToCloud,
@@ -258,49 +260,120 @@ export default function App() {
     saveUndoStack(undoStack);
   }, [undoStack]);
 
-  // Real-time sync for Operators for everyone with the link
+  // Login-free Firebase authentication + real-time cloud sync.
+  // Anonymous auth runs before Firestore listeners so rules can safely require
+  // request.auth without introducing a visible login screen.
   useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | null = null;
+
     setIsCloudSyncing(true);
-    const unsub = subscribeToOperators(
-      (cloudOps) => {
+    ensureFirebaseAuth()
+      .then(() => {
+        if (cancelled) return;
+        unsub = subscribeToOperators(
+          (cloudOps) => {
+            setIsCloudSyncing(false);
+            setIsCloudConnected(true);
+            if (cloudOps.length > 0) {
+              // Do not let an older snapshot arriving over the network overwrite
+              // a newer local edit that is still being synchronized.
+              const localById = new Map(operatorsRef.current.map((op) => [op.id, op]));
+              const mergedOps = cloudOps.map((cloudOp) => {
+                const localOp = localById.get(cloudOp.id);
+                if (localOp) {
+                  if (
+                    typeof localOp.revision === "number" &&
+                    typeof cloudOp.revision === "number"
+                  ) {
+                    return localOp.revision > cloudOp.revision ? localOp : cloudOp;
+                  }
+
+                  // Local edits made before the first revisioned cloud write do not
+                  // have a revision yet, so fall back to the existing timestamp.
+                  return new Date(localOp.lastMovedAt).getTime() >
+                    new Date(cloudOp.lastMovedAt).getTime()
+                    ? localOp
+                    : cloudOp;
+                }
+                return cloudOp;
+              });
+              setOperators(mergedOps);
+              saveOperators(mergedOps);
+            } else {
+              // If cloud is empty on first setup, seed initial operators.
+              bulkSyncOperatorsToCloud(operatorsRef.current).catch((err) =>
+                console.warn("Initial cloud seed failed:", err),
+              );
+            }
+          },
+          (err) => {
+            setIsCloudSyncing(false);
+            setIsCloudConnected(false);
+            console.warn("Firestore subscription error:", err);
+          },
+        );
+      })
+      .catch((err) => {
         setIsCloudSyncing(false);
-        setIsCloudConnected(true);
-        if (cloudOps.length > 0) {
-          setOperators(cloudOps);
-          saveOperators(cloudOps);
-        } else {
-          // If cloud is empty on first setup, seed initial operators
-          bulkSyncOperatorsToCloud(operatorsRef.current).catch((err) =>
-            console.warn("Initial cloud seed failed:", err),
-          );
-        }
-      },
-      (err) => {
-        setIsCloudSyncing(false);
-        console.warn("Firestore subscription error:", err);
-      },
-    );
-    return () => unsub();
+        setIsCloudConnected(false);
+        console.warn("Firebase anonymous authentication failed:", err);
+      });
+
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   }, []);
 
-  // Real-time Firestore sync for History for everyone with the link
+  // Real-time Firestore sync for History.
   useEffect(() => {
-    const unsub = subscribeToHistory((cloudHistory) => {
-      if (cloudHistory.length > 0) {
-        setHistory(cloudHistory);
-        saveHistory(cloudHistory);
-      }
-    });
-    return () => unsub();
+    let cancelled = false;
+    let unsub: (() => void) | null = null;
+
+    ensureFirebaseAuth()
+      .then(() => {
+        if (cancelled) return;
+        unsub = subscribeToHistory(
+          (cloudHistory) => {
+            // An empty cloud collection is meaningful (for example after reset)
+            // and must clear the local history as well.
+            setHistory(cloudHistory);
+            saveHistory(cloudHistory);
+          },
+          (err) => console.warn("Firestore history subscription error:", err),
+        );
+      })
+      .catch((err) => console.warn("Firebase history authentication failed:", err));
+
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   }, []);
 
-  // Real-time Firestore sync for Custom Departments for everyone with the link
+  // Real-time Firestore sync for Custom Departments.
   useEffect(() => {
-    const unsub = subscribeToCustomDepartments((cloudCustomDepts) => {
-      setCustomDepartments(cloudCustomDepts);
-      saveCustomDepartments(cloudCustomDepts);
-    });
-    return () => unsub();
+    let cancelled = false;
+    let unsub: (() => void) | null = null;
+
+    ensureFirebaseAuth()
+      .then(() => {
+        if (cancelled) return;
+        unsub = subscribeToCustomDepartments(
+          (cloudCustomDepts) => {
+            setCustomDepartments(cloudCustomDepts);
+            saveCustomDepartments(cloudCustomDepts);
+          },
+          (err) => console.warn("Firestore custom departments subscription error:", err),
+        );
+      })
+      .catch((err) => console.warn("Firebase custom-department authentication failed:", err));
+
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   }, []);
 
   // Persist view mode
@@ -367,19 +440,22 @@ export default function App() {
       if (currentStack.length === 0) return currentStack;
       const [lastOp, ...remainingStack] = currentStack;
 
-      setOperators((prevOperators) =>
-        prevOperators.map((o) =>
-          o.id === lastOp.operatorId
-            ? {
-                ...o,
-                departmentId: lastOp.fromDept,
-                status:
-                  lastOp.fromStatus ?? (lastOp.fromDept === "unassigned" ? "absence" : "active"),
-                lastMovedAt: new Date().toISOString(),
-              }
-            : o,
-        ),
+      const undoTimestamp = new Date().toISOString();
+      const updatedOperators = operatorsRef.current.map((o) =>
+        o.id === lastOp.operatorId
+          ? {
+              ...o,
+              departmentId: lastOp.fromDept,
+              machineType: lastOp.machineType,
+              status:
+                lastOp.fromStatus ?? (lastOp.fromDept === "unassigned" ? "absence" : "active"),
+              absenceReason: lastOp.fromAbsenceReason,
+              lastMovedAt: undoTimestamp,
+            }
+          : o,
       );
+      setOperators(updatedOperators);
+      saveOperators(updatedOperators);
 
       const fromDept = getDepartmentById(lastOp.fromDept);
       const toDept = getDepartmentById(lastOp.toDept);
@@ -397,14 +473,11 @@ export default function App() {
       setHistory((prev) => [historyItem, ...prev]);
 
       // Cloud synchronization for undo
-      const revertedOp = operatorsRef.current.find((o) => o.id === lastOp.operatorId);
+      const revertedOp = updatedOperators.find((o) => o.id === lastOp.operatorId);
       if (revertedOp) {
-        syncOperatorToCloud({
-          ...revertedOp,
-          departmentId: lastOp.fromDept,
-          status: lastOp.fromStatus ?? (lastOp.fromDept === "unassigned" ? "absence" : "active"),
-          lastMovedAt: new Date().toISOString(),
-        }).catch((e) => console.warn("Cloud undo sync error:", e));
+        syncOperatorToCloud(revertedOp).catch((e) =>
+          console.warn("Cloud undo sync error:", e),
+        );
       }
       syncHistoryRecordToCloud(historyItem).catch((e) =>
         console.warn("Cloud history sync error:", e),
@@ -426,23 +499,26 @@ export default function App() {
         const opsToRevert = currentStack.slice(0, countToRevert);
         const remainingStack = currentStack.slice(countToRevert);
 
-        // Apply reversions in order from newest to oldest
-        setOperators((prevOperators) => {
-          let updated = [...prevOperators];
-          for (const op of opsToRevert) {
-            updated = updated.map((o) =>
-              o.id === op.operatorId
-                ? {
-                    ...o,
-                    departmentId: op.fromDept,
-                    status: op.fromStatus ?? (op.fromDept === "unassigned" ? "absence" : "active"),
-                    lastMovedAt: new Date().toISOString(),
-                  }
-                : o,
-            );
-          }
-          return updated;
+        // Apply reversions in order from newest to oldest and persist immediately.
+        const undoTimestamp = new Date().toISOString();
+        const updatedOperators = operatorsRef.current.map((o) => {
+          // undoStack is newest-first. When several recent operations affected
+          // the same operator, restore the state from the oldest reverted entry.
+          const op = [...opsToRevert]
+            .reverse()
+            .find((candidate) => candidate.operatorId === o.id);
+          if (!op) return o;
+          return {
+            ...o,
+            departmentId: op.fromDept,
+            machineType: op.machineType,
+            status: op.fromStatus ?? (op.fromDept === "unassigned" ? "absence" : "active"),
+            absenceReason: op.fromAbsenceReason,
+            lastMovedAt: undoTimestamp,
+          };
         });
+        setOperators(updatedOperators);
+        saveOperators(updatedOperators);
 
         // Record bulk undo in history
         const historyEntries: MoveHistoryRecord[] = opsToRevert.map((op, i) => ({
@@ -458,18 +534,9 @@ export default function App() {
         setHistory((prev) => [...historyEntries, ...prev]);
 
         // Cloud synchronization for bulk undo
-        const revertedOps: Operator[] = [];
-        for (const op of opsToRevert) {
-          const found = operatorsRef.current.find((o) => o.id === op.operatorId);
-          if (found) {
-            revertedOps.push({
-              ...found,
-              departmentId: op.fromDept,
-              status: op.fromStatus ?? (op.fromDept === "unassigned" ? "absence" : "active"),
-              lastMovedAt: new Date().toISOString(),
-            });
-          }
-        }
+        const revertedOps: Operator[] = updatedOperators.filter((o) =>
+          opsToRevert.some((op) => op.operatorId === o.id),
+        );
         if (revertedOps.length > 0) {
           bulkSyncOperatorsToCloud(revertedOps).catch((e) =>
             console.warn("Cloud bulk undo sync error:", e),
@@ -614,6 +681,11 @@ export default function App() {
       toDept: targetDeptId,
       fromStatus: op.status,
       toStatus: newStatus,
+      fromAbsenceReason: op.absenceReason,
+      toAbsenceReason:
+        targetDeptId === "unassigned"
+          ? absenceReason || op.absenceReason || "Absence"
+          : undefined,
       timestamp: now,
     }));
     setUndoStack((prev) => [...undoOps, ...prev].slice(0, 5));
@@ -667,6 +739,8 @@ export default function App() {
       toDept: op.departmentId,
       fromStatus: op.status,
       toStatus: op.status,
+      fromAbsenceReason: op.absenceReason,
+      toAbsenceReason: op.absenceReason,
       timestamp: now,
     }));
     setUndoStack((prev) => [...undoOps, ...prev].slice(0, 5));
@@ -791,6 +865,11 @@ export default function App() {
       toDept: targetDeptId,
       fromStatus: targetOp.status,
       toStatus: newStatus,
+      fromAbsenceReason: targetOp.absenceReason,
+      toAbsenceReason:
+        targetDeptId === "unassigned"
+          ? absenceReason || targetOp.absenceReason || "Absence"
+          : undefined,
       timestamp: new Date().toISOString(),
     };
     setUndoStack((prev) => [undoOp, ...prev.slice(0, 4)]);
@@ -1396,7 +1475,10 @@ export default function App() {
     setHistory([]);
     saveHistory([]);
     setUndoStack([]);
-    await replaceOperatorsInCloud(reset).catch((e) => console.warn("Cloud reset sync error:", e));
+    await Promise.all([
+      replaceOperatorsInCloud(reset).catch((e) => console.warn("Cloud reset sync error:", e)),
+      clearHistoryFromCloud().catch((e) => console.warn("Cloud history reset error:", e)),
+    ]);
     showToast("Data obnovena na 65 operátorů oddělení PICK.");
   };
 

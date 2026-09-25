@@ -77,10 +77,9 @@ export const loadOperators = (): Operator[] => {
 
 export const saveOperators = (operators: Operator[]): void => {
   try {
-    if (Array.isArray(operators) && operators.length > 0) {
-      localStorage.setItem(OPERATORS_KEY, JSON.stringify(operators));
-      localStorage.setItem("zf_last_saved_timestamp", new Date().toISOString());
-    }
+    if (!Array.isArray(operators)) return;
+    localStorage.setItem(OPERATORS_KEY, JSON.stringify(operators));
+    localStorage.setItem("zf_last_saved_timestamp", new Date().toISOString());
   } catch (e) {
     console.error("Failed to save operators to localStorage", e);
   }

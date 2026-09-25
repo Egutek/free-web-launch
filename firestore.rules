@@ -5,7 +5,7 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    function isSignedIn() { return true; }
+    function isSignedIn() { return request.auth != null; }
 
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
@@ -31,6 +31,7 @@ service cloud.firestore {
             && data.departmentId is string && data.departmentId.size() <= 50
             && data.status in ['active', 'break', 'absence']
             && data.lastMovedAt is string && data.lastMovedAt.size() <= 50
+            && (!data.keys().hasAny(['revision']) || (data.revision is number && data.revision >= 0))
             && (!data.keys().hasAny(['isVnaOnly']) || data.isVnaOnly is bool)
             && (!data.keys().hasAny(['shift']) || data.shift in ['A', 'B', 'C'])
             && (!data.keys().hasAny(['absenceReason']) || data.absenceReason in ['Absence', 'Dovolená', 'PN'])

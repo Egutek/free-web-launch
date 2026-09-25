@@ -1,3 +1,8 @@
+const MAX_IMAGE_BASE64_LENGTH = 12_000_000; // ~9 MB of binary image data
+const MAX_TEXT_INPUT_LENGTH = 50_000;
+const MAX_CUSTOM_INSTRUCTIONS_LENGTH = 10_000;
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
 import { createServerFn } from "@tanstack/react-start";
 
 const EXTRACTION_PROMPT = `Jsi špičkový expert na počítačové vidění (OCR) a čtení rukopisu pro logistické centrum ZF Aftermarket v Ostrově.
@@ -480,6 +485,22 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
       throw new Error("Nebyly poskytnuty žádné obrazové ani textové údaje.");
     }
 
+    if (imageBase64 && imageBase64.length > MAX_IMAGE_BASE64_LENGTH) {
+      throw new Error("Obrázek je příliš velký. Zmenšete fotografii a zkuste to znovu.");
+    }
+
+    if (textInput && textInput.length > MAX_TEXT_INPUT_LENGTH) {
+      throw new Error("Vstupní text je příliš dlouhý.");
+    }
+
+    if (customInstructions && customInstructions.length > MAX_CUSTOM_INSTRUCTIONS_LENGTH) {
+      throw new Error("Vlastní instrukce jsou příliš dlouhé.");
+    }
+
+    if (imageBase64 && !ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
+      throw new Error("Nepodporovaný typ obrázku. Použijte JPG, PNG nebo WebP.");
+    }
+
     const geminiKey = process.env["GEMINI_API_KEY"];
 
     if (!geminiKey) {
@@ -528,8 +549,8 @@ ${customInstructions.trim()}
     let operators: ExtractedOperator[] = [];
     let filteredOut: FilteredOutRecord[] = [];
 
-    // Prioritized working Gemini models (gemini-3.6-flash is primary, 3.1-flash-lite is backup)
-    const modelsToTry = ["gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash"];
+    // Stable multimodal Gemini models, newest first with production-safe fallbacks.
+    const modelsToTry = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite"];
     let lastError: Error | null = null;
 
     for (const model of modelsToTry) {
@@ -543,7 +564,6 @@ ${customInstructions.trim()}
             contents: [{ parts }],
             generationConfig: {
               responseMimeType: "application/json",
-              temperature: 0.1,
             },
           }),
           signal: AbortSignal.timeout(20000),

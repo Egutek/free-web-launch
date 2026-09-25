@@ -12,8 +12,9 @@ import {
   orderBy,
   limit,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
-import { db, auth } from "../firebase";
+import { db, auth, ensureFirebaseAuth } from "../firebase";
 import { Operator, MoveHistoryRecord, ShiftTemplate, Department, ShiftCode } from "../types";
 
 export type Unsubscribe = () => void;
@@ -77,23 +78,39 @@ export function subscribeToOperators(
       onUpdate(ops);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "operators");
-      if (onError) onError(error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("Firestore operators subscription error:", err);
+      onError?.(err);
     },
   );
 }
 
 export async function syncOperatorToCloud(operator: Operator): Promise<void> {
+  await ensureFirebaseAuth();
   try {
-    const cleanOp: Record<string, unknown> = { ...operator };
-    Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
-    await setDoc(getDocRef("operators", operator.id), cleanOp);
+    const operatorRef = getDocRef("operators", operator.id);
+
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(operatorRef);
+      const currentRevision =
+        snapshot.exists() && typeof snapshot.data().revision === "number"
+          ? snapshot.data().revision
+          : 0;
+
+      const cleanOp: Record<string, unknown> = {
+        ...operator,
+        revision: currentRevision + 1,
+      };
+      Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
+      transaction.set(operatorRef, cleanOp);
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `operators/${operator.id}`);
   }
 }
 
 export async function deleteOperatorFromCloud(operatorId: string): Promise<void> {
+  await ensureFirebaseAuth();
   try {
     await deleteDoc(getDocRef("operators", operatorId));
   } catch (error) {
@@ -102,16 +119,19 @@ export async function deleteOperatorFromCloud(operatorId: string): Promise<void>
 }
 
 export async function bulkSyncOperatorsToCloud(operators: Operator[]): Promise<void> {
-  const batch = writeBatch(db);
-  for (const op of operators) {
-    const cleanOp: Record<string, unknown> = { ...op, shift: op.shift || "A" };
-    Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
-    batch.set(getDocRef("operators", op.id), cleanOp);
-  }
+  await ensureFirebaseAuth();
+  if (operators.length === 0) return;
+
   try {
-    await batch.commit();
+    // Use the same per-document transaction as single moves so a stale client
+    // cannot overwrite a newer edit made on another device.
+    const concurrency = 20;
+    for (let start = 0; start < operators.length; start += concurrency) {
+      const chunk = operators.slice(start, start + concurrency);
+      await Promise.all(chunk.map((operator) => syncOperatorToCloud(operator)));
+    }
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, "operators(batch)");
+    handleFirestoreError(error, OperationType.WRITE, "operators(transaction-batch)");
   }
 }
 
@@ -123,6 +143,7 @@ export async function replaceOperatorsInCloud(
   allCurrentOperators: Operator[],
   shiftToReplace?: ShiftCode,
 ): Promise<void> {
+  await ensureFirebaseAuth();
   try {
     const querySnapshot = await getDocs(getCollectionRef("operators"));
     const newOpIds = new Set(allCurrentOperators.map((o) => o.id));
@@ -182,13 +203,30 @@ export function subscribeToHistory(
       onUpdate(records);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "history");
-      if (onError) onError(error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("Firestore history subscription error:", err);
+      onError?.(err);
     },
   );
 }
 
+export async function clearHistoryFromCloud(): Promise<void> {
+  await ensureFirebaseAuth();
+  try {
+    const snapshot = await getDocs(getCollectionRef("history"));
+
+    for (let start = 0; start < snapshot.docs.length; start += 400) {
+      const batch = writeBatch(db);
+      snapshot.docs.slice(start, start + 400).forEach((docSnap) => batch.delete(docSnap.ref));
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, "history(clear)");
+  }
+}
+
 export async function syncHistoryRecordToCloud(record: MoveHistoryRecord): Promise<void> {
+  await ensureFirebaseAuth();
   try {
     const cleanRecord: Record<string, unknown> = { ...record };
     Object.keys(cleanRecord).forEach(
@@ -213,13 +251,15 @@ export function subscribeToTemplates(
       onUpdate(templates);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "templates");
-      if (onError) onError(error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("Firestore templates subscription error:", err);
+      onError?.(err);
     },
   );
 }
 
 export async function syncTemplateToCloud(template: ShiftTemplate): Promise<void> {
+  await ensureFirebaseAuth();
   try {
     const cleanTemplate: Record<string, unknown> = { ...template };
     Object.keys(cleanTemplate).forEach(
@@ -232,6 +272,7 @@ export async function syncTemplateToCloud(template: ShiftTemplate): Promise<void
 }
 
 export async function deleteTemplateFromCloud(templateId: string): Promise<void> {
+  await ensureFirebaseAuth();
   try {
     await deleteDoc(getDocRef("templates", templateId));
   } catch (error) {
@@ -252,13 +293,15 @@ export function subscribeToCustomDepartments(
       onUpdate(depts);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "custom_departments");
-      if (onError) onError(error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("Firestore custom departments subscription error:", err);
+      onError?.(err);
     },
   );
 }
 
 export async function syncCustomDepartmentToCloud(dept: Department): Promise<void> {
+  await ensureFirebaseAuth();
   try {
     const cleanDept: Record<string, unknown> = { ...dept };
     Object.keys(cleanDept).forEach((key) => cleanDept[key] === undefined && delete cleanDept[key]);
@@ -269,6 +312,7 @@ export async function syncCustomDepartmentToCloud(dept: Department): Promise<voi
 }
 
 export async function deleteCustomDepartmentFromCloud(deptId: string): Promise<void> {
+  await ensureFirebaseAuth();
   try {
     await deleteDoc(getDocRef("custom_departments", deptId));
   } catch (error) {
@@ -299,6 +343,7 @@ export function subscribeToOcrInstructions(
 }
 
 export async function syncOcrInstructionsToCloud(instructions: string): Promise<void> {
+  await ensureFirebaseAuth();
   try {
     await setDoc(getDocRef("settings", "ocr_instructions"), {
       value: instructions,
