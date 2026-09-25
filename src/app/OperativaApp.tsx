@@ -493,7 +493,11 @@ export default function App() {
         // Apply reversions in order from newest to oldest and persist immediately.
         const undoTimestamp = new Date().toISOString();
         const updatedOperators = operatorsRef.current.map((o) => {
-          const op = opsToRevert.find((candidate) => candidate.operatorId === o.id);
+          // undoStack is newest-first. When several recent operations affected
+          // the same operator, restore the state from the oldest reverted entry.
+          const op = [...opsToRevert]
+            .reverse()
+            .find((candidate) => candidate.operatorId === o.id);
           if (!op) return o;
           return {
             ...o,
@@ -668,6 +672,11 @@ export default function App() {
       toDept: targetDeptId,
       fromStatus: op.status,
       toStatus: newStatus,
+      fromAbsenceReason: op.absenceReason,
+      toAbsenceReason:
+        targetDeptId === "unassigned"
+          ? absenceReason || op.absenceReason || "Absence"
+          : undefined,
       timestamp: now,
     }));
     setUndoStack((prev) => [...undoOps, ...prev].slice(0, 5));
@@ -721,6 +730,8 @@ export default function App() {
       toDept: op.departmentId,
       fromStatus: op.status,
       toStatus: op.status,
+      fromAbsenceReason: op.absenceReason,
+      toAbsenceReason: op.absenceReason,
       timestamp: now,
     }));
     setUndoStack((prev) => [...undoOps, ...prev].slice(0, 5));
