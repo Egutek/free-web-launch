@@ -37,10 +37,12 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // Let Firestore & API requests bypass the static cache for live real-time data
+  const url = new URL(event.request.url);
+  // Intercept only our static pages and assets. Firebase, auth, and server
+  // function requests must never receive a cached response.
   if (
-    event.request.url.includes("firestore.googleapis.com") ||
-    event.request.url.includes("/api/") ||
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith("/api/") ||
     event.request.method !== "GET"
   ) {
     return;
@@ -61,8 +63,9 @@ self.addEventListener("fetch", (event) => {
         return caches.match(event.request).then((cachedResponse) => {
           if (cachedResponse) return cachedResponse;
           if (event.request.mode === "navigate") {
-            return caches.match("/");
+            return caches.match("/").then((page) => page || Response.error());
           }
+          return Response.error();
         });
       }),
   );

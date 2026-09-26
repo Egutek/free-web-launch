@@ -110,12 +110,17 @@ export function subscribeToOperators(
   );
 }
 
-export async function syncOperatorToCloud(operator: Operator): Promise<void> {
-  await ensureFirebaseAuth();
-  try {
-    const operatorRef = getDocRef("operators", operator.id);
+// Serialize edits to one operator. A quick second move can otherwise start with
+// the revision from before the first transaction has reached the listener.
+const pendingOperatorWrites = new Map<string, Promise<number>>();
 
-    await runTransaction(db, async (transaction) => {
+export function syncOperatorToCloud(operator: Operator): Promise<void> {
+  const previous = pendingOperatorWrites.get(operator.id);
+  const write = (async () => {
+    const previousRevision = previous ? await previous : undefined;
+    await ensureFirebaseAuth();
+    const operatorRef = getDocRef("operators", operator.id);
+    return runTransaction(db, async (transaction) => {
       const snapshot = await transaction.get(operatorRef);
       const currentRevision =
         snapshot.exists() && typeof snapshot.data()["revision"] === "number"
@@ -124,7 +129,7 @@ export async function syncOperatorToCloud(operator: Operator): Promise<void> {
 
       // A second device may have changed this operator since our snapshot.
       // Reject its stale state instead of silently overwriting that change.
-      if (currentRevision !== (operator.revision ?? 0)) {
+      if (currentRevision !== (previousRevision ?? operator.revision ?? 0)) {
         throw new Error("Konflikt změn: operátor byl mezitím upraven na jiném zařízení.");
       }
 
@@ -134,15 +139,27 @@ export async function syncOperatorToCloud(operator: Operator): Promise<void> {
       };
       Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
       transaction.set(operatorRef, cleanOp);
+      return currentRevision + 1;
     });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `operators/${operator.id}`);
-  }
+  })();
+  pendingOperatorWrites.set(operator.id, write);
+  void write
+    .finally(() => {
+      if (pendingOperatorWrites.get(operator.id) === write)
+        pendingOperatorWrites.delete(operator.id);
+    })
+    .catch(() => {});
+  return write
+    .then(() => undefined)
+    .catch((error) => handleFirestoreError(error, OperationType.WRITE, `operators/${operator.id}`));
 }
 
 export async function deleteOperatorFromCloud(operatorId: string): Promise<void> {
-  await ensureFirebaseAuth();
   try {
+    // A write already queued for this operator must finish before deletion,
+    // otherwise it can recreate the document after the delete succeeds.
+    await pendingOperatorWrites.get(operatorId)?.catch(() => undefined);
+    await ensureFirebaseAuth();
     await deleteDoc(getDocRef("operators", operatorId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `operators/${operatorId}`);
@@ -174,10 +191,25 @@ export async function replaceOperatorsInCloud(
   allCurrentOperators: Operator[],
   shiftToReplace?: ShiftCode,
 ): Promise<void> {
-  await ensureFirebaseAuth();
   try {
+    await ensureFirebaseAuth();
     const querySnapshot = await getDocs(getCollectionRef("operators"));
-    const newOpIds = new Set(allCurrentOperators.map((o) => o.id));
+    const replacement = shiftToReplace
+      ? allCurrentOperators.filter((op) => (op.shift || "A") === shiftToReplace)
+      : allCurrentOperators;
+    const newOpIds = new Set(replacement.map((o) => o.id));
+    const cloudById = new Map(querySnapshot.docs.map((snapshot) => [snapshot.id, snapshot]));
+
+    // Write only the selected shift, and fail on a concurrent edit rather than
+    // replacing a newer record with a stale bulk import or reset.
+    const revisedReplacement = replacement.map((op) => {
+      const existing = cloudById.get(op.id);
+      return {
+        ...op,
+        revision: existing?.data()["revision"] ?? 0,
+      };
+    });
+    await bulkSyncOperatorsToCloud(revisedReplacement);
 
     let batch = writeBatch(db);
     let opCount = 0;
@@ -197,19 +229,6 @@ export async function replaceOperatorsInCloud(
           batch = writeBatch(db);
           opCount = 0;
         }
-      }
-    }
-
-    // 2. Save all current operators
-    for (const op of allCurrentOperators) {
-      const cleanOp: Record<string, unknown> = { ...op, shift: op.shift || "A" };
-      Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
-      batch.set(getDocRef("operators", op.id), cleanOp);
-      opCount++;
-      if (opCount >= 400) {
-        await batch.commit();
-        batch = writeBatch(db);
-        opCount = 0;
       }
     }
 
@@ -289,9 +308,7 @@ export function subscribeToTemplates(
   );
 }
 
-export async function migrateLocalTemplatesToCloud(
-  templates: ShiftTemplate[],
-): Promise<void> {
+export async function migrateLocalTemplatesToCloud(templates: ShiftTemplate[]): Promise<void> {
   await ensureFirebaseAuth();
   for (const template of templates) {
     const templateRef = getDocRef("templates", template.id);
@@ -314,8 +331,7 @@ export async function restoreBuiltInTemplatesToCloud(): Promise<void> {
     query(getCollectionRef("templates"), orderBy("createdAt", "desc"), limit(50)),
   );
   const deletedBuiltIns = snapshot.docs.filter(
-    (template) =>
-      template.data()["isBuiltIn"] === true && template.data()["isDeleted"] === true,
+    (template) => template.data()["isBuiltIn"] === true && template.data()["isDeleted"] === true,
   );
   await Promise.all(deletedBuiltIns.map((template) => deleteDoc(template.ref)));
 }

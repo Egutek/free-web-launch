@@ -1243,11 +1243,18 @@ export default function App() {
       : operators;
 
     let updated: Operator[];
+    let importedOps = shiftedOps;
     if (replaceAll) {
       updated = [...shiftedOps, ...otherShiftsOps];
     } else {
       const existingNames = new Set(operators.map((o) => o.name.toLowerCase().trim()));
-      const uniqueNew = shiftedOps.filter((o) => !existingNames.has(o.name.toLowerCase().trim()));
+      const uniqueNew = shiftedOps.filter((o) => {
+        const name = o.name.toLowerCase().trim();
+        if (existingNames.has(name)) return false;
+        existingNames.add(name);
+        return true;
+      });
+      importedOps = uniqueNew;
       updated = [...uniqueNew, ...operators];
     }
 
@@ -1255,18 +1262,26 @@ export default function App() {
     saveOperators(updated);
 
     if (replaceAll) {
-      await replaceOperatorsInCloud(updated, activeShift).catch((e) =>
-        console.warn("Cloud import sync error:", e),
-      );
+      try {
+        await replaceOperatorsInCloud(updated, activeShift);
+      } catch (error) {
+        console.warn("Cloud import sync error:", error);
+        showToast("Import je uložen jen v tomto zařízení. Synchronizace selhala.", true);
+        return;
+      }
       showToast(
         `Načteno ${shiftedOps.length} operátorů. Směna ${activeShift} byla kompletně nahrazena (${updated.filter((o) => (o.shift || "A") === activeShift).length} lidí na směně).`,
       );
     } else {
-      await bulkSyncOperatorsToCloud(shiftedOps).catch((e) =>
-        console.warn("Cloud import sync error:", e),
-      );
+      try {
+        await bulkSyncOperatorsToCloud(importedOps);
+      } catch (error) {
+        console.warn("Cloud import sync error:", error);
+        showToast("Import je uložen jen v tomto zařízení. Synchronizace selhala.", true);
+        return;
+      }
       showToast(
-        `Přidáno ${shiftedOps.length} operátorů ze snímku k existujícímu týmu (Směna ${activeShift}).`,
+        `Přidáno ${importedOps.length} operátorů ze snímku k existujícímu týmu (Směna ${activeShift}).`,
       );
     }
     setIsPhotoImportOpen(false);
@@ -1476,11 +1491,14 @@ export default function App() {
     setHistory([]);
     saveHistory([]);
     setUndoStack([]);
-    await Promise.all([
-      replaceOperatorsInCloud(reset).catch((e) => console.warn("Cloud reset sync error:", e)),
-      clearHistoryFromCloud().catch((e) => console.warn("Cloud history reset error:", e)),
-    ]);
-    showToast("Data obnovena na 65 operátorů oddělení PICK.");
+    try {
+      await replaceOperatorsInCloud(reset);
+      await clearHistoryFromCloud();
+      showToast("Data obnovena na 65 operátorů oddělení PICK.");
+    } catch (error) {
+      console.warn("Cloud reset sync error:", error);
+      showToast("Obnovení v cloudu selhalo; ověřte připojení a zkuste to znovu.", true);
+    }
   };
 
   // Drag-and-drop auto-scroll: automatically scrolls horizontal columns when dragging near edge
@@ -2269,7 +2287,13 @@ export default function App() {
           isOpen={isHistoryModalOpen}
           history={history}
           onClose={() => setIsHistoryModalOpen(false)}
-          onClearHistory={() => setHistory([])}
+          onClearHistory={() => {
+            clearHistoryFromCloud().catch((error) =>
+              console.warn("Cloud history clear error:", error),
+            );
+            setHistory([]);
+            saveHistory([]);
+          }}
         />
       )}
 

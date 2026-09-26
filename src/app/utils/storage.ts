@@ -49,7 +49,7 @@ export const loadOperators = (): Operator[] => {
     const saved = localStorage.getItem(OPERATORS_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         const uniqueMap = new Map<string, Operator>();
         for (const rawOp of parsed) {
           if (rawOp && rawOp.id) {
@@ -63,9 +63,7 @@ export const loadOperators = (): Operator[] => {
             });
           }
         }
-        if (uniqueMap.size > 0) {
-          return Array.from(uniqueMap.values());
-        }
+        return Array.from(uniqueMap.values());
       }
     }
   } catch (e) {
