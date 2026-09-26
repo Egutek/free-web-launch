@@ -6,14 +6,13 @@ import { getAuth, signInAnonymously } from "firebase/auth";
 // Never reuse the previous project's apiKey or appId with freeai-ff700.
 const firebaseConfig = {
   projectId: "freeai-ff700",
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAxotchbIEirm165a5i64FOA4SBFUtj0_s",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:802136563532:web:98ef1848e1dec1af9eb9e9",
   authDomain: "freeai-ff700.firebaseapp.com",
   messagingSenderId: "802136563532",
+  storageBucket: "freeai-ff700.firebasestorage.app",
+  measurementId: "G-2Y3CSLNPQM",
 };
-if (!firebaseConfig.apiKey || !firebaseConfig.appId) {
-  throw new Error("Missing VITE_FIREBASE_API_KEY or VITE_FIREBASE_APP_ID for freeai-ff700");
-}
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, "freeai-ff700");
 export const auth = getAuth(app);
