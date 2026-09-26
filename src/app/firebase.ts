@@ -1,30 +1,29 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth, signInAnonymously } from "firebase/auth";
-import firebaseConfig from "../../firebase-applet-config.json";
 
+// These values must come from the *new* Firebase project's registered web app.
+// Never reuse the previous project's apiKey or appId with freeai-ff700.
+const firebaseConfig = {
+  projectId: "freeai-ff700",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAxotchbIEirm165a5i64FOA4SBFUtj0_s",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:802136563532:web:98ef1848e1dec1af9eb9e9",
+  authDomain: "freeai-ff700.firebaseapp.com",
+  messagingSenderId: "802136563532",
+  storageBucket: "freeai-ff700.firebasestorage.app",
+  measurementId: "G-2Y3CSLNPQM",
+};
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, "freeai-ff700");
 export const auth = getAuth(app);
-
 let anonymousAuthPromise: Promise<void> | null = null;
-
-/**
- * Keeps the app login-free while still giving Firestore a real Firebase
- * Authentication identity. Anonymous auth must be enabled in the Firebase
- * console for the project.
- */
 export function ensureFirebaseAuth(): Promise<void> {
   if (auth.currentUser) return Promise.resolve();
-
   if (!anonymousAuthPromise) {
-    anonymousAuthPromise = signInAnonymously(auth)
-      .then(() => undefined)
-      .catch((error) => {
-        anonymousAuthPromise = null;
-        throw error;
-      });
+    anonymousAuthPromise = signInAnonymously(auth).then(() => undefined).catch((error) => {
+      anonymousAuthPromise = null;
+      throw error;
+    });
   }
-
   return anonymousAuthPromise;
 }

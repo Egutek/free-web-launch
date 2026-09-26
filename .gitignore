@@ -14,13 +14,14 @@ dist-ssr
 .vinxi
 .tanstack/**
 .nitro
+.netlify/
+.env
+.env.*
+!.env.example
 *.local
 
-# Wrangler / Cloudflare
 .wrangler/
 .dev.vars
-
-# Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
