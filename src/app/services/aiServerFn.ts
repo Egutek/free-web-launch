@@ -501,21 +501,23 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
       throw new Error("Nepodporovaný typ obrázku. Použijte JPG, PNG nebo WebP.");
     }
 
-    const geminiKey = process.env["GEMINI_API_KEY"];
+    // Support the current Netlify name plus legacy names already used by this site.
+    // The values stay server-side and are never returned to the browser or logs.
+    const geminiKeys = [
+      process.env["GEMINI_API_KEY"],
+      process.env["Gemini_API_Key"],
+      process.env["aifree"],
+    ].filter((key): key is string => Boolean(key?.trim()));
 
-    if (!geminiKey) {
+    if (geminiKeys.length === 0) {
       if (textInput) {
         const fallbackResult = parseTextFallback(textInput);
         return { operators: fallbackResult.operators, filteredOut: fallbackResult.filteredOut };
       }
       throw new Error(
-        "V prostředí chybí proměnná GEMINI_API_KEY. Přidejte si do administrace Netlify (Site configuration -> Environment variables) klíč GEMINI_API_KEY.",
+        "V prostředí chybí klíč Gemini. Přidejte do administrace Netlify proměnnou GEMINI_API_KEY.",
       );
     }
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
 
     let promptText = EXTRACTION_PROMPT;
     if (customInstructions && customInstructions.trim()) {
@@ -553,105 +555,117 @@ ${customInstructions.trim()}
     const modelsToTry = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite"];
     let lastError: Error | null = null;
 
-    for (const model of modelsToTry) {
-      try {
-        console.log(`[OCR] Pokus o extrakci modelem ${model}...`);
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
-        const aiResponse = await fetch(apiUrl, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            contents: [{ parts }],
-            generationConfig: {
-              responseMimeType: "application/json",
-            },
-          }),
-          signal: AbortSignal.timeout(20000),
-        });
+    for (const geminiKey of geminiKeys) {
+      let keyWasInvalid = false;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": geminiKey,
+      };
 
-        if (!aiResponse.ok) {
-          const detail = await aiResponse.text();
-          console.warn(`[OCR] Gemini model ${model} vrátil kód ${aiResponse.status}:`, detail);
+      for (const model of modelsToTry) {
+        try {
+          console.log(`[OCR] Pokus o extrakci modelem ${model}...`);
+          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+          const aiResponse = await fetch(apiUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              contents: [{ parts }],
+              generationConfig: {
+                responseMimeType: "application/json",
+              },
+            }),
+            signal: AbortSignal.timeout(20000),
+          });
 
-          let parsedErrorMessage = `Chyba modelu ${model} (${aiResponse.status})`;
-          try {
-            const errObj = JSON.parse(detail);
-            if (errObj?.error?.message) {
-              parsedErrorMessage = errObj.error.message;
+          if (!aiResponse.ok) {
+            const detail = await aiResponse.text();
+            console.warn(`[OCR] Gemini model ${model} vrátil kód ${aiResponse.status}:`, detail);
+
+            let parsedErrorMessage = `Chyba modelu ${model} (${aiResponse.status})`;
+            try {
+              const errObj = JSON.parse(detail);
+              if (errObj?.error?.message) {
+                parsedErrorMessage = errObj.error.message;
+              }
+            } catch {
+              // Keep fallback message
             }
-          } catch {
-            // Keep fallback message
+
+            if (aiResponse.status === 400 && detail.includes("API key not valid")) {
+              keyWasInvalid = true;
+              lastError = new Error("Žádný nakonfigurovaný klíč Gemini není platný.");
+              break;
+            }
+
+            // On 429 or 503, continue to try fallback model
+            lastError = new Error(parsedErrorMessage);
+            continue;
           }
 
-          if (aiResponse.status === 400 && detail.includes("API key not valid")) {
-            throw new Error(
-              "Zadaný GEMINI_API_KEY není platný. Zkontrolujte prosím svůj klíč v Google AI Studio.",
-            );
-          }
+          const payload = (await aiResponse.json()) as {
+            candidates?: Array<{
+              content?: {
+                parts?: Array<{ text?: string; thought?: boolean }>;
+              };
+            }>;
+          };
 
-          // On 429 or 503, continue to try fallback model
-          lastError = new Error(parsedErrorMessage);
-          continue;
-        }
-
-        const payload = (await aiResponse.json()) as {
-          candidates?: Array<{
-            content?: {
-              parts?: Array<{ text?: string; thought?: boolean }>;
-            };
-          }>;
-        };
-
-        const candidateParts = payload.candidates?.[0]?.content?.parts || [];
+          const candidateParts = payload.candidates?.[0]?.content?.parts || [];
         // Combine text from non-thought parts first, or fallback to all text parts
-        const nonThoughtText = candidateParts
-          .filter((p) => !p.thought && typeof p.text === "string")
-          .map((p) => p.text)
-          .join("\n")
-          .trim();
+          const nonThoughtText = candidateParts
+            .filter((p) => !p.thought && typeof p.text === "string")
+            .map((p) => p.text)
+            .join("\n")
+            .trim();
 
-        const allText = candidateParts
-          .filter((p) => typeof p.text === "string")
-          .map((p) => p.text)
-          .join("\n")
-          .trim();
+          const allText = candidateParts
+            .filter((p) => typeof p.text === "string")
+            .map((p) => p.text)
+            .join("\n")
+            .trim();
 
-        const textToParse = nonThoughtText || allText || "{}";
+          const textToParse = nonThoughtText || allText || "{}";
 
-        const parsed = parseGeminiJson(textToParse);
-        if (!parsed) {
-          console.warn(
-            `[OCR] Model ${model} vrátil text, který se nepodařilo zparsovat jako JSON:`,
-            textToParse.slice(0, 200),
+          const parsed = parseGeminiJson(textToParse);
+          if (!parsed) {
+            console.warn(
+              `[OCR] Model ${model} vrátil text, který se nepodařilo zparsovat jako JSON:`,
+              textToParse.slice(0, 200),
+            );
+            lastError = new Error(`Model ${model} nevrátil platný JSON.`);
+            continue;
+          }
+
+          const rawList = Array.isArray(parsed)
+            ? parsed
+            : (parsed as { operators?: unknown[] })?.operators;
+          const rawAbsences = !Array.isArray(parsed)
+            ? (parsed as { absences?: unknown[] })?.absences
+            : undefined;
+
+          const extracted = normalize(rawList, rawAbsences);
+          console.log(
+            `[OCR] Model ${model} úspěšně extrahoval ${extracted.operators.length} operátorů a ${extracted.filteredOut.length} vyřazených/absencí.`,
           );
-          lastError = new Error(`Model ${model} nevrátil platný JSON.`);
-          continue;
-        }
 
-        const rawList = Array.isArray(parsed)
-          ? parsed
-          : (parsed as { operators?: unknown[] })?.operators;
-        const rawAbsences = !Array.isArray(parsed)
-          ? (parsed as { absences?: unknown[] })?.absences
-          : undefined;
-
-        const extracted = normalize(rawList, rawAbsences);
-        console.log(
-          `[OCR] Model ${model} úspěšně extrahoval ${extracted.operators.length} operátorů a ${extracted.filteredOut.length} vyřazených/absencí.`,
-        );
-
-        if (extracted.operators.length > 0 || extracted.filteredOut.length > 0) {
-          operators = extracted.operators;
-          filteredOut = extracted.filteredOut;
-          break; // Successfully extracted
-        }
-      } catch (err: unknown) {
-        console.warn(`[OCR] Pokus s modelem ${model} selhal:`, err);
-        lastError = err instanceof Error ? err : new Error(String(err));
-        if (lastError.message.includes("GEMINI_API_KEY není platný")) {
-          break;
+          if (extracted.operators.length > 0 || extracted.filteredOut.length > 0) {
+            operators = extracted.operators;
+            filteredOut = extracted.filteredOut;
+            break; // Successfully extracted
+          }
+        } catch (err: unknown) {
+          console.warn(`[OCR] Pokus s modelem ${model} selhal:`, err);
+          lastError = err instanceof Error ? err : new Error(String(err));
+          if (lastError.message.includes("klíč Gemini není platný")) {
+            keyWasInvalid = true;
+            break;
+          }
         }
       }
+
+      if (operators.length > 0 || filteredOut.length > 0) break;
+      if (keyWasInvalid) continue;
     }
 
     if (operators.length === 0 && filteredOut.length === 0) {
