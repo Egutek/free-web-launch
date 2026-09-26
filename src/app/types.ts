@@ -85,6 +85,7 @@ export interface ShiftTemplate {
   description?: string;
   createdAt: string;
   isBuiltIn?: boolean;
+  isDeleted?: boolean;
   operatorCount: number;
   activeCount: number;
   shift?: ShiftCode | "all";

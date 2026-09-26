@@ -16,12 +16,15 @@ import { Department, Operator, ShiftCode, ShiftTemplate } from "../types";
 import { DEPARTMENTS } from "../data/departments";
 import {
   loadAllTemplates,
+  loadLocalCustomTemplates,
   saveNewTemplate,
   deleteTemplate,
   updateTemplateWithCurrent,
   restoreDefaultTemplates,
 } from "../data/templates";
 import {
+  migrateLocalTemplatesToCloud,
+  restoreBuiltInTemplatesToCloud,
   syncTemplateToCloud,
   deleteTemplateFromCloud,
   subscribeToTemplates,
@@ -72,20 +75,33 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
       setNewTemplateName(`Směna ${activeShift} - ${timeShift} (${dayName})`);
 
       // Realtime sync from cloud
-      const unsub = subscribeToTemplates((cloudTemplates) => {
-        if (cloudTemplates && cloudTemplates.length > 0) {
-          setTemplates((prev) => {
-            const builtIns = prev.filter((t) => t.isBuiltIn);
-            // Merge custom templates without duplicates
-            const customMap = new Map<string, ShiftTemplate>();
-            for (const t of cloudTemplates) {
-              customMap.set(t.id, t);
-            }
-            return [...builtIns, ...Array.from(customMap.values())];
+      let unsub: (() => void) | undefined;
+      let cancelled = false;
+      void (async () => {
+        try {
+          await migrateLocalTemplatesToCloud(loadLocalCustomTemplates());
+          if (cancelled) return;
+          unsub = subscribeToTemplates((cloudTemplates) => {
+            setTemplates([
+              ...loadAllTemplates().filter(
+                (template) =>
+                  template.isBuiltIn &&
+                  !cloudTemplates.some(
+                    (cloudTemplate) =>
+                      cloudTemplate.id === template.id && cloudTemplate.isDeleted,
+                  ),
+              ),
+              ...cloudTemplates.filter((template) => !template.isBuiltIn && !template.isDeleted),
+            ]);
           });
+        } catch (error) {
+          console.error("Cloud template sync notice:", error);
         }
-      });
-      return () => unsub();
+      })();
+      return () => {
+        cancelled = true;
+        unsub?.();
+      };
     }
     return undefined;
   }, [isOpen, activeShift]);
@@ -118,13 +134,20 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   };
 
   const handleDelete = (id: string) => {
+    const target = templates.find((template) => template.id === id);
     deleteTemplate(id);
-    deleteTemplateFromCloud(id).catch((err) => console.warn("Cloud template delete notice:", err));
+    const cloudChange = target?.isBuiltIn
+      ? syncTemplateToCloud({ ...target, isDeleted: true })
+      : deleteTemplateFromCloud(id);
+    cloudChange.catch((err) => console.warn("Cloud template delete notice:", err));
     reloadTemplates();
   };
 
   const handleRestoreDefaults = () => {
     restoreDefaultTemplates();
+    restoreBuiltInTemplatesToCloud().catch((err) =>
+      console.warn("Cloud built-in template restore notice:", err),
+    );
     reloadTemplates();
   };
 
