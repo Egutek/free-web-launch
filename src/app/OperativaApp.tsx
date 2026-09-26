@@ -12,6 +12,7 @@ import {
   Department,
   DepartmentId,
   MoveHistoryRecord,
+  MachineType,
   Operator,
   OperatorStatus,
   ShiftCode,
@@ -67,6 +68,7 @@ import {
 } from "./utils/dragState";
 import {
   subscribeToOperators,
+  subscribeToCloudWriteErrors,
   syncOperatorToCloud,
   bulkSyncOperatorsToCloud,
   replaceOperatorsInCloud,
@@ -185,6 +187,7 @@ export default function App() {
   // Cloud Sync state (bez přihlašování)
   const [isCloudConnected, setIsCloudConnected] = useState(false);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [hasCloudWriteError, setHasCloudWriteError] = useState(false);
 
   // Bulk Selection of Operators (subtle checkboxes)
   const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
@@ -261,6 +264,8 @@ export default function App() {
   }, [undoStack]);
 
   // Login-free Firebase authentication + real-time cloud sync.
+  useEffect(() => subscribeToCloudWriteErrors(() => setHasCloudWriteError(true)), []);
+
   // Anonymous auth runs before Firestore listeners so rules can safely require
   // request.auth without introducing a visible login screen.
   useEffect(() => {
@@ -480,9 +485,7 @@ export default function App() {
       // Cloud synchronization for undo
       const revertedOp = updatedOperators.find((o) => o.id === lastOp.operatorId);
       if (revertedOp) {
-        syncOperatorToCloud(revertedOp).catch((e) =>
-          console.warn("Cloud undo sync error:", e),
-        );
+        syncOperatorToCloud(revertedOp).catch((e) => console.warn("Cloud undo sync error:", e));
       }
       syncHistoryRecordToCloud(historyItem).catch((e) =>
         console.warn("Cloud history sync error:", e),
@@ -509,9 +512,7 @@ export default function App() {
         const updatedOperators = operatorsRef.current.map((o) => {
           // undoStack is newest-first. When several recent operations affected
           // the same operator, restore the state from the oldest reverted entry.
-          const op = [...opsToRevert]
-            .reverse()
-            .find((candidate) => candidate.operatorId === o.id);
+          const op = [...opsToRevert].reverse().find((candidate) => candidate.operatorId === o.id);
           if (!op) return o;
           return {
             ...o,
@@ -688,9 +689,7 @@ export default function App() {
       toStatus: newStatus,
       fromAbsenceReason: op.absenceReason,
       toAbsenceReason:
-        targetDeptId === "unassigned"
-          ? absenceReason || op.absenceReason || "Absence"
-          : undefined,
+        targetDeptId === "unassigned" ? absenceReason || op.absenceReason || "Absence" : undefined,
       timestamp: now,
     }));
     setUndoStack((prev) => [...undoOps, ...prev].slice(0, 5));
@@ -728,7 +727,7 @@ export default function App() {
 
   const handleBulkChangeMachine = (machineType: "LL" | "RTR" | "NONE") => {
     if (bulkSelectedIds.size === 0) return;
-    
+
     const count = bulkSelectedIds.size;
     const now = new Date().toISOString();
     const idSet = new Set(bulkSelectedIds);
@@ -1227,10 +1226,7 @@ export default function App() {
       } else if (deptId === "hovs") {
         // HOVS department operators mostly drive LL unless RTR was detected
         machine = machine === "RTR" ? "RTR" : "LL";
-      } else if (
-        (deptId === "hovc" || deptId === "obwi") &&
-        (!machine || machine === "NONE")
-      ) {
+      } else if ((deptId === "hovc" || deptId === "obwi") && (!machine || machine === "NONE")) {
         machine = "RTR";
       } else if (!machine) {
         machine = "LL";
@@ -1349,7 +1345,10 @@ export default function App() {
     const namesPreview =
       toDelete.length <= 3
         ? toDelete.map((o) => o.name).join(", ")
-        : `${toDelete.slice(0, 2).map((o) => o.name).join(", ")} a dalších ${count - 2}`;
+        : `${toDelete
+            .slice(0, 2)
+            .map((o) => o.name)
+            .join(", ")} a dalších ${count - 2}`;
 
     const confirmed = window.confirm(
       `Opravdu chcete hromadně smazat ${count} operátorů (${namesPreview}) ze směny ${activeShift}?`,
@@ -1361,9 +1360,7 @@ export default function App() {
     saveOperators(updated);
 
     targetIds.forEach((id) => {
-      deleteOperatorFromCloud(id).catch((e) =>
-        console.warn("Cloud operator delete error:", e),
-      );
+      deleteOperatorFromCloud(id).catch((e) => console.warn("Cloud operator delete error:", e));
     });
 
     setBulkSelectedIds((prev) => {
@@ -1685,6 +1682,7 @@ export default function App() {
         onResetData={handleResetData}
         isCloudConnected={isCloudConnected}
         isCloudSyncing={isCloudSyncing}
+        hasCloudWriteError={hasCloudWriteError}
       />
 
       {/* Main Content Area */}
@@ -1882,7 +1880,8 @@ export default function App() {
                         Zjištěné vynechané osoby ze snímku ({omittedFromImport.length})
                       </span>
                       <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
-                        Tyto lidi OCR vynechalo (Absence, PN, Dovolená, PS). Kliknutím je můžete rovnou naklikat pod absenci:
+                        Tyto lidi OCR vynechalo (Absence, PN, Dovolená, PS). Kliknutím je můžete
+                        rovnou naklikat pod absenci:
                       </p>
                     </div>
                   </div>
@@ -2179,6 +2178,7 @@ export default function App() {
             onShiftChange={handleShiftChange}
             isCloudConnected={isCloudConnected}
             isCloudSyncing={isCloudSyncing}
+            hasCloudWriteError={hasCloudWriteError}
             onSelectDepartment={() => {
               setViewMode("board");
             }}

@@ -19,6 +19,17 @@ import { Operator, MoveHistoryRecord, ShiftTemplate, Department, ShiftCode } fro
 
 export type Unsubscribe = () => void;
 
+const writeErrorListeners = new Set<(error: Error) => void>();
+
+export function subscribeToCloudWriteErrors(listener: (error: Error) => void): Unsubscribe {
+  writeErrorListeners.add(listener);
+  return () => writeErrorListeners.delete(listener);
+}
+
+function reportWriteError(error: Error) {
+  writeErrorListeners.forEach((listener) => listener(error));
+}
+
 const WORKSPACE_ID = "zf_ostrov";
 
 const getCollectionRef = (subPath: string) =>
@@ -62,6 +73,16 @@ export function handleFirestoreError(
     path,
   };
   console.error("Firestore Error: ", JSON.stringify(errInfo));
+  if (
+    [
+      OperationType.CREATE,
+      OperationType.UPDATE,
+      OperationType.DELETE,
+      OperationType.WRITE,
+    ].includes(operationType)
+  ) {
+    reportWriteError(error instanceof Error ? error : new Error(String(error)));
+  }
   throw new Error(JSON.stringify(errInfo));
 }
 
@@ -97,9 +118,15 @@ export async function syncOperatorToCloud(operator: Operator): Promise<void> {
     await runTransaction(db, async (transaction) => {
       const snapshot = await transaction.get(operatorRef);
       const currentRevision =
-        snapshot.exists() && typeof snapshot.data().revision === "number"
-          ? snapshot.data().revision
+        snapshot.exists() && typeof snapshot.data()["revision"] === "number"
+          ? snapshot.data()["revision"]
           : 0;
+
+      // A second device may have changed this operator since our snapshot.
+      // Reject its stale state instead of silently overwriting that change.
+      if (currentRevision !== (operator.revision ?? 0)) {
+        throw new Error("Konflikt změn: operátor byl mezitím upraven na jiném zařízení.");
+      }
 
       const cleanOp: Record<string, unknown> = {
         ...operator,

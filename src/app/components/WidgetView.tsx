@@ -29,7 +29,7 @@ import {
   Share,
 } from "lucide-react";
 import { DEPARTMENTS } from "../data/departments";
-import { Department, Operator, ShiftType } from "../types";
+import { Department, Operator, ShiftCode } from "../types";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -39,10 +39,11 @@ interface BeforeInstallPromptEvent extends Event {
 interface WidgetViewProps {
   operators: Operator[];
   customDepartments?: Department[];
-  activeShift?: ShiftType;
-  onShiftChange?: (shift: ShiftType) => void;
+  activeShift?: ShiftCode;
+  onShiftChange?: (shift: ShiftCode) => void;
   isCloudConnected?: boolean;
   isCloudSyncing?: boolean;
+  hasCloudWriteError?: boolean;
   onSelectDepartment?: (deptId: string) => void;
   onSwitchToBoard?: () => void;
 }
@@ -54,6 +55,7 @@ export const WidgetView: React.FC<WidgetViewProps> = ({
   onShiftChange,
   isCloudConnected = true,
   isCloudSyncing = false,
+  hasCloudWriteError = false,
   onSelectDepartment,
   onSwitchToBoard,
 }) => {
@@ -97,6 +99,7 @@ export const WidgetView: React.FC<WidgetViewProps> = ({
         window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
       };
     }
+    return undefined;
   }, []);
 
   const handleInstallClick = async () => {
@@ -327,7 +330,7 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
             <span>Aktivní směna:</span>
           </span>
           <div className="flex items-center gap-1">
-            {(["A", "B", "C"] as ShiftType[]).map((shift) => (
+            {(["A", "B", "C"] as ShiftCode[]).map((shift) => (
               <button
                 key={`widget-shift-btn-${shift}`}
                 type="button"
@@ -364,14 +367,20 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
             <span className="font-extrabold text-slate-200 tracking-wider text-[11px] uppercase">
               ZF OSTROV • SMĚNA {activeShift}
             </span>
-            {isCloudSyncing ? (
+            {hasCloudWriteError ? (
+              <span className="text-[10px] text-red-400 font-mono">
+                Chyba ukládání — obnovte stránku
+              </span>
+            ) : isCloudSyncing ? (
               <span className="text-[10px] text-amber-400 font-mono animate-pulse">
                 Ukládání...
               </span>
-            ) : (
+            ) : isCloudConnected ? (
               <span className="text-[10px] text-emerald-400/80 font-mono hidden xs:inline">
                 ● Live Online
               </span>
+            ) : (
+              <span className="text-[10px] text-amber-400 font-mono">Bez online spojení</span>
             )}
           </div>
           <div className="font-mono text-slate-300 font-bold text-xs flex items-center gap-1.5">

@@ -50,6 +50,7 @@ interface HeaderProps {
   onResetData: () => void;
   isCloudConnected?: boolean;
   isCloudSyncing?: boolean;
+  hasCloudWriteError?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -75,6 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
   onResetData,
   isCloudConnected = false,
   isCloudSyncing = false,
+  hasCloudWriteError = false,
 }) => {
   const [isUndoOpen, setIsUndoOpen] = useState(false);
   const undoDropdownRef = useRef<HTMLDivElement>(null);
@@ -115,7 +117,14 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-700">
                   Aftermarket Hub
                 </span>
-                {isCloudConnected ? (
+                {hasCloudWriteError ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-red-700 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200"
+                    title="Změna se neuložila online. Obnovte stránku a zkontrolujte aktuální stav před další úpravou."
+                  >
+                    <CloudOff className="w-3 h-3" /> Chyba ukládání — obnovte stránku
+                  </span>
+                ) : isCloudConnected ? (
                   <span
                     className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/60 shadow-2xs"
                     title="Živá online synchronizace aktivní • Jakákoliv změna se ihned projeví na všech zařízeních s odkazem"
