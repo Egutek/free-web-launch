@@ -78,7 +78,8 @@ export function subscribeToOperators(
     { includeMetadataChanges: true },
     (snapshot) => {
       const ops = snapshot.docs.map((doc) => doc.data() as Operator);
-      // A cached snapshot is not proof of a live Firestore connection.\n      onUpdate(ops, snapshot.metadata.fromCache);
+      // A cached snapshot is not proof of a live Firestore connection.
+      onUpdate(ops, snapshot.metadata.fromCache);
     },
     (error) => {
       const err = error instanceof Error ? error : new Error(String(error));
