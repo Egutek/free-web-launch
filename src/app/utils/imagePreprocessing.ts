@@ -236,7 +236,7 @@ export async function applyImageAdjustments(
           }
 
           // 2. Optional: Shadow removal & background illumination normalization
-          let processedLum = luminance;
+          let processedLum: Float32Array<ArrayBufferLike> = luminance;
           if (adjustments.shadowRemoval && finalCanvasW > 20 && finalCanvasH > 20) {
             processedLum = applyShadowRemoval(luminance, finalCanvasW, finalCanvasH);
           }

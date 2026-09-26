@@ -35,3 +35,16 @@ npx firebase-tools@latest deploy --only firestore:rules
 
 Nasazení webu z GitHubu (např. do Netlify) pravidla Firestore automaticky
 nenasazuje; jde o samostatné nasazení Firebase.
+
+## Alternativa: Cloudflare Workers
+
+Projekt má serverové sestavení TanStack Start. Pro Cloudflare proto používejte
+Workers, nikoli nahrání složky `dist` jako statického webu. Konfigurace je v
+`wrangler.jsonc`; `npm run build:cloudflare` vytvoří sestavení pro Workers a
+`npm run deploy:cloudflare` ho zveřejní po přihlášení do Cloudflare.
+
+Při propojení GitHub repozitáře s Workers Builds nastavte build command
+`npm run build:cloudflare` a deploy command `npx wrangler deploy`. Firestore
+zůstává ve stávajícím projektu Firebase; pravidla a povolení Anonymous
+Authentication nasazujte zvlášť podle postupu výše. Před přepnutím odkazu
+otestujte online stav a změnu provedenou na jednom zařízení na druhém.
