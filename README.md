@@ -4,11 +4,9 @@
 
 Tento projekt je online.
 
-Projekt byl vytvořen pomocí **Google AI Studio**.
-
 ## Vývoj
 
-Projekt lze dále upravovat v Google AI Studio nebo lokálně. Pro lokální vývoj potřebujete Node.js a npm — [instalace přes nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Projekt lze dále upravovat přímo v GitHubu nebo lokálně. Pro lokální vývoj potřebujete Node.js a npm — [instalace přes nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
 
 ```sh
 git clone <this-repository-url>
