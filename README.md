@@ -1,22 +1,22 @@
 # ZF Operativa Ostrov
 
-## Nový Firebase projekt
-Projekt: `freeai-ff700`, pojmenovaná databáze Firestore: `freeai-ff700`.
-Původní Firebase webovou konfiguraci **nepoužívejte**.
+## Firebase projekt
 
-1. Ve Firebase Console → Project settings → Your apps zaregistrujte nebo otevřete webovou aplikaci a zkopírujte **apiKey** a **appId**.
-2. V hostingu nastavte `VITE_FIREBASE_API_KEY` a `VITE_FIREBASE_APP_ID` z tohoto webového projektu. Pro lokální vývoj je dejte do `.env.local` podle `.env.example`.
-3. Firebase Authentication → Sign-in method → povolte **Anonymous**.
-4. Ověřte existenci pojmenované Firestore databáze `freeai-ff700`. Pravidla v `firebase.json` cílí právě na ni.
-5. Zkontrolujte `firestore.rules`, potom pravidla samostatně nasaďte: `npx firebase-tools@latest deploy --only firestore:rules --project freeai-ff700`.
-6. `npm ci && npm run build`. Při nasazení nastavte stejné `VITE_FIREBASE_*` proměnné před sestavením.
+Projekt: `freeai-ff700`, databáze Firestore: `(default)`. Web používá registrovanou Firebase aplikaci Freeai.
 
-**Pozor:** Anonymní přístup není soukromý. Při současných pravidlech může kdokoli, kdo získá webovou aplikaci, anonymně přistupovat ke sdíleným datům. Pro soukromý provoz použijte samostatné omezení přístupu (např. Cloudflare Access) nebo přejděte na přihlášení a pravidla podle uživatelů. Samotný skrytý odkaz nestačí.
+1. Firebase Authentication → Sign-in method → **Anonymous** musí být zapnuté. Uživatelé se přihlásí anonymně na pozadí, bez formuláře nebo účtu.
+2. Firestore Rules musí být nasazeny z `firestore.rules` do databáze `(default)`: `npx firebase-tools@latest deploy --only firestore:rules --project freeai-ff700`.
+3. Firebase SDK používá ID aplikace `1:802136563532:web:22c640be67fb80c99eb9e9`. Případné build proměnné `VITE_FIREBASE_API_KEY` a `VITE_FIREBASE_APP_ID` musí pocházet z této webové aplikace.
+4. Po sestavení a nasazení webu každý návštěvník získá anonymní Firebase identitu. Firestore `onSnapshot` doručuje změny operátorů ostatním otevřeným zařízením v reálném čase.
 
-Aplikace nyní automaticky nenahrává staré lokální operátory do prázdné nové databáze. Případnou migraci proveďte vědomě a až po záloze dat.
+**Přístup přes odkaz:** každý, kdo získá URL aplikace, může číst, přidávat, upravovat i mazat sdílená provozní data v pracovním prostoru. Odkaz není přístupový zámek.
 
-## Cloudflare Workers
-Projekt používá TanStack Start se serverovým sestavením. Použijte Workers (nikoli pouze statické Pages). Build: `npm run build:cloudflare`, deploy: `npx wrangler deploy`. Změny Firestore pravidel jsou nezávislé na nasazení webu.
+Aplikace nenahrává staré lokální záznamy do prázdné cloudové databáze automaticky. Případnou migraci proveďte vědomě až po záloze.
+
+## Nasazení webu
+
+Projekt používá TanStack Start se serverovým sestavením. Nasazujte jej na stávající hosting podporující Node/Workers. Build CI ověřuje přes `bun run build`. Změny pravidel Firestore se nasazují samostatně od webu.
 
 ## Ověření
-Po zapnutí Anonymous Auth a nasazení pravidel otevřete aplikaci ve dvou nezávislých prohlížečích. Zkontrolujte online indikátor, přidání operátora, přesun mezi odděleními, změnu na druhém zařízení a chování po odpojení a obnovení internetu.
+
+Otevřete web ve dvou nezávislých prohlížečích. Oba musí ukázat online stav; přidání, přesun, změna stavu nebo oddělení v jednom musí dorazit do druhého bez obnovení stránky.
