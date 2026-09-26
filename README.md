@@ -1,48 +1,22 @@
 # ZF Operativa Ostrov
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/109dc72d-db81-4248-a2ef-43227ebd75bc/deploy-status)](https://app.netlify.com/projects/zfoperatives/deploys)
+## Nový Firebase projekt
+Projekt: `freeai-ff700`, pojmenovaná databáze Firestore: `freeai-ff700`.
+Původní Firebase webovou konfiguraci **nepoužívejte**.
 
-Tento projekt je online.
+1. Ve Firebase Console → Project settings → Your apps zaregistrujte nebo otevřete webovou aplikaci a zkopírujte **apiKey** a **appId**.
+2. V hostingu nastavte `VITE_FIREBASE_API_KEY` a `VITE_FIREBASE_APP_ID` z tohoto webového projektu. Pro lokální vývoj je dejte do `.env.local` podle `.env.example`.
+3. Firebase Authentication → Sign-in method → povolte **Anonymous**.
+4. Ověřte existenci pojmenované Firestore databáze `freeai-ff700`. Pravidla v `firebase.json` cílí právě na ni.
+5. Zkontrolujte `firestore.rules`, potom pravidla samostatně nasaďte: `npx firebase-tools@latest deploy --only firestore:rules --project freeai-ff700`.
+6. `npm ci && npm run build`. Při nasazení nastavte stejné `VITE_FIREBASE_*` proměnné před sestavením.
 
-## Vývoj
+**Pozor:** Anonymní přístup není soukromý. Při současných pravidlech může kdokoli, kdo získá webovou aplikaci, anonymně přistupovat ke sdíleným datům. Pro soukromý provoz použijte samostatné omezení přístupu (např. Cloudflare Access) nebo přejděte na přihlášení a pravidla podle uživatelů. Samotný skrytý odkaz nestačí.
 
-Projekt lze dále upravovat přímo v GitHubu nebo lokálně. Pro lokální vývoj potřebujete Node.js a npm — [instalace přes nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Aplikace nyní automaticky nenahrává staré lokální operátory do prázdné nové databáze. Případnou migraci proveďte vědomě a až po záloze dat.
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
-```
+## Cloudflare Workers
+Projekt používá TanStack Start se serverovým sestavením. Použijte Workers (nikoli pouze statické Pages). Build: `npm run build:cloudflare`, deploy: `npx wrangler deploy`. Změny Firestore pravidel jsou nezávislé na nasazení webu.
 
-## Firebase synchronizace
-
-Aplikace používá pojmenovanou Firestore databázi
-`ai-studio-freeweblaunch-d9175b45-6e54-4972-beec-44998053c0cc`, nikoliv
-výchozí `(default)` databázi. Před prvním použitím v Firebase Console zapněte
-**Authentication → Sign-in method → Anonymous**. Bez tohoto poskytovatele se
-klient nemůže přihlásit a pravidla Firestore mu záměrně odepřou přístup.
-
-Pravidla jsou uložená v `firestore.rules` a jsou namapovaná na správnou
-pojmenovanou databázi v `firebase.json`. Po změně pravidel je nasaďte:
-
-```sh
-npx firebase-tools@latest login
-npx firebase-tools@latest deploy --only firestore:rules
-```
-
-Nasazení webu z GitHubu (např. do Netlify) pravidla Firestore automaticky
-nenasazuje; jde o samostatné nasazení Firebase.
-
-## Alternativa: Cloudflare Workers
-
-Projekt má serverové sestavení TanStack Start. Pro Cloudflare proto používejte
-Workers, nikoli nahrání složky `dist` jako statického webu. Konfigurace je v
-`wrangler.jsonc`; `npm run build:cloudflare` vytvoří sestavení pro Workers a
-`npm run deploy:cloudflare` ho zveřejní po přihlášení do Cloudflare.
-
-Při propojení GitHub repozitáře s Workers Builds nastavte build command
-`npm run build:cloudflare` a deploy command `npx wrangler deploy`. Firestore
-zůstává ve stávajícím projektu Firebase; pravidla a povolení Anonymous
-Authentication nasazujte zvlášť podle postupu výše. Před přepnutím odkazu
-otestujte online stav a změnu provedenou na jednom zařízení na druhém.
+## Ověření
+Po zapnutí Anonymous Auth a nasazení pravidel otevřete aplikaci ve dvou nezávislých prohlížečích. Zkontrolujte online indikátor, přidání operátora, přesun mezi odděleními, změnu na druhém zařízení a chování po odpojení a obnovení internetu.

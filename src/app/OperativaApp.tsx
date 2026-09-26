@@ -271,7 +271,6 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     let unsub: (() => void) | null = null;
-    let initialCloudSeedStarted = false;
 
     setIsCloudSyncing(true);
     ensureFirebaseAuth()
@@ -308,13 +307,13 @@ export default function App() {
               });
               setOperators(mergedOps);
               saveOperators(mergedOps);
-            } else if (!fromCache && !initialCloudSeedStarted) {
-              // Seed only after the server confirms the collection is empty.
-              // Metadata snapshots may repeat, so start this operation once.
-              initialCloudSeedStarted = true;
-              bulkSyncOperatorsToCloud(operatorsRef.current).catch((err) =>
-                console.warn("Initial cloud seed failed:", err),
-              );
+            } else if (!fromCache) {
+              // Never silently migrate browser-local operators into a newly
+              // configured database. Import must be an explicit user action.
+              // An empty server collection is not an invitation to restore
+              // potentially stale records from this browser.
+              setOperators([]);
+              saveOperators([]);
             }
           },
           (err) => {
