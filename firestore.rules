@@ -83,6 +83,7 @@ service cloud.firestore {
             && data.createdAt is string && data.createdAt.size() <= 50
             && (!data.keys().hasAny(['description']) || (data.description is string && data.description.size() <= 500))
             && (!data.keys().hasAny(['isBuiltIn']) || data.isBuiltIn is bool)
+            && (!data.keys().hasAny(['isDeleted']) || data.isDeleted is bool)
             && (!data.keys().hasAny(['shift']) || data.shift in ['A', 'B', 'C', 'all'])
             && (!data.keys().hasAny(['assignments']) || data.assignments is list);
       }

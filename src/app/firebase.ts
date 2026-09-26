@@ -5,8 +5,8 @@ import { getAuth, signInAnonymously } from "firebase/auth";
 // These values come from the registered Freeai web app.
 const firebaseConfig = {
   projectId: "freeai-ff700",
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAxotchbIEirm165a5i64FOA4SBFUtj0_s",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:802136563532:web:22c640be67fb80c99eb9e9",
+  apiKey: import.meta.env["VITE_FIREBASE_API_KEY"] || "AIzaSyAxotchbIEirm165a5i64FOA4SBFUtj0_s",
+  appId: import.meta.env["VITE_FIREBASE_APP_ID"] || "1:802136563532:web:22c640be67fb80c99eb9e9",
   authDomain: "freeai-ff700.firebaseapp.com",
   messagingSenderId: "802136563532",
   storageBucket: "freeai-ff700.firebasestorage.app",

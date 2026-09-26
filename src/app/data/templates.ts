@@ -121,6 +121,18 @@ export const loadAllTemplates = (): ShiftTemplate[] => {
   }
 };
 
+export const loadLocalCustomTemplates = (): ShiftTemplate[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const custom: ShiftTemplate[] = raw ? JSON.parse(raw) : [];
+    const deletedIds = getDeletedTemplateIds();
+    return custom.filter((template) => !deletedIds.has(template.id));
+  } catch (err) {
+    console.warn("Failed to load local custom shift templates:", err);
+    return [];
+  }
+};
+
 export const saveNewTemplate = (
   name: string,
   description: string | undefined,

@@ -289,6 +289,37 @@ export function subscribeToTemplates(
   );
 }
 
+export async function migrateLocalTemplatesToCloud(
+  templates: ShiftTemplate[],
+): Promise<void> {
+  await ensureFirebaseAuth();
+  for (const template of templates) {
+    const templateRef = getDocRef("templates", template.id);
+    await runTransaction(db, async (transaction) => {
+      const existing = await transaction.get(templateRef);
+      if (!existing.exists()) {
+        const cleanTemplate: Record<string, unknown> = { ...template };
+        Object.keys(cleanTemplate).forEach(
+          (key) => cleanTemplate[key] === undefined && delete cleanTemplate[key],
+        );
+        transaction.set(templateRef, cleanTemplate);
+      }
+    });
+  }
+}
+
+export async function restoreBuiltInTemplatesToCloud(): Promise<void> {
+  await ensureFirebaseAuth();
+  const snapshot = await getDocs(
+    query(getCollectionRef("templates"), orderBy("createdAt", "desc"), limit(50)),
+  );
+  const deletedBuiltIns = snapshot.docs.filter(
+    (template) =>
+      template.data()["isBuiltIn"] === true && template.data()["isDeleted"] === true,
+  );
+  await Promise.all(deletedBuiltIns.map((template) => deleteDoc(template.ref)));
+}
+
 export async function syncTemplateToCloud(template: ShiftTemplate): Promise<void> {
   await ensureFirebaseAuth();
   try {
