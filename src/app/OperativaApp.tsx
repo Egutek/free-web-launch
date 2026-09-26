@@ -266,6 +266,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     let unsub: (() => void) | null = null;
+    let initialCloudSeedStarted = false;
 
     setIsCloudSyncing(true);
     ensureFirebaseAuth()
@@ -302,8 +303,10 @@ export default function App() {
               });
               setOperators(mergedOps);
               saveOperators(mergedOps);
-            } else {
-              // If cloud is empty on first setup, seed initial operators.
+            } else if (!fromCache && !initialCloudSeedStarted) {
+              // Seed only after the server confirms the collection is empty.
+              // Metadata snapshots may repeat, so start this operation once.
+              initialCloudSeedStarted = true;
               bulkSyncOperatorsToCloud(operatorsRef.current).catch((err) =>
                 console.warn("Initial cloud seed failed:", err),
               );
