@@ -471,17 +471,10 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
       mimeType?: string;
       textInput?: string;
       customInstructions?: string;
-      permanentRosterNames?: string[];
     }) => d,
   )
   .handler(async ({ data }) => {
-    const {
-      imageBase64,
-      mimeType = "image/jpeg",
-      textInput,
-      customInstructions,
-      permanentRosterNames,
-    } = data;
+    const { imageBase64, mimeType = "image/jpeg", textInput, customInstructions } = data;
 
     if (!imageBase64 && !textInput) {
       throw new Error("Nebyly poskytnuty žádné obrazové ani textové údaje.");
@@ -504,20 +497,6 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
     };
 
     let promptText = EXTRACTION_PROMPT;
-
-    if (permanentRosterNames && permanentRosterNames.length > 0) {
-      promptText += `\n\n======================================================
-PAMĚŤ STÁLÝCH ZAMĚSTNANCŮ SMĚNY (HLÍDÁNÍ A KONTROLA OCR NA POZADÍ):
-Dispečer má v kmenovém stavu směny uložena tato konkrétní jména (${permanentRosterNames.length} stálých operátorů):
-${permanentRosterNames.join(", ")}
-
-POVINNÁ PRAVIDLA PRO AI OPRAVU A HLÍDÁNÍ:
-1. AUTOKOREKCE: Každé rukopisné jméno nebo jméno na štítku porovnej s tímto stálým seznamem. Pokud je jméno zapsáno s překlepem, foneticky, zkráceně, bez diakritiky nebo prohozeně (např. 'Novak', 'Svobada D.', 'Pitec', 'Bojko'), AUTOMATICKY ho oprav a vrať přesné celé jméno z tohoto stálého seznamu!
-2. PŘIŘAZENÍ: Pokud osoba ze stálého seznamu je v nějakém sloupci, zařaď ji do odpovídajícího departmentId. Pokud je v sekci absence (dovolená, PN), zařaď ji do absences.
-3. KONTROLA NAVÍC: Pokud je na tabuli někdo, kdo v tomto stálém seznamu NENÍ (např. výpomoc z jiné směny, brigádník), zařaď ho normálně také a do 'notes' uveď 'Mimo stálý stav'.
-======================================================\n`;
-    }
-
     if (customInstructions && customInstructions.trim()) {
       promptText += `\n\n======================================================
 DODATEČNÉ VLASTNÍ INSTRUKCE A POKYNY OD DISPEČERA (NEJVYŠŠÍ PRIORITA):
@@ -549,8 +528,8 @@ ${customInstructions.trim()}
     let operators: ExtractedOperator[] = [];
     let filteredOut: FilteredOutRecord[] = [];
 
-    // Use documented Gemini API model IDs; an unknown model makes OCR fail even with a valid key.
-    const modelsToTry = ["gemini-3.5-flash-lite"];
+    // Prioritized working Gemini models (gemini-3.6-flash is primary, 3.1-flash-lite is backup)
+    const modelsToTry = ["gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash"];
     let lastError: Error | null = null;
 
     for (const model of modelsToTry) {
@@ -567,7 +546,7 @@ ${customInstructions.trim()}
               temperature: 0.1,
             },
           }),
-          signal: AbortSignal.timeout(65000), // 65s timeout for large whiteboard images
+          signal: AbortSignal.timeout(20000),
         });
 
         if (!aiResponse.ok) {
@@ -647,19 +626,8 @@ ${customInstructions.trim()}
           break; // Successfully extracted
         }
       } catch (err: unknown) {
-        const isTimeout =
-          (err instanceof Error &&
-            (err.name === "TimeoutError" || err.message.includes("timeout"))) ||
-          String(err).includes("TimeoutError");
-        if (isTimeout) {
-          console.warn(`[OCR] Model ${model} vypršel (timeout). Zkouším další model...`);
-          lastError = new Error(
-            "Časový limit pro rozpoznání fotografie vypršel. Zkuste to prosím znovu nebo snímek ořízněte na menší část.",
-          );
-        } else {
-          console.warn(`[OCR] Pokus s modelem ${model} selhal:`, err);
-          lastError = err instanceof Error ? err : new Error(String(err));
-        }
+        console.warn(`[OCR] Pokus s modelem ${model} selhal:`, err);
+        lastError = err instanceof Error ? err : new Error(String(err));
         if (lastError.message.includes("GEMINI_API_KEY není platný")) {
           break;
         }

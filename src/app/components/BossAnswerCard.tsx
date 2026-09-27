@@ -18,11 +18,9 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   const [copied, setCopied] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
-      const stored = localStorage.getItem("zf_boss_card_collapsed");
-      if (stored !== null) return stored === "true";
-      return true;
+      return localStorage.getItem("zf_boss_card_collapsed") === "true";
     } catch {
-      return true;
+      return false;
     }
   });
 

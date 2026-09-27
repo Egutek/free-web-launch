@@ -12,7 +12,6 @@ import {
   Department,
   DepartmentId,
   MoveHistoryRecord,
-  MachineType,
   Operator,
   OperatorStatus,
   ShiftCode,
@@ -32,9 +31,6 @@ import {
 import { Header } from "./components/Header";
 import { BossAnswerCard } from "./components/BossAnswerCard";
 import { DepartmentColumn } from "./components/DepartmentColumn";
-import { PermanentRosterBar } from "./components/PermanentRosterBar";
-import { KmenHeadcountBar } from "./components/KmenHeadcountBar";
-import { KmenRosterModal } from "./components/KmenRosterModal";
 import { TableView } from "./components/TableView";
 import { WidgetView } from "./components/WidgetView";
 import { OfflineIndicator } from "./components/OfflineIndicator";
@@ -43,21 +39,11 @@ import { BossReportModal } from "./components/BossReportModal";
 import { AddEditOperatorModal } from "./components/AddEditOperatorModal";
 import { AddCustomDepartmentModal } from "./components/AddCustomDepartmentModal";
 import { ConfirmDialogModal } from "./components/ConfirmDialogModal";
-import { ResetShiftModal } from "./components/ResetShiftModal";
-import { ManagePermanentRosterModal } from "./components/ManagePermanentRosterModal";
 import { HistoryModal } from "./components/HistoryModal";
 import { PhotoImportModal } from "./components/PhotoImportModal";
 import { ShiftTemplatesModal } from "./components/ShiftTemplatesModal";
 import { ShiftTemplate } from "./types";
 import { applyTemplateToOperators } from "./data/templates";
-import { runOperatorsDataCleaning } from "./services/dataCleaning";
-import {
-  findMatchingOperator,
-  deduplicateOperators,
-  isSamePerson,
-  isNameMatch,
-  cleanNameForMatching,
-} from "./utils/nameMatching";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -74,8 +60,6 @@ import {
   X,
 } from "lucide-react";
 import { FilteredOutRecord } from "./services/aiServerFn";
-import { ensureFirebaseAuth } from "./firebase";
-import { getRosterGroup } from "./utils/roster";
 import {
   resolveOperatorFromDrop,
   resolveOperatorIdsFromDrop,
@@ -85,12 +69,10 @@ import {
   subscribeToOperators,
   syncOperatorToCloud,
   bulkSyncOperatorsToCloud,
-  bulkDeleteOperatorsFromCloud,
   replaceOperatorsInCloud,
   deleteOperatorFromCloud,
   syncHistoryRecordToCloud,
   subscribeToHistory,
-  clearHistoryFromCloud,
   subscribeToCustomDepartments,
   syncCustomDepartmentToCloud,
   deleteCustomDepartmentFromCloud,
@@ -184,61 +166,20 @@ const DEFAULT_CUSTOM_JUMP_THEME = {
 
 export default function App() {
   const [activeShift, setActiveShift] = useState<ShiftCode>(() => loadActiveShift());
-  const [operators, setOperators] = useState<Operator[]>(() => {
-    const loaded = loadOperators();
-    const { deduplicated } = deduplicateOperators(loaded);
-    return deduplicated;
-  });
+  const [operators, setOperators] = useState<Operator[]>(() => loadOperators());
   const [history, setHistory] = useState<MoveHistoryRecord[]>(() => loadHistory());
   const [undoStack, setUndoStack] = useState<UndoOperation[]>(() => loadUndoStack());
   const [customDepartments, setCustomDepartments] = useState<Department[]>(() =>
     loadCustomDepartments(),
   );
 
-  // Toast feedback
-  const [toastMessage, setToastMessage] = useState<{
-    text: string;
-    isWarning?: boolean;
-    undoAction?: () => void;
-  } | null>(null);
-
-  // Show auto-dismissing toast
-  const showToast = useCallback((text: string, isWarning?: boolean, undoAction?: () => void) => {
-    setToastMessage({ text, isWarning, undoAction });
-    setTimeout(() => {
-      setToastMessage((prev) => (prev?.text === text ? null : prev));
-    }, 4500);
+  const handleShiftChange = useCallback((shift: ShiftCode) => {
+    setActiveShift(shift);
+    saveActiveShift(shift);
+    setSelectedOperatorId(null);
+    setBulkSelectedIds(new Set());
+    showToast(`Přepnuto na Směnu ${shift}`);
   }, []);
-
-  const handleShiftChange = useCallback(
-    (shift: ShiftCode) => {
-      setActiveShift(shift);
-      saveActiveShift(shift);
-      setSelectedOperatorId(null);
-      setBulkSelectedIds(new Set());
-
-      showToast(`Přepnuto na Směnu ${shift}`);
-    },
-    [showToast],
-  );
-
-  // Manuální spuštění vyčištění duplicit s vizuální odezvou
-  const handleManualCleanDuplicates = useCallback(async () => {
-    try {
-      const { cleanedOperators, removedCount } = await runOperatorsDataCleaning(
-        operatorsRef.current,
-      );
-      if (removedCount > 0) {
-        setOperators(cleanedOperators);
-        showToast(`Úspěšně vyčištěno ${removedCount} duplicitních záznamů operátorů.`);
-      } else {
-        showToast("Žádné duplicity nebyly nalezeny. Data jsou čistá.");
-      }
-    } catch (err) {
-      console.error("Chyba při čištění duplicit:", err);
-      showToast("Chyba při čištění dat.");
-    }
-  }, [showToast]);
 
   // Cloud Sync state (bez přihlašování)
   const [isCloudConnected, setIsCloudConnected] = useState(false);
@@ -287,19 +228,6 @@ export default function App() {
   const [isAddCustomDeptOpen, setIsAddCustomDeptOpen] = useState(false);
   const [deptToDeleteConfirm, setDeptToDeleteConfirm] = useState<Department | null>(null);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
-  const [isResetShiftOpen, setIsResetShiftOpen] = useState(false);
-  const [isManagePermanentOpen, setIsManagePermanentOpen] = useState(false);
-  const [kmenModalType, setKmenModalType] = useState<"transport" | "vna" | null>(null);
-  const [bulkDeleteTarget, setBulkDeleteTarget] = useState<{
-    ids: string[];
-    count: number;
-    namesPreview: string;
-  } | null>(null);
-  const [reconciliationAlert, setReconciliationAlert] = useState<{
-    missingNames: string[];
-    extraNames: string[];
-    matchedCount: number;
-  } | null>(null);
   const [addEditOperator, setAddEditOperator] = useState<{
     operator: Operator | null;
     defaultDeptId?: DepartmentId;
@@ -310,6 +238,13 @@ export default function App() {
 
   // Click-to-move / Touch-to-move selected operator state
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
+
+  // Toast feedback
+  const [toastMessage, setToastMessage] = useState<{
+    text: string;
+    isWarning?: boolean;
+    undoAction?: () => void;
+  } | null>(null);
 
   // Synchronous references for instant persistence on tab close / unload
   const operatorsRef = useRef(operators);
@@ -324,65 +259,49 @@ export default function App() {
     saveUndoStack(undoStack);
   }, [undoStack]);
 
-  // Anonymous Firebase identity is created in the background before protected
-  // Firestore listeners start. No login UI is shown to the visitor.
+  // Real-time sync for Operators for everyone with the link
   useEffect(() => {
-    let cancelled = false;
-    let unsub: (() => void) | undefined;
     setIsCloudSyncing(true);
-    ensureFirebaseAuth().then(() => {
-      if (cancelled) return;
-      unsub = subscribeToOperators(
-        (cloudOps, fromCache) => {
-          setIsCloudSyncing(fromCache);
-          setIsCloudConnected(!fromCache);
-          if (fromCache && cloudOps.length === 0) return;
-          // A confirmed empty server snapshot is a valid empty board. Never
-          // upload stale data from a browser just because the server is empty.
-          const { deduplicated } = deduplicateOperators(cloudOps);
-          setOperators(deduplicated);
-          saveOperators(deduplicated);
-        },
-        (err) => {
-          setIsCloudSyncing(false);
-          setIsCloudConnected(false);
-          console.warn("Firestore subscription error:", err);
-        },
-      );
-    }).catch((err) => {
-      setIsCloudSyncing(false);
-      setIsCloudConnected(false);
-      console.warn("Firebase anonymous authentication failed:", err);
-    });
-    return () => { cancelled = true; unsub?.(); };
+    const unsub = subscribeToOperators(
+      (cloudOps) => {
+        setIsCloudSyncing(false);
+        setIsCloudConnected(true);
+        if (cloudOps.length > 0) {
+          setOperators(cloudOps);
+          saveOperators(cloudOps);
+        } else {
+          // If cloud is empty on first setup, seed initial operators
+          bulkSyncOperatorsToCloud(operatorsRef.current).catch((err) =>
+            console.warn("Initial cloud seed failed:", err),
+          );
+        }
+      },
+      (err) => {
+        setIsCloudSyncing(false);
+        console.warn("Firestore subscription error:", err);
+      },
+    );
+    return () => unsub();
   }, []);
 
   // Real-time Firestore sync for History for everyone with the link
   useEffect(() => {
-    let cancelled = false;
-    let unsub: (() => void) | undefined;
-    ensureFirebaseAuth().then(() => {
-      if (cancelled) return;
-      unsub = subscribeToHistory((cloudHistory) => {
+    const unsub = subscribeToHistory((cloudHistory) => {
+      if (cloudHistory.length > 0) {
         setHistory(cloudHistory);
         saveHistory(cloudHistory);
-      });
-    }).catch((err) => console.warn("History sync failed:", err));
-    return () => { cancelled = true; unsub?.(); };
+      }
+    });
+    return () => unsub();
   }, []);
 
   // Real-time Firestore sync for Custom Departments for everyone with the link
   useEffect(() => {
-    let cancelled = false;
-    let unsub: (() => void) | undefined;
-    ensureFirebaseAuth().then(() => {
-      if (cancelled) return;
-      unsub = subscribeToCustomDepartments((cloudCustomDepts) => {
-        setCustomDepartments(cloudCustomDepts);
-        saveCustomDepartments(cloudCustomDepts);
-      });
-    }).catch((err) => console.warn("Department sync failed:", err));
-    return () => { cancelled = true; unsub?.(); };
+    const unsub = subscribeToCustomDepartments((cloudCustomDepts) => {
+      setCustomDepartments(cloudCustomDepts);
+      saveCustomDepartments(cloudCustomDepts);
+    });
+    return () => unsub();
   }, []);
 
   // Persist view mode
@@ -416,6 +335,14 @@ export default function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // Show auto-dismissing toast
+  const showToast = (text: string, isWarning?: boolean, undoAction?: () => void) => {
+    setToastMessage({ text, isWarning, undoAction });
+    setTimeout(() => {
+      setToastMessage((prev) => (prev?.text === text ? null : prev));
+    }, 4500);
+  };
 
   // Smoothly scroll and highlight a department column
   const scrollToDepartment = useCallback((deptId: DepartmentId) => {
@@ -1145,12 +1072,10 @@ export default function App() {
 
   // Save (add or edit) operator
   const handleSaveOperator = (opData: Partial<Operator>) => {
-    if (!opData.id || !opData.name?.trim()) return;
+    if (!opData.id) return;
 
     const finalStatus: OperatorStatus =
-      opData.departmentId === "unassigned" && opData.absenceReason
-        ? "absence"
-        : opData.status || "active";
+      opData.departmentId === "unassigned" ? "absence" : opData.status || "active";
     const finalDeptId: DepartmentId =
       finalStatus === "absence"
         ? "unassigned"
@@ -1163,38 +1088,25 @@ export default function App() {
       finalMachineType = "NONE";
     }
 
-    const shiftOps = operators.filter((o) => (o.shift || "A") === (opData.shift || activeShift));
-    const existingById = shiftOps.find((o) => o.id === opData.id);
-    const existingByName = existingById || findMatchingOperator(opData.name, shiftOps);
-
-    const targetId = existingByName?.id ?? opData.id;
-
     const sanitizedOpData = {
       ...opData,
-      id: targetId,
       machineType: finalMachineType,
       status: finalStatus,
       departmentId: finalDeptId,
-      isPermanent: existingByName ? existingByName.isPermanent : opData.isPermanent,
-      rosterGroup: existingByName ? existingByName.rosterGroup : opData.rosterGroup,
     };
 
-    const isNew = !operators.some((o) => o.id === targetId);
+    const isNew = !operators.some((o) => o.id === sanitizedOpData.id);
 
-    const rawUpdated = operators.some((o) => o.id === targetId)
-      ? operators.map((o) => (o.id === targetId ? ({ ...o, ...sanitizedOpData } as Operator) : o))
+    const updated = operators.some((o) => o.id === sanitizedOpData.id)
+      ? operators.map((o) =>
+          o.id === sanitizedOpData.id ? ({ ...o, ...sanitizedOpData } as Operator) : o,
+        )
       : [sanitizedOpData as Operator, ...operators];
-
-    const { deduplicated: updated, duplicateIds } = deduplicateOperators(rawUpdated);
 
     setOperators(updated);
     saveOperators(updated);
 
-    if (duplicateIds.length > 0) {
-      bulkDeleteOperatorsFromCloud(duplicateIds).catch((e) => console.warn(e));
-    }
-
-    const savedOp = updated.find((o) => o.id === targetId);
+    const savedOp = updated.find((o) => o.id === sanitizedOpData.id);
     if (savedOp) {
       syncOperatorToCloud(savedOp).catch((e) => console.warn("Cloud operator save error:", e));
     }
@@ -1223,177 +1135,64 @@ export default function App() {
       setOmittedFromImport([]);
     }
 
-    const { deduplicated: cleanNewOps } = deduplicateOperators(newOps);
-    const currentShiftOps = operators.filter((o) => (o.shift || "A") === activeShift);
-    const permanentOps = currentShiftOps.filter((o) => o.isPermanent !== false);
-    const otherShiftsOps = operators.filter((o) => (o.shift || "A") !== activeShift);
-    const now = new Date().toISOString();
-
-    const matchedPermanentIds = new Set<string>();
-    const matchedDrafts = new Map<string, Operator>();
-    const extraOpsToAdd: Operator[] = [];
-
-    // Identify matches and extras from OCR drafts
-    for (const newOp of cleanNewOps) {
-      const permMatch = findMatchingOperator(newOp.name, permanentOps);
-      const existingMatch = permMatch || findMatchingOperator(newOp.name, currentShiftOps);
-
-      if (existingMatch && !matchedDrafts.has(existingMatch.id)) {
-        matchedDrafts.set(existingMatch.id, newOp);
+    // Ensure all new operators are assigned to the current active shift and have correct machine types
+    const shiftedOps = newOps.map((op) => {
+      const deptId = op.departmentId || "hovc";
+      let machine = op.machineType;
+      if (deptId === "vna" || deptId === "unassigned") {
+        machine = "NONE";
+      } else if (deptId === "hovs") {
+        // HOVS department operators mostly drive LL unless RTR was detected
+        machine = machine === "RTR" ? "RTR" : "LL";
+      } else if ((deptId === "hovc" || deptId === "obwi") && (!machine || machine === "NONE")) {
+        machine = "RTR";
+      } else if (!machine) {
+        machine = "LL";
       }
+      return {
+        ...op,
+        machineType: machine,
+        shift: activeShift,
+      };
+    });
 
-      if (permMatch && !matchedPermanentIds.has(permMatch.id)) {
-        matchedPermanentIds.add(permMatch.id);
-      } else if (!existingMatch) {
-        const alreadyInExtra = extraOpsToAdd.some(
-          (e) => cleanNameForMatching(e.name) === cleanNameForMatching(newOp.name),
-        );
-        if (!alreadyInExtra) {
-          let machine = newOp.machineType;
-          const deptId = newOp.departmentId || "hovc";
-          if (deptId === "vna" || deptId === "unassigned") machine = "NONE";
-          else if (deptId === "hovs") machine = machine === "RTR" ? "RTR" : "LL";
-          else if ((deptId === "hovc" || deptId === "obwi") && (!machine || machine === "NONE"))
-            machine = "RTR";
-          else if (!machine) machine = "LL";
+    // If replaceAll is true, replace all operators for the current shift (treating undefined as shift 'A')
+    const otherShiftsOps = replaceAll
+      ? operators.filter((o) => (o.shift || "A") !== activeShift)
+      : operators;
 
-          extraOpsToAdd.push({
-            ...newOp,
-            id: newOp.id || `op-extra-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            machineType: machine,
-            shift: activeShift,
-            isPermanent: false,
-            notes: newOp.notes || "Mimo stálý stav (výpomoc / brigáda)",
-            lastMovedAt: now,
-          });
-        }
-      }
+    let updated: Operator[];
+    if (replaceAll) {
+      updated = [...shiftedOps, ...otherShiftsOps];
+    } else {
+      const existingNames = new Set(operators.map((o) => o.name.toLowerCase().trim()));
+      const uniqueNew = shiftedOps.filter((o) => !existingNames.has(o.name.toLowerCase().trim()));
+      updated = [...uniqueNew, ...operators];
     }
-
-    // Update existing operators in the shift
-    const updatedShiftOps = currentShiftOps
-      .map((op) => {
-        // Find if this operator was matched by OCR
-        const ocrDraft = matchedDrafts.get(op.id);
-        if (ocrDraft) {
-          const deptId = ocrDraft.departmentId || "hovc";
-          const isAbsence = deptId === "unassigned";
-          let mType = ocrDraft.machineType || op.machineType || "LL";
-          if (deptId === "vna" || isAbsence) mType = "NONE";
-
-          return {
-            ...op,
-            departmentId: deptId,
-            machineType: mType,
-            status: (isAbsence ? "absence" : "active") as OperatorStatus,
-            absenceReason: isAbsence ? ocrDraft.absenceReason || "Absence" : undefined,
-            notes: ocrDraft.notes || op.notes,
-            lastMovedAt: now,
-          };
-        }
-
-        // If replaceAll: permanent operators who were NOT matched stay in unassigned pool!
-        if (replaceAll) {
-          if (op.isPermanent !== false) {
-            return {
-              ...op,
-              departmentId: "unassigned" as DepartmentId,
-              status: "active" as OperatorStatus,
-              absenceReason: undefined,
-              lastMovedAt: now,
-            };
-          }
-          // Discard old temporary operators from prior shift
-          return null;
-        }
-
-        return op;
-      })
-      .filter(Boolean) as Operator[];
-
-    const { deduplicated: finalShiftOps, duplicateIds } = deduplicateOperators([
-      ...updatedShiftOps,
-      ...extraOpsToAdd,
-    ]);
-    const updated = [...finalShiftOps, ...otherShiftsOps];
 
     setOperators(updated);
     saveOperators(updated);
-
-    if (duplicateIds.length > 0) {
-      bulkDeleteOperatorsFromCloud(duplicateIds).catch((e) =>
-        console.warn("Cloud dedup cleanup error:", e),
-      );
-    }
-
-    // Identify unassigned permanent operators (missing from whiteboard)
-    const missingPermanent = finalShiftOps.filter(
-      (o) => o.isPermanent !== false && o.departmentId === "unassigned" && !o.absenceReason,
-    );
-
-    setReconciliationAlert({
-      missingNames: missingPermanent.map((o) => o.name),
-      extraNames: extraOpsToAdd.map((o) => o.name),
-      matchedCount: matchedPermanentIds.size,
-    });
 
     if (replaceAll) {
       await replaceOperatorsInCloud(updated, activeShift).catch((e) =>
         console.warn("Cloud import sync error:", e),
       );
+      showToast(
+        `Načteno ${shiftedOps.length} operátorů. Směna ${activeShift} byla kompletně nahrazena (${updated.filter((o) => (o.shift || "A") === activeShift).length} lidí na směně).`,
+      );
     } else {
-      await bulkSyncOperatorsToCloud(finalShiftOps).catch((e) =>
+      await bulkSyncOperatorsToCloud(shiftedOps).catch((e) =>
         console.warn("Cloud import sync error:", e),
       );
-    }
-
-    if (missingPermanent.length > 0) {
       showToast(
-        `⚠️ AI kontrola: ${missingPermanent.length} stálých operátorů nebylo na tabuli nalezeno (zůstávají v nezařazených s !).`,
-      );
-    } else {
-      showToast(
-        `✓ AI přiřadila všech ${matchedPermanentIds.size} stálých operátorů na pozice z tabule.`,
+        `Přidáno ${shiftedOps.length} operátorů ze snímku k existujícímu týmu (Směna ${activeShift}).`,
       );
     }
-    if (extraOpsToAdd.length > 0) {
-      setTimeout(() => {
-        showToast(`ℹ️ Detekováno ${extraOpsToAdd.length} pracovníků navíc mimo stálý stav.`);
-      }, 2500);
-    }
-
     setIsPhotoImportOpen(false);
   };
 
   // Quick addition of an omitted candidate from the import banner directly into absences
   const handleAddOmittedToAbsence = (item: FilteredOutRecord, reason: AbsenceReason) => {
-    const shiftOps = operators.filter((o) => (o.shift || "A") === activeShift);
-    const existing = findMatchingOperator(item.name, shiftOps);
-
-    if (existing) {
-      const updated = operators.map((o) =>
-        o.id === existing.id
-          ? {
-              ...o,
-              departmentId: "unassigned" as DepartmentId,
-              status: "absence" as OperatorStatus,
-              absenceReason: reason,
-              notes: item.detail || o.notes || "Absence zjištěná z importu",
-              lastMovedAt: new Date().toISOString(),
-            }
-          : o,
-      );
-      setOperators(updated);
-      saveOperators(updated);
-      const changed = updated.find((o) => o.id === existing.id);
-      if (changed) {
-        syncOperatorToCloud(changed).catch((e) => console.warn("Cloud sync error:", e));
-      }
-      setOmittedFromImport((prev) => prev.filter((f) => f.name !== item.name));
-      showToast(`${existing.name} přesunut(a) pod Absenci (${reason})`);
-      return;
-    }
-
     const newOp: Operator = {
       id: `op-omitted-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: item.name,
@@ -1404,15 +1203,11 @@ export default function App() {
       absenceReason: reason,
       notes: item.detail || "Absence zjištěná z importu",
       shift: activeShift,
-      isPermanent: false,
       lastMovedAt: new Date().toISOString(),
     };
-    const { deduplicated: updated, duplicateIds } = deduplicateOperators([newOp, ...operators]);
+    const updated = [newOp, ...operators];
     setOperators(updated);
     saveOperators(updated);
-    if (duplicateIds.length > 0) {
-      bulkDeleteOperatorsFromCloud(duplicateIds).catch((e) => console.warn(e));
-    }
     syncOperatorToCloud(newOp).catch((e) => console.warn("Cloud sync error:", e));
     setOmittedFromImport((prev) => prev.filter((f) => f.name !== item.name));
     showToast(`${item.name} zařazen(a) pod Absenci (${reason})`);
@@ -1421,11 +1216,7 @@ export default function App() {
   // Add all remaining omitted candidates from the import banner directly into absences
   const handleAddAllOmittedToAbsence = () => {
     if (omittedFromImport.length === 0) return;
-    const shiftOps = operators.filter((o) => (o.shift || "A") === activeShift);
-    let workingOps = [...operators];
-    const changedOps: Operator[] = [];
-
-    for (const item of omittedFromImport) {
+    const newOps: Operator[] = omittedFromImport.map((item, idx) => {
       let reason: AbsenceReason = "Absence";
       const combined = `${item.name} ${item.detail}`.toLowerCase();
       if (combined.includes("dovol")) {
@@ -1437,56 +1228,29 @@ export default function App() {
       ) {
         reason = "PN";
       }
+      return {
+        id: `op-omitted-all-${Date.now()}-${idx}`,
+        name: item.name,
+        machineType: "NONE",
+        departmentId: "unassigned",
+        isVnaOnly: false,
+        status: "absence",
+        absenceReason: reason,
+        notes: item.detail || "Absence z importu",
+        shift: activeShift,
+        lastMovedAt: new Date().toISOString(),
+      };
+    });
 
-      const existing = findMatchingOperator(item.name, shiftOps);
-      if (existing) {
-        workingOps = workingOps.map((o) =>
-          o.id === existing.id
-            ? {
-                ...o,
-                departmentId: "unassigned" as DepartmentId,
-                status: "absence" as OperatorStatus,
-                absenceReason: reason,
-                notes: item.detail || o.notes || "Absence z importu",
-                lastMovedAt: new Date().toISOString(),
-              }
-            : o,
-        );
-        const upd = workingOps.find((o) => o.id === existing.id);
-        if (upd) changedOps.push(upd);
-      } else {
-        const newOp: Operator = {
-          id: `op-omitted-all-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          name: item.name,
-          machineType: "NONE",
-          departmentId: "unassigned",
-          isVnaOnly: false,
-          status: "absence",
-          absenceReason: reason,
-          notes: item.detail || "Absence z importu",
-          shift: activeShift,
-          isPermanent: false,
-          lastMovedAt: new Date().toISOString(),
-        };
-        workingOps.unshift(newOp);
-        changedOps.push(newOp);
-      }
-    }
-
-    const { deduplicated: finalOps, duplicateIds } = deduplicateOperators(workingOps);
-    setOperators(finalOps);
-    saveOperators(finalOps);
-    if (duplicateIds.length > 0) {
-      bulkDeleteOperatorsFromCloud(duplicateIds).catch((e) => console.warn(e));
-    }
-    bulkSyncOperatorsToCloud(changedOps).catch((e) => console.warn("Cloud sync error:", e));
-    showToast(
-      `Všech ${omittedFromImport.length} vynechaných pracovníků bylo zařazeno do absencí bez duplicit.`,
-    );
+    const updated = [...newOps, ...operators];
+    setOperators(updated);
+    saveOperators(updated);
+    bulkSyncOperatorsToCloud(newOps).catch((e) => console.warn("Cloud sync error:", e));
+    showToast(`Všech ${newOps.length} vynechaných pracovníků bylo zařazeno do absencí.`);
     setOmittedFromImport([]);
   };
 
-  // Bulk delete operators (from selection or from a specific department) - opens in-app confirmation modal
+  // Bulk delete operators (from selection or from a specific department)
   const handleBulkDeleteOperators = (idsToDelete?: string[]) => {
     const targetIds = idsToDelete || Array.from(bulkSelectedIds);
     if (targetIds.length === 0) return;
@@ -1504,25 +1268,22 @@ export default function App() {
             .map((o) => o.name)
             .join(", ")} a dalších ${count - 2}`;
 
-    setBulkDeleteTarget({ ids: targetIds, count, namesPreview });
-  };
-
-  const handleConfirmBulkDelete = () => {
-    if (!bulkDeleteTarget) return;
-    const { ids, count } = bulkDeleteTarget;
-    const idSet = new Set(ids);
+    const confirmed = window.confirm(
+      `Opravdu chcete hromadně smazat ${count} operátorů (${namesPreview}) ze směny ${activeShift}?`,
+    );
+    if (!confirmed) return;
 
     const updated = operators.filter((o) => !idSet.has(o.id));
     setOperators(updated);
     saveOperators(updated);
 
-    bulkDeleteOperatorsFromCloud(ids).catch((e) =>
-      console.warn("Cloud bulk operator delete error:", e),
-    );
+    targetIds.forEach((id) => {
+      deleteOperatorFromCloud(id).catch((e) => console.warn("Cloud operator delete error:", e));
+    });
 
     setBulkSelectedIds((prev) => {
       const next = new Set(prev);
-      ids.forEach((id) => next.delete(id));
+      targetIds.forEach((id) => next.delete(id));
       return next;
     });
 
@@ -1530,98 +1291,7 @@ export default function App() {
       setSelectedOperatorId(null);
     }
 
-    setBulkDeleteTarget(null);
     showToast(`Hromadně smazáno ${count} operátorů ze směny.`);
-  };
-
-  // Add new operator directly to Kmen Transport or VNA
-  const handleAddKmenOperator = async (name: string, type: "transport" | "vna") => {
-    const isVna = type === "vna";
-    const shiftOps = operators.filter((o) => (o.shift || "A") === activeShift);
-    const existing = findMatchingOperator(name, shiftOps);
-
-    if (existing) {
-      await handleBulkConvertToKmen(type, [existing.id]);
-      showToast(
-        `${existing.name} byl zařazen do kmene ${type === "transport" ? "Transport" : "VNA"}.`,
-      );
-      return;
-    }
-
-    const newOp: Operator = {
-      id: `op-kmen-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      name: name.trim(),
-      machineType: isVna ? "NONE" : "LL",
-      departmentId: "unassigned",
-      isVnaOnly: isVna,
-      rosterGroup: type,
-      status: "active",
-      shift: activeShift,
-      lastMovedAt: new Date().toISOString(),
-      isPermanent: true,
-    };
-    const { deduplicated: updated, duplicateIds } = deduplicateOperators([newOp, ...operators]);
-    setOperators(updated);
-    saveOperators(updated);
-    if (duplicateIds.length > 0) {
-      bulkDeleteOperatorsFromCloud(duplicateIds).catch((e) => console.warn(e));
-    }
-    await syncOperatorToCloud(newOp).catch((e) => console.warn("Cloud sync error:", e));
-    showToast(`Přidán ${name.trim()} do kmene ${type === "transport" ? "Transport" : "VNA"}.`);
-  };
-
-  // Convert selected operators into permanent Kmen Transport or VNA
-  const handleBulkConvertToKmen = async (target: "transport" | "vna", operatorIds?: string[]) => {
-    const idsToConvert = operatorIds || Array.from(bulkSelectedIds);
-    if (idsToConvert.length === 0) return;
-
-    const idSet = new Set(idsToConvert);
-    const isVna = target === "vna";
-    const now = new Date().toISOString();
-
-    const updatedOperators = operators.map((op) => {
-      if (!idSet.has(op.id)) return op;
-
-      // Kmen is a stable personnel attribute. Do not move a person on today's
-      // board or change their machine, absence, or status when assigning it.
-      return { ...op, isPermanent: true, rosterGroup: target, lastMovedAt: now };
-    });
-
-    const { deduplicated: finalOperators, duplicateIds } = deduplicateOperators(updatedOperators);
-    setOperators(finalOperators);
-    saveOperators(finalOperators);
-
-    if (duplicateIds.length > 0) {
-      bulkDeleteOperatorsFromCloud(duplicateIds).catch((e) => console.warn(e));
-    }
-
-    const changedOps = finalOperators.filter((o) => idSet.has(o.id));
-    await bulkSyncOperatorsToCloud(changedOps).catch((e) =>
-      console.warn("Cloud bulk convert to kmen sync error:", e),
-    );
-
-    setBulkSelectedIds(new Set());
-    if (selectedOperatorId && idSet.has(selectedOperatorId)) {
-      setSelectedOperatorId(null);
-    }
-
-    showToast(
-      `Převedeno ${changedOps.length} operátorů do stálého kmene ${isVna ? "VNA" : "Transport"}. Budou trvale uloženi v paměti.`,
-    );
-  };
-
-  // Remove operator from Kmen
-  const handleRemoveKmenOperator = async (operatorId: string) => {
-    const op = operators.find((o) => o.id === operatorId);
-    const updated = operators.map((o) =>
-      o.id === operatorId ? { ...o, isPermanent: false } : o,
-    );
-    setOperators(updated);
-    saveOperators(updated);
-    if (op) await syncOperatorToCloud({ ...op, isPermanent: false }).catch((e) => console.warn("Cloud sync error:", e));
-    if (op) {
-      showToast(`Odebrán ${op.name} z kmene směny.`);
-    }
   };
 
   // Delete operator
@@ -1725,108 +1395,8 @@ export default function App() {
     setHistory([]);
     saveHistory([]);
     setUndoStack([]);
-    try {
-      await replaceOperatorsInCloud(reset);
-      await clearHistoryFromCloud();
-      showToast("Data obnovena na 65 operátorů oddělení PICK.");
-    } catch (error) {
-      console.warn("Cloud reset sync error:", error);
-      showToast("Obnovení v cloudu selhalo; ověřte připojení.", true);
-    }
-  };
-
-  // Reset shift assignments for active shift: moves permanent operators to unassigned roster pool for redistribution
-  const handleResetShiftConfirm = async ({
-    excludeVna,
-    keepAbsences,
-  }: {
-    excludeVna: boolean;
-    keepAbsences: boolean;
-  }) => {
-    const now = new Date().toISOString();
-    const updated = operators.map((o) => {
-      if ((o.shift || "A") !== activeShift) return o;
-      if (o.isPermanent === false) return o;
-      if (excludeVna && getRosterGroup(o) === "vna") return o;
-      if (keepAbsences && o.departmentId === "unassigned" && o.absenceReason) return o;
-
-      return {
-        ...o,
-        departmentId: "unassigned" as DepartmentId,
-        status: "active" as OperatorStatus,
-        absenceReason: undefined,
-        lastMovedAt: now,
-      };
-    });
-
-    setOperators(updated);
-    saveOperators(updated);
-    setSelectedOperatorId(null);
-    setBulkSelectedIds(new Set());
-    setReconciliationAlert(null);
-
-    const changedOps = updated.filter(
-      (o) =>
-        (o.shift || "A") === activeShift &&
-        o.isPermanent !== false &&
-        (!excludeVna || getRosterGroup(o) === "transport") &&
-        (!keepAbsences || !o.absenceReason),
-    );
-
-    if (changedOps.length > 0) {
-      await bulkSyncOperatorsToCloud(changedOps).catch((err) =>
-        console.warn("Cloud reset shift sync error:", err),
-      );
-    }
-
-    try {
-      localStorage.setItem("zf_roster_bar_expanded", "true");
-    } catch {
-      // ignore
-    }
-
-    showToast(
-      `Směna ${activeShift} byla resetována: ${changedOps.length} operátorů přesunuto do kmenového přehledu k novému rozřazení.`,
-    );
-  };
-
-  // Permanent roster management handlers
-  const handleAddPermanentOperators = async (newOps: Operator[]) => {
-    const updated = [...newOps, ...operators];
-    setOperators(updated);
-    saveOperators(updated);
-    await bulkSyncOperatorsToCloud(newOps).catch((e) => console.warn("Cloud sync error:", e));
-    showToast(`Přidáno ${newOps.length} stálých zaměstnanců do směny ${activeShift}.`);
-  };
-
-  const handleUpdatePermanentStatus = async (operatorIds: string[], isPermanent: boolean) => {
-    const idSet = new Set(operatorIds);
-    const updated = operators.map((o) => {
-      if (idSet.has(o.id)) {
-        return { ...o, isPermanent };
-      }
-      return o;
-    });
-    setOperators(updated);
-    saveOperators(updated);
-    const changed = updated.filter((o) => idSet.has(o.id));
-    if (changed.length > 0) {
-      await bulkSyncOperatorsToCloud(changed).catch((e) => console.warn("Cloud sync error:", e));
-    }
-    showToast(`Stálý evidenční stav aktualizován pro ${operatorIds.length} operátorů.`);
-  };
-
-  const handleRemoveFromPermanent = async (operatorId: string) => {
-    const op = operators.find((o) => o.id === operatorId);
-    const updated = operators.map((o) => (o.id === operatorId ? { ...o, isPermanent: false } : o));
-    setOperators(updated);
-    saveOperators(updated);
-    if (op) {
-      await syncOperatorToCloud({ ...op, isPermanent: false }).catch((e) =>
-        console.warn("Cloud sync error:", e),
-      );
-      showToast(`${op.name} byl odebrán ze stálého stavu směny ${activeShift}.`);
-    }
+    await replaceOperatorsInCloud(reset).catch((e) => console.warn("Cloud reset sync error:", e));
+    showToast("Data obnovena na 65 operátorů oddělení PICK.");
   };
 
   // Drag-and-drop auto-scroll: automatically scrolls horizontal columns when dragging near edge
@@ -1963,7 +1533,6 @@ export default function App() {
   }, [customDepartments, activeShift]);
 
   // Combined built-in and custom departments for current active shift
-  // Sorted so core PICK departments come first, then custom departments, unassigned, and VNA (2. TL) separated at the end
   const allDepartments = useMemo(() => {
     const deptMap = new Map<string, Department>();
     for (const d of DEPARTMENTS) {
@@ -1972,22 +1541,7 @@ export default function App() {
     for (const d of shiftCustomDepartments) {
       deptMap.set(d.id, d);
     }
-    const all = Array.from(deptMap.values());
-
-    const orderScore = (d: Department) => {
-      if (d.id === "hovc") return 1;
-      if (d.id === "hovs") return 2;
-      if (d.id === "putaway") return 3;
-      if (d.id === "vas") return 4;
-      if (d.id === "obwf") return 5;
-      if (d.id === "obwi") return 6;
-      if (d.isCustom) return 10;
-      if (d.id === "unassigned") return 20;
-      if (d.id === "vna" || d.isSecondTl) return 30;
-      return 15;
-    };
-
-    return all.sort((a, b) => orderScore(a) - orderScore(b));
+    return Array.from(deptMap.values());
   }, [shiftCustomDepartments]);
 
   // Key metrics - accurate calculations for floor operation and absence
@@ -2011,15 +1565,6 @@ export default function App() {
   ).length;
   const vnaCount = shiftOperators.filter(
     (o) => o.departmentId === "vna" && isOperatorInOperation(o),
-  ).length;
-
-  // Number of operators waiting for department assignment on active shift (excluding VNA and assigned absences)
-  const waitingRosterCount = shiftOperators.filter(
-    (o) =>
-      o.departmentId === "unassigned" &&
-      !o.absenceReason &&
-      o.departmentId !== "vna" &&
-      !o.isVnaOnly,
   ).length;
 
   return (
@@ -2049,107 +1594,19 @@ export default function App() {
         onOpenTemplatesModal={() => setIsTemplatesModalOpen(true)}
         onOpenReportModal={() => setIsReportModalOpen(true)}
         onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
-        onCleanDuplicates={handleManualCleanDuplicates}
         onResetData={handleResetData}
-        onResetShift={() => setIsResetShiftOpen(true)}
-        waitingRosterCount={waitingRosterCount}
         isCloudConnected={isCloudConnected}
         isCloudSyncing={isCloudSyncing}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full px-3 sm:px-6 2xl:px-8 py-2.5 sm:py-3.5 space-y-2.5">
-        {/* Kmen Headcount Bar: Transport & VNA (Čísla kmenů, po rozkliknutí jen jména + přidat/odebrat) */}
-        <KmenHeadcountBar
+      <main className="flex-1 w-full px-3 sm:px-6 2xl:px-8 py-2.5 sm:py-4 space-y-2.5 sm:space-y-3">
+        {/* PICK Overview & Quick Report for Boss (Collapsible & Compact) */}
+        <BossAnswerCard
           operators={shiftOperators}
-          activeShift={activeShift}
-          onOpenTransport={() => setKmenModalType("transport")}
-          onOpenVna={() => setKmenModalType("vna")}
-          onOpenResetShift={() => setIsResetShiftOpen(true)}
+          customDepartments={shiftCustomDepartments}
+          onOpenReportModal={() => setIsReportModalOpen(true)}
         />
-
-        {/* AI Background Reconciliation Alert Banner (Unobtrusive) */}
-        {reconciliationAlert &&
-          (reconciliationAlert.missingNames.length > 0 ||
-            reconciliationAlert.extraNames.length > 0) && (
-            <div
-              id="ai-reconciliation-alert-banner"
-              className="px-3.5 py-2 bg-amber-50/95 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/80 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-950 dark:text-amber-100 shadow-2xs animate-in fade-in flex-wrap"
-            >
-              <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                <span className="flex items-center justify-center w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-black text-[10px] shrink-0">
-                  !
-                </span>
-                {reconciliationAlert.missingNames.length > 0 && (
-                  <span className="truncate">
-                    Chybí na tabuli ({reconciliationAlert.missingNames.length}):{" "}
-                    <strong className="font-bold underline decoration-rose-400">
-                      {reconciliationAlert.missingNames.join(", ")}
-                    </strong>
-                  </span>
-                )}
-                {reconciliationAlert.missingNames.length > 0 &&
-                  reconciliationAlert.extraNames.length > 0 && (
-                    <span className="text-amber-400 font-bold">•</span>
-                  )}
-                {reconciliationAlert.extraNames.length > 0 && (
-                  <span className="truncate">
-                    Navíc mimo kmen ({reconciliationAlert.extraNames.length}):{" "}
-                    <strong className="font-bold underline decoration-amber-400">
-                      {reconciliationAlert.extraNames.join(", ")}
-                    </strong>
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {reconciliationAlert.extraNames.length > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const extraOps = operators.filter((o) =>
-                          reconciliationAlert.extraNames.includes(o.name),
-                        );
-                        handleBulkConvertToKmen(
-                          "transport",
-                          extraOps.map((o) => o.id),
-                        );
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer shadow-xs active:scale-95 transition-all flex items-center gap-1"
-                      title="Převést nalezené pracovníky navíc do stálého kmene Transport"
-                    >
-                      <Users className="w-3 h-3" />
-                      <span>+ Do kmene Transport</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const extraOps = operators.filter((o) =>
-                          reconciliationAlert.extraNames.includes(o.name),
-                        );
-                        handleBulkConvertToKmen(
-                          "vna",
-                          extraOps.map((o) => o.id),
-                        );
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer shadow-xs active:scale-95 transition-all flex items-center gap-1"
-                      title="Převést nalezené pracovníky navíc do stálého kmene VNA"
-                    >
-                      <span>+ Do kmene VNA</span>
-                    </button>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setReconciliationAlert(null)}
-                  className="p-1 rounded-lg text-amber-800 dark:text-amber-300 hover:bg-amber-200/50 cursor-pointer"
-                  title="Zavřít"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
 
         {/* View Mode 1: Department Columns (Board) */}
         {viewMode === "board" && (
@@ -2261,24 +1718,6 @@ export default function App() {
                       title="Změnit stroj na RTR pro vybrané"
                     >
                       Nastavit RTR
-                    </button>
-                    <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
-                    <button
-                      id="jump-bar-convert-transport-btn"
-                      onClick={() => handleBulkConvertToKmen("transport")}
-                      className="px-2 py-1 text-[11px] font-bold rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-100 transition-all cursor-pointer flex items-center gap-1"
-                      title="Převést vybrané operátory do stálého kmene Transport"
-                    >
-                      <Users className="w-3 h-3" />
-                      <span>+ Kmen Transport</span>
-                    </button>
-                    <button
-                      id="jump-bar-convert-vna-btn"
-                      onClick={() => handleBulkConvertToKmen("vna")}
-                      className="px-2 py-1 text-[11px] font-bold rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-all cursor-pointer"
-                      title="Převést vybrané operátory do stálého kmene VNA"
-                    >
-                      + Kmen VNA
                     </button>
                     <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
                     <button
@@ -2431,102 +1870,73 @@ export default function App() {
               </div>
             )}
 
-            {/* Filtered Count Indicator (Only when searching) */}
-            {searchQuery && (
-              <div className="flex items-center justify-between text-xs text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 rounded-xl border border-blue-200 dark:border-blue-800">
-                <span>
-                  Filtrováno podle textu: <strong>{filteredOperators.length}</strong> z{" "}
-                  {operators.length} operátorů
+            {/* Notice bar */}
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  Pododdělení PICK:
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="font-bold underline hover:text-blue-950 dark:hover:text-white cursor-pointer"
-                >
-                  Zrušit filtr
-                </button>
+                <span>
+                  Přetáhněte kartu operátora na jakýkoliv sloupec nebo klikněte na tlačítko{" "}
+                  <strong>Přesun</strong>. Kliknutím mimo kartu nebo klávesou <strong>Esc</strong>{" "}
+                  výběr kdykoliv zrušíte.
+                </span>
               </div>
-            )}
+              {searchQuery && (
+                <span className="bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 px-2 py-0.5 rounded">
+                  Filtrováno: {filteredOperators.length} z {operators.length} operátorů
+                </span>
+              )}
+            </div>
 
             {/* Bulk Selection Move Banner */}
             {bulkSelectedIds.size > 0 && (
               <div
                 id="bulk-selected-move-banner"
-                className="flex items-center justify-between gap-3 px-3.5 py-2 bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white rounded-xl shadow-lg border border-blue-400/80 animate-in fade-in slide-in-from-top-2 duration-150"
+                className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white rounded-2xl shadow-xl border border-blue-400/80 animate-in fade-in slide-in-from-top-2 duration-150"
               >
-                <div className="flex items-center gap-2 text-xs sm:text-sm font-bold">
+                <div className="flex items-center gap-2.5 text-xs sm:text-sm font-bold">
                   <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20 text-white">
-                    <Users className="w-3.5 h-3.5" />
+                    <Users className="w-4 h-4" />
                   </span>
-                  <span>
-                    Označeno:{" "}
-                    <span className="font-black text-amber-200">{bulkSelectedIds.size}</span>{" "}
-                    operátorů
-                  </span>
+                  <div>
+                    <span>
+                      Hromadný výběr:{" "}
+                      <span className="font-black text-amber-200">{bulkSelectedIds.size}</span>{" "}
+                      operátorů
+                    </span>
+                    <span className="text-[11px] font-normal text-blue-100 ml-2 hidden sm:inline">
+                      (Klikněte na další operátory pro přidání/odebrání • Přetáhněte myší nebo
+                      klikněte na horní zkratku)
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => handleBulkChangeMachine("LL")}
-                    className="px-2 py-1 text-xs font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer active:scale-95"
-                    title="Nastavit stroj LL pro vybrané"
-                  >
-                    Nastavit LL
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleBulkChangeMachine("RTR")}
-                    className="px-2 py-1 text-xs font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer active:scale-95"
-                    title="Nastavit stroj RTR pro vybrané"
-                  >
-                    Nastavit RTR
-                  </button>
-                  <div className="w-px h-4 bg-white/30 mx-0.5" />
-                  <button
-                    type="button"
-                    id="bulk-convert-transport-btn"
-                    onClick={() => handleBulkConvertToKmen("transport")}
-                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-blue-500 hover:bg-blue-400 text-white transition-all cursor-pointer border border-blue-300/60 shadow-xs active:scale-95 flex items-center gap-1"
-                    title={`Převést ${bulkSelectedIds.size} vybraných lidí do stálého kmene Transport (zůstanou v paměti dokud se neodstraní)`}
-                  >
-                    <Users className="w-3.5 h-3.5" />
-                    <span>Do kmene Transport</span>
-                  </button>
-                  <button
-                    type="button"
-                    id="bulk-convert-vna-btn"
-                    onClick={() => handleBulkConvertToKmen("vna")}
-                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer border border-emerald-300/60 shadow-xs active:scale-95 flex items-center gap-1"
-                    title={`Převést ${bulkSelectedIds.size} vybraných lidí do stálého kmene VNA (zůstanou v paměti dokud se neodstraní)`}
-                  >
-                    <span>Do kmene VNA</span>
-                  </button>
-                  <div className="w-px h-4 bg-white/30 mx-0.5" />
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     id="bulk-selected-delete-btn"
                     onClick={() => handleBulkDeleteOperators()}
-                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-500 text-white transition-all cursor-pointer border border-rose-400/80 shadow-xs active:scale-95 flex items-center gap-1"
+                    className="px-3 py-1 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-500 text-white transition-all cursor-pointer border border-rose-400/80 shadow-md active:scale-95 flex items-center gap-1.5"
                     title={`Smazat ${bulkSelectedIds.size} vybraných operátorů`}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Smazat ({bulkSelectedIds.size})</span>
+                    <span>Smazat vybrané ({bulkSelectedIds.size})</span>
                   </button>
                   {bulkSelectedIds.size < shiftOperators.length && (
                     <button
                       type="button"
                       onClick={handleSelectAll}
-                      className="px-2 py-1 text-xs font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer active:scale-95"
+                      className="px-3 py-1 text-xs font-bold rounded-xl bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer border border-white/30 active:scale-95"
                     >
-                      Vybrat vše
+                      Vybrat vše ({shiftOperators.length})
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={handleClearBulkSelection}
-                    className="px-2 py-1 text-xs font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer active:scale-95"
+                    className="px-3 py-1 text-xs font-bold rounded-xl bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer border border-white/30 active:scale-95"
                   >
-                    Zrušit (Esc)
+                    Zrušit výběr (Esc)
                   </button>
                 </div>
               </div>
@@ -2536,65 +1946,47 @@ export default function App() {
             {selectedOperator && bulkSelectedIds.size === 0 && (
               <div
                 id="selected-operator-move-banner"
-                className="flex items-center justify-between gap-3 px-3.5 py-2 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white rounded-xl shadow-lg border border-blue-400/80 animate-in fade-in slide-in-from-top-2 duration-150 flex-wrap"
+                className="flex items-center justify-between gap-3 px-4 py-3 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white rounded-2xl shadow-xl border-2 border-blue-400/80 animate-in fade-in slide-in-from-top-2 duration-150"
               >
-                <div className="flex items-center gap-2 text-xs sm:text-sm font-bold">
-                  <span className="relative flex h-2.5 w-2.5">
+                <div className="flex items-center gap-3 text-xs sm:text-sm font-bold">
+                  <span className="relative flex h-3 w-3">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
                   </span>
-                  <span>
-                    Vybrán:{" "}
-                    <span className="font-black text-amber-200">{selectedOperator.name}</span> (
-                    {selectedOperator.machineType})
-                  </span>
-                  {selectedOperator.isPermanent === false && (
-                    <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-amber-400 text-slate-950">
-                      ! Navíc mimo kmen
+                  <div>
+                    <span>
+                      Vybrán operátor:{" "}
+                      <span className="underline decoration-white/60 font-black text-amber-200">
+                        {selectedOperator.name}
+                      </span>{" "}
+                      ({selectedOperator.machineType})
                     </span>
-                  )}
+                    <p className="text-[11px] font-normal text-blue-100 mt-0.5">
+                      Pro přesun použijte tlačítko Přesun na kartě, přetažení myší nebo horní
+                      zkratky
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {selectedOperator.isPermanent === false && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleBulkConvertToKmen("transport", [selectedOperator.id])}
-                        className="px-2.5 py-1 text-xs font-bold rounded-lg bg-blue-500 hover:bg-blue-400 text-white transition-all cursor-pointer shadow-xs active:scale-95 flex items-center gap-1"
-                        title="Převést do stálého kmene Transport"
-                      >
-                        <Users className="w-3 h-3" />
-                        <span>Do kmene Transport</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleBulkConvertToKmen("vna", [selectedOperator.id])}
-                        className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer shadow-xs active:scale-95"
-                        title="Převést do stálého kmene VNA"
-                      >
-                        Do kmene VNA
-                      </button>
-                    </>
-                  )}
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setQuickMoveOperator(selectedOperator)}
-                    className="px-3 py-1 text-xs font-bold rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-900 transition-all cursor-pointer shadow-xs active:scale-95"
+                    className="px-3 py-1.5 text-xs font-bold rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 transition-all cursor-pointer shadow-md shrink-0 active:scale-95"
                   >
                     Přesunout...
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelectedOperatorId(null)}
-                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer active:scale-95"
+                    className="px-3 py-1.5 text-xs font-bold rounded-xl bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer border border-white/30 shrink-0 active:scale-95"
                   >
-                    Zrušit (Esc)
+                    Zrušit výběr (Esc)
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Horizontal scrollable columns: Outbound, HOVS, Putaway, VAS, OBWF, OBWI, Custom Depts, Unassigned, then VNA (2. TL) */}
+            {/* Horizontal scrollable columns: Outbound, HOVS, Putaway, VAS, OBWF, VNA, OBWI + Custom Depts */}
             <div
               id="board-columns-container"
               ref={boardContainerRef}
@@ -2627,49 +2019,39 @@ export default function App() {
                 isPanningBoard ? "cursor-grabbing scroll-auto" : "cursor-grab scroll-smooth"
               }`}
             >
-              {allDepartments.map((dept, index) => {
+              {allDepartments.map((dept) => {
                 const deptOps = filteredOperators.filter((o) => o.departmentId === dept.id);
-                const isVna = dept.id === "vna" || dept.isSecondTl;
-                const prevDept = index > 0 ? allDepartments[index - 1] : null;
-                const isFirstSecondTl =
-                  isVna && prevDept && !prevDept.isSecondTl && prevDept.id !== "vna";
 
                 return (
-                  <React.Fragment key={dept.id}>
-                    {isFirstSecondTl && (
-                      <div className="hidden sm:flex flex-col items-center justify-center shrink-0 w-4 self-stretch py-8 select-none">
-                        <div className="w-0.5 h-full bg-slate-300 dark:bg-slate-700/80 rounded-full" />
-                      </div>
-                    )}
-                    <DepartmentColumn
-                      department={dept}
-                      operators={deptOps}
-                      allOperators={operators}
-                      totalOperatorsCount={filteredOperators.length}
-                      selectedOperatorId={selectedOperatorId}
-                      bulkSelectedIds={bulkSelectedIds}
-                      onToggleBulkSelect={handleToggleBulkSelect}
-                      onSelectOperator={(op) => {
-                        setSelectedOperatorId((prev) => (prev === op.id ? null : op.id));
-                      }}
-                      onDeselectOperator={() => setSelectedOperatorId(null)}
-                      onOpenQuickMove={(op) => setQuickMoveOperator(op)}
-                      onEditOperator={(op) => setAddEditOperator({ operator: op })}
-                      onChangeStatus={handleChangeStatus}
-                      onChangeAbsenceReason={handleChangeAbsenceReason}
-                      onChangeMachineType={handleChangeMachineType}
-                      onAddOperatorToDept={(deptId) =>
-                        setAddEditOperator({ operator: null, defaultDeptId: deptId })
-                      }
-                      onDropOperator={(operatorIds, targetDeptId) =>
-                        handleMoveMultipleOperators(operatorIds, targetDeptId)
-                      }
-                      onDeleteDepartment={
-                        dept.isCustom ? () => handleDeleteCustomDepartment(dept.id) : undefined
-                      }
-                      onDeleteMultipleOperators={handleBulkDeleteOperators}
-                    />
-                  </React.Fragment>
+                  <DepartmentColumn
+                    key={dept.id}
+                    department={dept}
+                    operators={deptOps}
+                    allOperators={operators}
+                    totalOperatorsCount={filteredOperators.length}
+                    selectedOperatorId={selectedOperatorId}
+                    bulkSelectedIds={bulkSelectedIds}
+                    onToggleBulkSelect={handleToggleBulkSelect}
+                    onSelectOperator={(op) => {
+                      setSelectedOperatorId((prev) => (prev === op.id ? null : op.id));
+                    }}
+                    onDeselectOperator={() => setSelectedOperatorId(null)}
+                    onOpenQuickMove={(op) => setQuickMoveOperator(op)}
+                    onEditOperator={(op) => setAddEditOperator({ operator: op })}
+                    onChangeStatus={handleChangeStatus}
+                    onChangeAbsenceReason={handleChangeAbsenceReason}
+                    onChangeMachineType={handleChangeMachineType}
+                    onAddOperatorToDept={(deptId) =>
+                      setAddEditOperator({ operator: null, defaultDeptId: deptId })
+                    }
+                    onDropOperator={(operatorIds, targetDeptId) =>
+                      handleMoveMultipleOperators(operatorIds, targetDeptId)
+                    }
+                    onDeleteDepartment={
+                      dept.isCustom ? () => handleDeleteCustomDepartment(dept.id) : undefined
+                    }
+                    onDeleteMultipleOperators={handleBulkDeleteOperators}
+                  />
                 );
               })}
 
@@ -2747,7 +2129,6 @@ export default function App() {
             onChangeMachineType={handleChangeMachineType}
             onDeleteOperator={handleDeleteOperator}
             onDeleteMultipleOperators={handleBulkDeleteOperators}
-            onConvertToKmen={handleBulkConvertToKmen}
           />
         )}
       </main>
@@ -2812,11 +2193,7 @@ export default function App() {
           isOpen={isHistoryModalOpen}
           history={history}
           onClose={() => setIsHistoryModalOpen(false)}
-          onClearHistory={() => {
-            clearHistoryFromCloud().catch((error) => console.warn("Cloud history clear error:", error));
-            setHistory([]);
-            saveHistory([]);
-          }}
+          onClearHistory={() => setHistory([])}
         />
       )}
 
@@ -2859,70 +2236,6 @@ export default function App() {
         />
       )}
 
-      {/* Reset Shift Modal (Začátek směny / Přesun do kmenového přehledu) */}
-      <ResetShiftModal
-        isOpen={isResetShiftOpen}
-        activeShift={activeShift}
-        totalPermanentCount={shiftOperators.filter((o) => o.isPermanent !== false).length}
-        vnaCount={
-          shiftOperators.filter(
-            (o) => o.isPermanent !== false && getRosterGroup(o) === "vna",
-          ).length
-        }
-        absenceCount={
-          shiftOperators.filter((o) => o.departmentId === "unassigned" && Boolean(o.absenceReason))
-            .length
-        }
-        onClose={() => setIsResetShiftOpen(false)}
-        onConfirmReset={handleResetShiftConfirm}
-      />
-
-      {/* Manage Permanent Roster Modal (Stálí zaměstnanci směny) */}
-      <ManagePermanentRosterModal
-        isOpen={isManagePermanentOpen}
-        onClose={() => setIsManagePermanentOpen(false)}
-        activeShift={activeShift}
-        operators={shiftOperators}
-        onAddPermanentOperators={handleAddPermanentOperators}
-        onUpdatePermanentStatus={handleUpdatePermanentStatus}
-        onRemoveFromPermanent={handleRemoveFromPermanent}
-      />
-
-      {/* Kmen Roster Modal (Transport / VNA stálý kmen) */}
-      {kmenModalType && (
-        <KmenRosterModal
-          isOpen={Boolean(kmenModalType)}
-          onClose={() => setKmenModalType(null)}
-          type={kmenModalType}
-          activeShift={activeShift}
-          operators={
-            kmenModalType === "vna"
-              ? shiftOperators.filter(
-                  (o) => o.isPermanent !== false && getRosterGroup(o) === "vna",
-                )
-              : shiftOperators.filter(
-                  (o) => o.isPermanent !== false && getRosterGroup(o) === "transport",
-                )
-          }
-          onAdd={handleAddKmenOperator}
-          onRemove={handleRemoveKmenOperator}
-        />
-      )}
-
-      {/* Confirm Bulk Delete Modal */}
-      {bulkDeleteTarget && (
-        <ConfirmDialogModal
-          isOpen={Boolean(bulkDeleteTarget)}
-          title={`Smazat ${bulkDeleteTarget.count} operátorů?`}
-          message={`Opravdu chcete hromadně smazat ${bulkDeleteTarget.count} operátorů (${bulkDeleteTarget.namesPreview}) ze směny ${activeShift}? Tato akce je nevratná.`}
-          confirmLabel={`Smazat (${bulkDeleteTarget.count})`}
-          cancelLabel="Zpět"
-          variant="danger"
-          onConfirm={handleConfirmBulkDelete}
-          onCancel={() => setBulkDeleteTarget(null)}
-        />
-      )}
-
       {/* Confirm Reset Data Modal */}
       {isResetConfirmOpen && (
         <ConfirmDialogModal
@@ -2944,8 +2257,6 @@ export default function App() {
           onClose={() => setIsPhotoImportOpen(false)}
           onImportOperators={handleImportOperators}
           currentCount={shiftOperators.length}
-          permanentOperators={shiftOperators.filter((o) => o.isPermanent !== false)}
-          allShiftOperators={shiftOperators}
         />
       )}
 

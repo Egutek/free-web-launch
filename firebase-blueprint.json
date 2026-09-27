@@ -13,8 +13,7 @@
         "shift": { "type": "string", "enum": ["A", "B", "C"] },
         "absenceReason": { "type": "string", "enum": ["Absence", "Dovolená", "PN"] },
         "notes": { "type": "string", "maxLength": 500 },
-        "lastMovedAt": { "type": "string", "maxLength": 50 },
-        "isPermanent": { "type": "boolean" }
+        "lastMovedAt": { "type": "string", "maxLength": 50 }
       },
       "required": ["name", "machineType", "departmentId", "status", "lastMovedAt"]
     },
@@ -81,23 +80,23 @@
     }
   },
   "firestore": {
-    "workspaces/zf_ostrov/operators/{operatorId}": {
+    "operators/{operatorId}": {
       "schema": { "$ref": "#/entities/Operator" },
       "description": "All operators"
     },
-    "workspaces/zf_ostrov/history/{historyId}": {
+    "history/{historyId}": {
       "schema": { "$ref": "#/entities/HistoryRecord" },
       "description": "History records"
     },
-    "workspaces/zf_ostrov/templates/{templateId}": {
+    "templates/{templateId}": {
       "schema": { "$ref": "#/entities/ShiftTemplate" },
       "description": "Shift templates"
     },
-    "workspaces/zf_ostrov/custom_departments/{deptId}": {
+    "custom_departments/{deptId}": {
       "schema": { "$ref": "#/entities/CustomDepartment" },
       "description": "Custom departments"
     },
-    "workspaces/zf_ostrov/settings/{settingId}": {
+    "settings/{settingId}": {
       "schema": { "$ref": "#/entities/Setting" },
       "description": "Workspace settings"
     }

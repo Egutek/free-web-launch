@@ -1,5 +1,5 @@
 import React from "react";
-import { ArrowRightLeft, Edit3, Trash2, Users } from "lucide-react";
+import { ArrowRightLeft, Edit3, Trash2 } from "lucide-react";
 import { DEPARTMENTS } from "../data/departments";
 import { Department, DepartmentId, Operator, OperatorStatus, MachineType } from "../types";
 
@@ -17,7 +17,6 @@ interface TableViewProps {
   onChangeMachineType?: (operatorId: string, machineType: MachineType) => void;
   onDeleteOperator?: (operatorId: string) => void;
   onDeleteMultipleOperators?: (ids: string[]) => void;
-  onConvertToKmen?: (target: "transport" | "vna", ids?: string[]) => void;
 }
 
 export const TableView: React.FC<TableViewProps> = ({
@@ -33,7 +32,6 @@ export const TableView: React.FC<TableViewProps> = ({
   onChangeMachineType,
   onDeleteOperator,
   onDeleteMultipleOperators,
-  onConvertToKmen,
 }) => {
   const isAllSelected = operators.length > 0 && operators.every((o) => bulkSelectedIds?.has(o.id));
   const isSomeSelected = operators.some((o) => bulkSelectedIds?.has(o.id));
@@ -41,51 +39,24 @@ export const TableView: React.FC<TableViewProps> = ({
 
   return (
     <div className="space-y-2">
-      {selectedCount > 0 && (
-        <div className="flex items-center justify-between gap-3 px-4 py-2 bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white border border-blue-400/80 rounded-xl text-xs shadow-md flex-wrap">
-          <span className="font-bold flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5" />
-            <span>
-              Označeno v tabulce: <strong className="text-amber-200">{selectedCount}</strong>{" "}
-              operátorů
-            </span>
+      {selectedCount > 0 && onDeleteMultipleOperators && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs">
+          <span className="font-bold text-rose-800 dark:text-rose-200">
+            Označeno v tabulce: {selectedCount} operátorů
           </span>
-          <div className="flex items-center gap-2 flex-wrap">
-            {onConvertToKmen && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onConvertToKmen("transport", Array.from(bulkSelectedIds!))}
-                  className="px-2.5 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-400 text-white font-bold flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 transition-all border border-blue-300/50"
-                  title="Převést vybrané do stálého kmene Transport"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>Do kmene Transport</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onConvertToKmen("vna", Array.from(bulkSelectedIds!))}
-                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 transition-all border border-emerald-300/50"
-                  title="Převést vybrané do stálého kmene VNA"
-                >
-                  <span>Do kmene VNA</span>
-                </button>
-              </>
-            )}
-            {onDeleteMultipleOperators && (
-              <button
-                type="button"
-                onClick={() => onDeleteMultipleOperators(Array.from(bulkSelectedIds!))}
-                className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95 transition-all border border-rose-400/60"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Smazat ({selectedCount})</span>
-              </button>
-            )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onDeleteMultipleOperators(Array.from(bulkSelectedIds!))}
+              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95 transition-all"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Smazat označené ({selectedCount})</span>
+            </button>
             <button
               type="button"
               onClick={onClearSelection}
-              className="px-2.5 py-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/20 font-semibold cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 font-semibold cursor-pointer"
             >
               Zrušit výběr
             </button>
@@ -156,17 +127,7 @@ export const TableView: React.FC<TableViewProps> = ({
                       />
                     </td>
                     <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
-                      <div className="flex items-center gap-1.5">
-                        <span>{op.name}</span>
-                        {op.departmentId === "unassigned" && !op.absenceReason && (
-                          <span
-                            className="w-4 h-4 rounded-full bg-rose-500 text-white font-black text-[10px] inline-flex items-center justify-center shrink-0 shadow-2xs"
-                            title="Pozor: Operátor zatím nemá přidělené oddělení ani absenci!"
-                          >
-                            !
-                          </span>
-                        )}
-                      </div>
+                      <span>{op.name}</span>
                     </td>
 
                     {/* Směna A, B, C */}

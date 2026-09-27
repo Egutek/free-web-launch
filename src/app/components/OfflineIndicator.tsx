@@ -9,21 +9,20 @@ export const OfflineIndicator: React.FC = () => {
 
   useEffect(() => {
     // If transitioned from offline to online
-    if (!prevOnline && isOnline && pendingCount === 0) {
+    if (!prevOnline && isOnline) {
       setShowSyncedToast(true);
       const timer = setTimeout(() => setShowSyncedToast(false), 4000);
       return () => clearTimeout(timer);
     }
     setPrevOnline(isOnline);
-    return undefined;
-  }, [isOnline, prevOnline, pendingCount]);
+  }, [isOnline, prevOnline]);
 
   if (showSyncedToast) {
     return (
       <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:w-auto z-50 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-emerald-600 text-white shadow-xl text-xs font-semibold border border-emerald-500/50">
           <CheckCircle2 className="w-4 h-4 shrink-0 text-white animate-bounce" />
-          <span>Připojení obnoveno – Všechny změny byly odeslány do cloudu.</span>
+          <span>Wi-Fi signál obnoven – Všechny změny byly odeslány do cloudu.</span>
         </div>
       </div>
     );

@@ -172,27 +172,6 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
             {operator.name}
           </h4>
 
-          {/* Exclamation mark warning ! if unassigned without absence */}
-          {operator.departmentId === "unassigned" && !operator.absenceReason && (
-            <span
-              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-rose-500 text-white font-black text-[10px] leading-none shrink-0 shadow-2xs cursor-help animate-pulse"
-              title="Pozor: Stálý operátor zatím nemá přidělené oddělení ani absenci (OCR jej na tabuli nenašlo nebo čeká na rozřazení)!"
-            >
-              !
-            </span>
-          )}
-
-          {/* Extra operator indicator (mimo stálý stav) */}
-          {operator.isPermanent === false && (
-            <span
-              className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shrink-0"
-              title="Operátor navíc mimo stálý stav (výpomoc / brigádník)"
-            >
-              <span className="font-black text-rose-600 dark:text-rose-400 leading-none">!</span>
-              <span>Navíc</span>
-            </span>
-          )}
-
           {/* Machine qualification tag: ONLY IF LL or RTR (never on VNA or Absence) - Click to toggle LL <-> RTR */}
           {operator.departmentId !== "vna" &&
             !isAbsence &&

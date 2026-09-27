@@ -260,7 +260,7 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchesName = op.name.toLowerCase().includes(query);
-        const matchesNote = op.notes ? op.notes.toLowerCase().includes(query) : false;
+        const matchesNote = op.note ? op.note.toLowerCase().includes(query) : false;
         if (!matchesName && !matchesNote) return false;
       }
       // Department filter

@@ -20,7 +20,6 @@ import {
   Users,
   Wrench,
   WifiOff,
-  ShieldCheck,
 } from "lucide-react";
 import { ShiftCode, UndoOperation } from "../types";
 import { getDepartmentById } from "../data/departments";
@@ -51,9 +50,6 @@ interface HeaderProps {
   onOpenReportModal?: () => void;
   onOpenHistoryModal: () => void;
   onResetData: () => void;
-  onResetShift?: () => void;
-  onCleanDuplicates?: () => void;
-  waitingRosterCount?: number;
   isCloudConnected?: boolean;
   isCloudSyncing?: boolean;
 }
@@ -79,9 +75,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenTemplatesModal,
   onOpenHistoryModal,
   onResetData,
-  onResetShift,
-  onCleanDuplicates,
-  waitingRosterCount = 0,
   isCloudConnected = false,
   isCloudSyncing = false,
 }) => {
@@ -120,31 +113,38 @@ export const Header: React.FC<HeaderProps> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
-                  ZF Ostrov • PICK
+                  ZF Ostrov • Oddělení PICK
                 </h1>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-700">
+                  Aftermarket Hub
+                </span>
                 {isCloudConnected ? (
                   <span
-                    className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/60 shadow-2xs"
-                    title="Živá synchronizace aktivní"
+                    className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/60 shadow-2xs"
+                    title="Živá online synchronizace aktivní • Jakákoliv změna se ihned projeví na všech zařízeních s odkazem"
                   >
                     {isCloudSyncing ? (
                       <RefreshCw className="w-2.5 h-2.5 text-emerald-600 animate-spin" />
                     ) : (
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     )}
                     <Cloud className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
-                    <span>Online</span>
+                    <span className="font-bold">Online:</span>
+                    <span>Živě synchronizováno</span>
                   </span>
                 ) : (
                   <span
-                    className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800/60"
-                    title="Připojování..."
+                    className="inline-flex items-center gap-1.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-800/60"
+                    title="Připojování k online databázi..."
                   >
                     <RefreshCw className="w-2.5 h-2.5 text-amber-600 animate-spin" />
-                    <span>Připojování...</span>
+                    <span>Připojování k online směně...</span>
                   </span>
                 )}
               </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 hidden sm:block">
+                Operační řízení směn a přesuny operátorů
+              </p>
             </div>
           </div>
 
@@ -336,28 +336,6 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {onResetShift && (
-              <button
-                id="header-reset-shift-btn"
-                type="button"
-                onClick={onResetShift}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700/80 shadow-2xs transition-all cursor-pointer active:scale-95"
-                title={`Resetovat rozdělení směny ${activeShift} (přesune operátory do kmenového přehledu k rozřazení)`}
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Reset směny</span>
-                <span className="sm:hidden">Reset</span>
-                {waitingRosterCount > 0 && (
-                  <span
-                    className="w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-black text-[10px] flex items-center justify-center shrink-0 shadow-2xs"
-                    title={`Pozor: ${waitingRosterCount} operátorů čeká na přiřazení!`}
-                  >
-                    !
-                  </span>
-                )}
-              </button>
-            )}
-
             <button
               onClick={onOpenHistoryModal}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
@@ -367,22 +345,9 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden md:inline">Historie</span>
             </button>
 
-            {onCleanDuplicates && (
-              <button
-                id="header-clean-duplicates-btn"
-                type="button"
-                onClick={onCleanDuplicates}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/60 shadow-2xs transition-all active:scale-95 cursor-pointer"
-                title="Automatická kontrola a vyčištění duplicitních záznamů (ponechá nejnovější čas pohybu)"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden lg:inline">Čistit duplicity</span>
-              </button>
-            )}
-
             <button
               onClick={onResetData}
-              className="p-1.5 rounded-xl text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 rounded-xl text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               title="Obnovit výchozích 65 operátorů ZF PICK"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -404,11 +369,6 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Users className="w-3.5 h-3.5 text-slate-400" />
                 <span>Sdílená směna</span>
-              </span>
-            )}
-            {import.meta.env["VITE_APP_COMMIT"] && (
-              <span className="hidden lg:inline text-[10px] font-mono text-slate-400" title="Verze nasazeného webu">
-                v{import.meta.env["VITE_APP_COMMIT"].slice(0, 8)}
               </span>
             )}
           </div>

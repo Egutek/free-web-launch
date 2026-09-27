@@ -12,9 +12,8 @@ import {
   orderBy,
   limit,
   writeBatch,
-  runTransaction,
 } from "firebase/firestore";
-import { db, auth, ensureFirebaseAuth } from "../firebase";
+import { db, auth } from "../firebase";
 import { Operator, MoveHistoryRecord, ShiftTemplate, Department, ShiftCode } from "../types";
 import { queueOfflineAction } from "./offlineQueue";
 
@@ -52,20 +51,8 @@ export function handleFirestoreError(
   operationType: OperationType,
   path: string | null,
 ) {
-  const errMsg = error instanceof Error ? error.message : String(error);
-  const isOfflineOrUnavailable =
-    errMsg.includes("unavailable") ||
-    errMsg.includes("Could not reach Cloud Firestore") ||
-    errMsg.includes("the client is offline") ||
-    (typeof navigator !== "undefined" && !navigator.onLine);
-
-  if (isOfflineOrUnavailable) {
-    console.warn(`[Firestore Offline] ${operationType} na ${path} přechází do offline mezipaměti.`);
-    return;
-  }
-
   const errInfo: FirestoreErrorInfo = {
-    error: errMsg,
+    error: error instanceof Error ? error.message : String(error),
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -80,26 +67,22 @@ export function handleFirestoreError(
 
 // ---------- Operátoři ----------
 export function subscribeToOperators(
-  onUpdate: (operators: Operator[], fromCache: boolean) => void,
+  onUpdate: (operators: Operator[]) => void,
   onError?: (err: Error) => void,
 ): Unsubscribe {
   const q = query(getCollectionRef("operators"), limit(2000));
   return onSnapshot(
     q,
-    { includeMetadataChanges: true },
     (snapshot) => {
       const ops = snapshot.docs.map((doc) => doc.data() as Operator);
-      onUpdate(ops, snapshot.metadata.fromCache);
+      onUpdate(ops);
     },
     (error) => {
-      console.error("Firestore operators subscription error:", error);
+      handleFirestoreError(error, OperationType.LIST, "operators");
       if (onError) onError(error);
     },
   );
 }
-
-const pendingOperatorWrites = new Map<string, Promise<number>>();
-const confirmedOperatorRevisions = new Map<string, number>();
 
 export async function syncOperatorToCloud(
   operator: Operator,
@@ -112,46 +95,16 @@ export async function syncOperatorToCloud(
     }
     return;
   }
-  const previous = pendingOperatorWrites.get(operator.id);
-  const write = (async () => {
-    const previousRevision = previous
-      ? await previous
-      : Math.max(operator.revision ?? 0, confirmedOperatorRevisions.get(operator.id) ?? 0);
-    await ensureFirebaseAuth();
-    return runTransaction(db, async (transaction) => {
-      const ref = getDocRef("operators", operator.id);
-      const snapshot = await transaction.get(ref);
-      const currentRevision = snapshot.exists() && typeof snapshot.data()["revision"] === "number"
-        ? snapshot.data()["revision"] as number : 0;
-      if (currentRevision !== previousRevision) {
-        throw new Error("Konflikt změn: operátor byl mezitím upraven na jiném zařízení.");
-      }
-      const cleanOp: Record<string, unknown> = { ...operator, revision: currentRevision + 1 };
-      Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
-      transaction.set(ref, cleanOp);
-      return currentRevision + 1;
-    });
-  })();
-  pendingOperatorWrites.set(operator.id, write);
-  void write.finally(() => {
-    if (pendingOperatorWrites.get(operator.id) === write) pendingOperatorWrites.delete(operator.id);
-  }).catch(() => {});
   try {
-    const revision = await write;
-    confirmedOperatorRevisions.set(operator.id, revision);
-    operator.revision = revision;
+    const cleanOp: Record<string, unknown> = { ...operator };
+    Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
+    await setDoc(getDocRef("operators", operator.id), cleanOp);
   } catch (error) {
-    if (shouldQueueIfOffline && isUnavailable(error)) {
+    if (shouldQueueIfOffline) {
       queueOfflineAction("sync_operator", operator);
-      return;
     }
-    throw error;
+    console.warn(`Firestore sync operator ${operator.name} failed (queued offline):`, error);
   }
-}
-
-function isUnavailable(error: unknown): boolean {
-  return (error as { code?: string })?.code === "unavailable" ||
-    (typeof navigator !== "undefined" && !navigator.onLine);
 }
 
 export async function deleteOperatorFromCloud(
@@ -166,59 +119,12 @@ export async function deleteOperatorFromCloud(
     return;
   }
   try {
-    await pendingOperatorWrites.get(operatorId)?.catch(() => undefined);
-    await ensureFirebaseAuth();
     await deleteDoc(getDocRef("operators", operatorId));
-    confirmedOperatorRevisions.delete(operatorId);
   } catch (error) {
-    if (shouldQueueIfOffline && isUnavailable(error)) {
-      queueOfflineAction("delete_operator", operatorId);
-      return;
-    }
-    throw error;
-  }
-}
-
-export async function bulkDeleteOperatorsFromCloud(
-  operatorIds: string[],
-  shouldQueueIfOffline = true,
-): Promise<void> {
-  if (!operatorIds || operatorIds.length === 0) return;
-  const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
-  if (isOffline) {
     if (shouldQueueIfOffline) {
-      for (const id of operatorIds) {
-        queueOfflineAction("delete_operator", id);
-      }
+      queueOfflineAction("delete_operator", operatorId);
     }
-    return;
-  }
-  try {
-    await ensureFirebaseAuth();
-    await Promise.all(operatorIds.map((id) => pendingOperatorWrites.get(id)?.catch(() => undefined)));
-    let batch = writeBatch(db);
-    let count = 0;
-    for (const id of operatorIds) {
-      batch.delete(getDocRef("operators", id));
-      count++;
-      if (count >= 400) {
-        await batch.commit();
-        batch = writeBatch(db);
-        count = 0;
-      }
-    }
-    if (count > 0) {
-      await batch.commit();
-    }
-    operatorIds.forEach((id) => confirmedOperatorRevisions.delete(id));
-  } catch (error) {
-    if (shouldQueueIfOffline && isUnavailable(error)) {
-      for (const id of operatorIds) {
-        queueOfflineAction("delete_operator", id);
-      }
-      return;
-    }
-    throw error;
+    console.warn(`Firestore delete operator ${operatorId} failed (queued offline):`, error);
   }
 }
 
@@ -235,20 +141,21 @@ export async function bulkSyncOperatorsToCloud(
     }
     return;
   }
+  const batch = writeBatch(db);
+  for (const op of operators) {
+    const cleanOp: Record<string, unknown> = { ...op, shift: op.shift || "A" };
+    Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
+    batch.set(getDocRef("operators", op.id), cleanOp);
+  }
   try {
-    for (let i = 0; i < operators.length; i += 20) {
-      await Promise.all(operators.slice(i, i + 20).map((op) =>
-        syncOperatorToCloud({ ...op, shift: op.shift || "A" }, false),
-      ));
-    }
+    await batch.commit();
   } catch (error) {
-    if (shouldQueueIfOffline && isUnavailable(error)) {
+    if (shouldQueueIfOffline) {
       for (const op of operators) {
         queueOfflineAction("sync_operator", op);
       }
-      return;
     }
-    throw error;
+    console.warn("Firestore bulk sync failed (queued offline):", error);
   }
 }
 
@@ -261,17 +168,8 @@ export async function replaceOperatorsInCloud(
   shiftToReplace?: ShiftCode,
 ): Promise<void> {
   try {
-    await ensureFirebaseAuth();
     const querySnapshot = await getDocs(getCollectionRef("operators"));
-    const replacement = shiftToReplace
-      ? allCurrentOperators.filter((o) => (o.shift || "A") === shiftToReplace)
-      : allCurrentOperators;
-    const newOpIds = new Set(replacement.map((o) => o.id));
-    const cloudById = new Map(querySnapshot.docs.map((doc) => [doc.id, doc]));
-    await bulkSyncOperatorsToCloud(replacement.map((op) => ({
-      ...op,
-      revision: cloudById.get(op.id)?.data()["revision"] ?? 0,
-    })));
+    const newOpIds = new Set(allCurrentOperators.map((o) => o.id));
 
     let batch = writeBatch(db);
     let opCount = 0;
@@ -291,6 +189,19 @@ export async function replaceOperatorsInCloud(
           batch = writeBatch(db);
           opCount = 0;
         }
+      }
+    }
+
+    // 2. Save all current operators
+    for (const op of allCurrentOperators) {
+      const cleanOp: Record<string, unknown> = { ...op, shift: op.shift || "A" };
+      Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
+      batch.set(getDocRef("operators", op.id), cleanOp);
+      opCount++;
+      if (opCount >= 400) {
+        await batch.commit();
+        batch = writeBatch(db);
+        opCount = 0;
       }
     }
 
@@ -321,16 +232,6 @@ export function subscribeToHistory(
   );
 }
 
-export async function clearHistoryFromCloud(): Promise<void> {
-  await ensureFirebaseAuth();
-  const snapshot = await getDocs(getCollectionRef("history"));
-  for (let start = 0; start < snapshot.docs.length; start += 400) {
-    const batch = writeBatch(db);
-    snapshot.docs.slice(start, start + 400).forEach((item) => batch.delete(item.ref));
-    await batch.commit();
-  }
-}
-
 export async function syncHistoryRecordToCloud(
   record: MoveHistoryRecord,
   shouldQueueIfOffline = true,
@@ -343,18 +244,16 @@ export async function syncHistoryRecordToCloud(
     return;
   }
   try {
-    await ensureFirebaseAuth();
     const cleanRecord: Record<string, unknown> = { ...record };
     Object.keys(cleanRecord).forEach(
       (key) => cleanRecord[key] === undefined && delete cleanRecord[key],
     );
     await setDoc(getDocRef("history", record.id), cleanRecord);
   } catch (error) {
-    if (shouldQueueIfOffline && isUnavailable(error)) {
+    if (shouldQueueIfOffline) {
       queueOfflineAction("sync_history", record);
-      return;
     }
-    throw error;
+    console.warn(`Firestore sync history record ${record.id} failed (queued offline):`, error);
   }
 }
 
@@ -394,56 +293,6 @@ export async function deleteTemplateFromCloud(templateId: string): Promise<void>
     await deleteDoc(getDocRef("templates", templateId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `templates/${templateId}`);
-  }
-}
-
-export async function migrateLocalTemplatesToCloud(localTemplates: ShiftTemplate[]): Promise<void> {
-  if (!localTemplates || localTemplates.length === 0) return;
-  try {
-    const snapshot = await getDocs(getCollectionRef("templates"));
-    const existingIds = new Set(snapshot.docs.map((doc) => doc.id));
-
-    const batch = writeBatch(db);
-    let count = 0;
-
-    for (const template of localTemplates) {
-      if (!template.id || existingIds.has(template.id)) continue;
-      const cleanTemplate: Record<string, unknown> = { ...template };
-      Object.keys(cleanTemplate).forEach(
-        (key) => cleanTemplate[key] === undefined && delete cleanTemplate[key],
-      );
-      batch.set(getDocRef("templates", template.id), cleanTemplate);
-      count++;
-      if (count >= 400) break; // Firestore batch limit safety
-    }
-
-    if (count > 0) {
-      await batch.commit();
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, "templates/migration");
-  }
-}
-
-export async function restoreBuiltInTemplatesToCloud(): Promise<void> {
-  try {
-    const snapshot = await getDocs(getCollectionRef("templates"));
-    const batch = writeBatch(db);
-    let count = 0;
-
-    for (const docSnap of snapshot.docs) {
-      const data = docSnap.data() as Partial<ShiftTemplate>;
-      if (data.isBuiltIn && data.isDeleted) {
-        batch.delete(docSnap.ref);
-        count++;
-      }
-    }
-
-    if (count > 0) {
-      await batch.commit();
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, "templates/restoreBuiltIns");
   }
 }
 

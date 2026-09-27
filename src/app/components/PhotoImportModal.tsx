@@ -50,7 +50,6 @@ import {
   applyImageAdjustments,
 } from "../utils/imagePreprocessing";
 import { subscribeToOcrInstructions, syncOcrInstructionsToCloud } from "../services/firestoreSync";
-import { findMatchingOperator, cleanNameForMatching } from "../utils/nameMatching";
 
 export const DEFAULT_CUSTOM_OCR_INSTRUCTIONS = `1. Všechny osoby vlevo nahoře pod absencí (pod nápisy Absence, Dovolená, D, PN, Nemoc, NV, OČR nebo zkratkami oddělení např. HOVC - Novák D, Svoboda PN) VŽDY načti a zařaď do nabídky absencí.
 2. Operátoři přiřazení na HOVS mají mít po nahrání výchozí stroj LL (pokud není výslovně napsáno RTR).
@@ -67,8 +66,6 @@ interface PhotoImportModalProps {
     omittedCandidates?: FilteredOutRecord[],
   ) => void;
   currentCount: number;
-  permanentOperators?: Operator[];
-  allShiftOperators?: Operator[];
 }
 
 interface DraftOperator {
@@ -78,7 +75,6 @@ interface DraftOperator {
   departmentId: DepartmentId;
   notes?: string;
   absenceReason?: AbsenceReason;
-  isPermanent?: boolean;
 }
 
 export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
@@ -86,8 +82,6 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   onClose,
   onImportOperators,
   currentCount,
-  permanentOperators = [],
-  allShiftOperators = [],
 }) => {
   const [activeTab, setActiveTab] = useState<"photo" | "text">("photo");
   const [rawSourceImage, setRawSourceImage] = useState<string | null>(null);
@@ -291,10 +285,8 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         mimeType?: string;
         textInput?: string;
         customInstructions?: string;
-        permanentRosterNames?: string[];
       } = {
         customInstructions: customInstructions.trim() || undefined,
-        permanentRosterNames: permanentOperators.map((o) => o.name),
       };
       if (activeTab === "photo") {
         if (!rawSourceImage && !selectedImage) {
@@ -435,48 +427,17 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         )
           detectedReason = "PN";
 
-        const matchedOp =
-          findMatchingOperator(op.name, permanentOperators) ||
-          findMatchingOperator(op.name, allShiftOperators);
-        const resolvedName = matchedOp ? matchedOp.name : op.name || `Operátor ${index + 1}`;
-
         return {
           tempId: `draft-${Date.now()}-${index}`,
-          name: resolvedName,
+          name: op.name || `Operátor ${index + 1}`,
           machineType: mType,
           departmentId: deptId,
-          notes:
-            op.notes ||
-            (matchedOp?.isPermanent ? "Ověřeno v kmenovém stavu" : "Extrahováno ze snímku ZF"),
+          notes: op.notes || "Extrahováno ze snímku ZF",
           absenceReason: isAbsence ? detectedReason : undefined,
-          isPermanent: Boolean(matchedOp?.isPermanent),
         };
       });
 
-      // Deduplicate drafts by name: ensure every person appears only once
-      const uniqueDrafts: DraftOperator[] = [];
-      for (const draft of drafts) {
-        const existingIdx = uniqueDrafts.findIndex(
-          (d) =>
-            cleanNameForMatching(d.name) === cleanNameForMatching(draft.name),
-        );
-        if (existingIdx === -1) {
-          uniqueDrafts.push(draft);
-        } else {
-          const ex = uniqueDrafts[existingIdx];
-          if (draft.isPermanent) ex.isPermanent = true;
-          if (draft.departmentId !== "unassigned" && ex.departmentId === "unassigned") {
-            ex.departmentId = draft.departmentId;
-            ex.machineType = draft.machineType;
-            ex.absenceReason = undefined;
-          }
-          if (draft.notes && !ex.notes?.includes(draft.notes)) {
-            ex.notes = `${ex.notes || ""} | ${draft.notes}`.trim();
-          }
-        }
-      }
-
-      setExtractedList(uniqueDrafts);
+      setExtractedList(drafts);
     } catch (err: unknown) {
       console.error(err);
       const errObj = err as { message?: string };
@@ -588,18 +549,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
 
   const handleAddAllFilteredToAbsence = (forcedReason?: AbsenceReason) => {
     if (filteredOutList.length === 0) return;
-    const itemsToAdd = filteredOutList.filter(
-      (item) =>
-        !extractedList.some(
-          (d) =>
-            cleanNameForMatching(d.name) === cleanNameForMatching(item.name),
-        ),
-    );
-    if (itemsToAdd.length === 0) {
-      setFilteredOutList([]);
-      return;
-    }
-    const newDrafts: DraftOperator[] = itemsToAdd.map((item, idx) => {
+    const newDrafts: DraftOperator[] = filteredOutList.map((item, idx) => {
       let reason: AbsenceReason = forcedReason || "Absence";
       if (!forcedReason) {
         const combined = `${item.name} ${item.detail}`.toLowerCase();
@@ -642,42 +592,18 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   const handleApply = () => {
     if (extractedList.length === 0) return;
 
-    // Deduplicate extractedList first
-    const uniqueDrafts: DraftOperator[] = [];
-    for (const draft of extractedList) {
-      const idx = uniqueDrafts.findIndex(
-        (d) =>
-          cleanNameForMatching(d.name) === cleanNameForMatching(draft.name),
-      );
-      if (idx === -1) {
-        uniqueDrafts.push(draft);
-      } else {
-        if (draft.isPermanent) uniqueDrafts[idx].isPermanent = true;
-        if (draft.departmentId !== "unassigned") {
-          uniqueDrafts[idx].departmentId = draft.departmentId;
-          uniqueDrafts[idx].machineType = draft.machineType;
-        }
-      }
-    }
-
-    const finalOps: Operator[] = uniqueDrafts.map((draft, idx) => {
-      const match =
-        findMatchingOperator(draft.name, permanentOperators) ||
-        findMatchingOperator(draft.name, allShiftOperators);
-      return {
-        id: match ? match.id : `op-imported-${Date.now()}-${idx + 1}`,
-        name: match ? match.name : draft.name.trim(),
-        machineType: draft.departmentId === "unassigned" ? "NONE" : draft.machineType,
-        departmentId: draft.departmentId,
-        isVnaOnly: match ? match.isVnaOnly : false,
-        status: draft.departmentId === "unassigned" ? "absence" : "active",
-        absenceReason:
-          draft.departmentId === "unassigned" ? draft.absenceReason || "Absence" : undefined,
-        notes: draft.notes,
-        isPermanent: match ? Boolean(match.isPermanent) : Boolean(draft.isPermanent),
-        lastMovedAt: new Date().toISOString(),
-      };
-    });
+    const finalOps: Operator[] = extractedList.map((draft, idx) => ({
+      id: `op-imported-${Date.now()}-${idx + 1}`,
+      name: draft.name.trim(),
+      machineType: draft.departmentId === "unassigned" ? "NONE" : draft.machineType,
+      departmentId: draft.departmentId,
+      isVnaOnly: false,
+      status: draft.departmentId === "unassigned" ? "absence" : "active",
+      absenceReason:
+        draft.departmentId === "unassigned" ? draft.absenceReason || "Absence" : undefined,
+      notes: draft.notes,
+      lastMovedAt: new Date().toISOString(),
+    }));
 
     onImportOperators(finalOps, replaceAll, filteredOutList);
     onClose();
@@ -1532,42 +1458,6 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                 </div>
               </div>
 
-              {/* AI Memory Permanent Roster Status Banner */}
-              {permanentOperators.length > 0 && (
-                <div className="p-3 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200/80 dark:border-blue-800/80 rounded-xl text-xs space-y-1.5">
-                  <div className="flex items-center justify-between gap-2 flex-wrap font-bold text-slate-800 dark:text-slate-200">
-                    <span className="flex items-center gap-1.5 text-blue-700 dark:text-blue-300">
-                      <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                      AI kontrola proti stálému stavu směny ({permanentOperators.length} lidí):
-                    </span>
-                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                      {extractedList.filter((d) => d.isPermanent).length} z{" "}
-                      {permanentOperators.length} stálých rozpoznáno
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap text-[11px]">
-                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-300 dark:border-emerald-800">
-                      ✓ {extractedList.filter((d) => d.isPermanent).length} stálých přiřazeno
-                    </span>
-                    {permanentOperators.length - extractedList.filter((d) => d.isPermanent).length >
-                      0 && (
-                      <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold border border-amber-300 dark:border-amber-800">
-                        ⚠️{" "}
-                        {permanentOperators.length -
-                          extractedList.filter((d) => d.isPermanent).length}{" "}
-                        nenalezeno na tabuli (zůstanou v nezařazených s !)
-                      </span>
-                    )}
-                    {extractedList.filter((d) => !d.isPermanent).length > 0 && (
-                      <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 font-bold border border-blue-300 dark:border-blue-800">
-                        ➕ {extractedList.filter((d) => !d.isPermanent).length} navíc mimo stálý
-                        stav (výpomoc)
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
               {/* Collapsible custom instructions editor in Step 2 */}
               {showCustomInstructions && (
                 <div className="p-3 bg-indigo-50/80 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 rounded-xl space-y-2 text-xs">
@@ -1874,28 +1764,13 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                       </span>
 
                       {/* Name input */}
-                      <div className="flex-1 min-w-[120px] flex items-center gap-1.5">
+                      <div className="flex-1 min-w-[120px]">
                         <input
                           type="text"
                           value={item.name}
                           onChange={(e) => updateDraft(item.tempId, { name: e.target.value })}
-                          className="flex-1 text-xs sm:text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-white"
+                          className="w-full text-xs sm:text-sm font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-white"
                         />
-                        {item.isPermanent ? (
-                          <span
-                            className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shrink-0"
-                            title="Stálý zaměstnanec směny (AI ověřeno)"
-                          >
-                            ✓ Kmen
-                          </span>
-                        ) : (
-                          <span
-                            className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 shrink-0"
-                            title="Mimo stálý stav (výpomoc / nový pracovník)"
-                          >
-                            ! Navíc
-                          </span>
-                        )}
                       </div>
 
                       {/* Machine Type or Absence Reason */}

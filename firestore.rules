@@ -5,7 +5,7 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    function isSignedIn() { return request.auth != null; }
+    function isSignedIn() { return true; }
 
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
@@ -31,12 +31,9 @@ service cloud.firestore {
             && data.departmentId is string && data.departmentId.size() <= 50
             && data.status in ['active', 'break', 'absence']
             && data.lastMovedAt is string && data.lastMovedAt.size() <= 50
-            && (!data.keys().hasAny(['revision']) || (data.revision is number && data.revision >= 0))
-            && (!data.keys().hasAny(['isPermanent']) || data.isPermanent is bool)
-            && (!data.keys().hasAny(['rosterGroup']) || data.rosterGroup in ['transport', 'vna'])
             && (!data.keys().hasAny(['isVnaOnly']) || data.isVnaOnly is bool)
             && (!data.keys().hasAny(['shift']) || data.shift in ['A', 'B', 'C'])
-            && (!data.keys().hasAny(['absenceReason']) || data.absenceReason in ['Absence', 'Dovolená', 'PN', 'Lékař', 'Nemoc / PN', 'Neomluveno', 'Školení', 'Jiné'])
+            && (!data.keys().hasAny(['absenceReason']) || data.absenceReason in ['Absence', 'Dovolená', 'PN'])
             && (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 500));
       }
 
@@ -85,7 +82,6 @@ service cloud.firestore {
             && data.createdAt is string && data.createdAt.size() <= 50
             && (!data.keys().hasAny(['description']) || (data.description is string && data.description.size() <= 500))
             && (!data.keys().hasAny(['isBuiltIn']) || data.isBuiltIn is bool)
-            && (!data.keys().hasAny(['isDeleted']) || data.isDeleted is bool)
             && (!data.keys().hasAny(['shift']) || data.shift in ['A', 'B', 'C', 'all'])
             && (!data.keys().hasAny(['assignments']) || data.assignments is list);
       }

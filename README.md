@@ -1,22 +1,26 @@
 # ZF Operativa Ostrov
 
-## Firebase projekt
+[![Netlify Status](https://api.netlify.com/api/v1/badges/109dc72d-db81-4248-a2ef-43227ebd75bc/deploy-status)](https://app.netlify.com/projects/zfoperatives/deploys)
 
-Projekt: `freeai-ff700`, databáze Firestore: `(default)`. Web používá registrovanou Firebase aplikaci Freeai.
+Tento projekt je online.
 
-1. Firebase Authentication → Sign-in method → **Anonymous** musí být zapnuté. Uživatelé se přihlásí anonymně na pozadí, bez formuláře nebo účtu.
-2. Firestore Rules musí být nasazeny z `firestore.rules` do databáze `(default)`: `npx firebase-tools@latest deploy --only firestore:rules --project freeai-ff700`.
-3. Firebase SDK používá ID aplikace `1:802136563532:web:22c640be67fb80c99eb9e9`. Případné build proměnné `VITE_FIREBASE_API_KEY` a `VITE_FIREBASE_APP_ID` musí pocházet z této webové aplikace.
-4. Po sestavení a nasazení webu každý návštěvník získá anonymní Firebase identitu. Firestore `onSnapshot` doručuje změny operátorů ostatním otevřeným zařízením v reálném čase.
+This project was built with [Lovable](https://lovable.dev).
 
-**Přístup přes odkaz:** každý, kdo získá URL aplikace, může číst, přidávat, upravovat i mazat sdílená provozní data v pracovním prostoru. Odkaz není přístupový zámek.
+## Build with Lovable
 
-Aplikace nenahrává staré lokální záznamy do prázdné cloudové databáze automaticky. Případnou migraci proveďte vědomě až po záloze.
+Continue developing this project in the [Lovable editor](https://lovable.dev/projects/b51e83a8-cb40-42eb-9be1-7ab154852578).
 
-## Nasazení webu
+- **Ship faster**: describe what you want to build and Lovable handles the code.
+- **Stay in sync**: every change made in Lovable is committed straight to this repository.
+- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
-Projekt používá TanStack Start se serverovým sestavením. Nasazujte jej na stávající hosting podporující Node/Workers. Build CI ověřuje přes `bun run build`. Změny pravidel Firestore se nasazují samostatně od webu.
+## Development
 
-## Ověření
+Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
 
-Otevřete web ve dvou nezávislých prohlížečích. Oba musí ukázat online stav; přidání, přesun, změna stavu nebo oddělení v jednom musí dorazit do druhého bez obnovení stránky.
+```sh
+git clone <this-repository-url>
+cd <repository-name>
+npm i
+npm run dev
+```

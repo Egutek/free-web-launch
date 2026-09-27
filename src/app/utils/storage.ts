@@ -49,7 +49,7 @@ export const loadOperators = (): Operator[] => {
     const saved = localStorage.getItem(OPERATORS_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
+      if (Array.isArray(parsed) && parsed.length > 0) {
         const uniqueMap = new Map<string, Operator>();
         for (const rawOp of parsed) {
           if (rawOp && rawOp.id) {
@@ -59,13 +59,13 @@ export const loadOperators = (): Operator[] => {
               machineType: rawOp.machineType || "NONE",
               absenceReason:
                 rawOp.absenceReason ||
-                (rawOp.departmentId === "unassigned" && rawOp.status === "absence"
-                  ? "Absence"
-                  : undefined),
+                (rawOp.departmentId === "unassigned" ? "Absence" : undefined),
             });
           }
         }
-        return Array.from(uniqueMap.values());
+        if (uniqueMap.size > 0) {
+          return Array.from(uniqueMap.values());
+        }
       }
     }
   } catch (e) {
@@ -77,9 +77,10 @@ export const loadOperators = (): Operator[] => {
 
 export const saveOperators = (operators: Operator[]): void => {
   try {
-    if (!Array.isArray(operators)) return;
-    localStorage.setItem(OPERATORS_KEY, JSON.stringify(operators));
-    localStorage.setItem("zf_last_saved_timestamp", new Date().toISOString());
+    if (Array.isArray(operators) && operators.length > 0) {
+      localStorage.setItem(OPERATORS_KEY, JSON.stringify(operators));
+      localStorage.setItem("zf_last_saved_timestamp", new Date().toISOString());
+    }
   } catch (e) {
     console.error("Failed to save operators to localStorage", e);
   }
