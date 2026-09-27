@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build"
+  command = "VITE_APP_COMMIT=$COMMIT_REF npm run build"
   publish = "dist"
 
 [build.environment]

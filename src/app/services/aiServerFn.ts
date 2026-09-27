@@ -549,8 +549,8 @@ ${customInstructions.trim()}
     let operators: ExtractedOperator[] = [];
     let filteredOut: FilteredOutRecord[] = [];
 
-    // Prioritized working Gemini models (gemini-3.8-flash is primary per gemini-api skill, followed by gemini-flash-latest and gemini-3.1-flash-lite)
-    const modelsToTry = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+    // Use documented Gemini API model IDs; an unknown model makes OCR fail even with a valid key.
+    const modelsToTry = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
     let lastError: Error | null = null;
 
     for (const model of modelsToTry) {

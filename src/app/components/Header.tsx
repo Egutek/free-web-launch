@@ -406,6 +406,11 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>Sdílená směna</span>
               </span>
             )}
+            {import.meta.env["VITE_APP_COMMIT"] && (
+              <span className="hidden lg:inline text-[10px] font-mono text-slate-400" title="Verze nasazeného webu">
+                v{import.meta.env["VITE_APP_COMMIT"].slice(0, 8)}
+              </span>
+            )}
           </div>
         </div>
 
