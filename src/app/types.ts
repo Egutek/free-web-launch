@@ -8,8 +8,10 @@ export type MachineType = "LL" | "RTR" | "NONE";
 export type OperatorStatus = "active" | "break" | "absence";
 
 export type ShiftCode = "A" | "B" | "C";
+export type ShiftType = ShiftCode;
+export type RosterGroup = "transport" | "vna";
 
-export type AbsenceReason = "Absence" | "Dovolená" | "PN";
+export type AbsenceReason = "Absence" | "Dovolená" | "PN" | "Lékař" | "Nemoc / PN" | "Neomluveno" | "Školení" | "Jiné";
 
 export interface Department {
   id: DepartmentId;
@@ -41,6 +43,8 @@ export interface Operator {
   notes?: string;
   lastMovedAt: string; // ISO string
   isPermanent?: boolean; // Stálý kmenový operátor (default true)
+  rosterGroup?: RosterGroup; // Stálý kmen nezávislý na dnešním oddělení
+  revision?: number; // Revize pro ochranu souběžných úprav v cloudu
 }
 
 export interface MoveHistoryRecord {

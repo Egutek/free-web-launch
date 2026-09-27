@@ -14,6 +14,7 @@ import {
   Plus,
 } from "lucide-react";
 import { Operator, ShiftCode, MachineType, DepartmentId } from "../types";
+import { getRosterGroup } from "../utils/roster";
 
 interface ManagePermanentRosterModalProps {
   isOpen: boolean;
@@ -84,7 +85,7 @@ export const ManagePermanentRosterModal: React.FC<ManagePermanentRosterModalProp
   }, [shiftOperators]);
 
   const vnaCount = currentPermanentOps.filter(
-    (o) => o.departmentId === "vna" || o.isVnaOnly,
+    (o) => getRosterGroup(o) === "vna",
   ).length;
   const pickCount = currentPermanentOps.length - vnaCount;
 
@@ -141,8 +142,9 @@ export const ManagePermanentRosterModal: React.FC<ManagePermanentRosterModalProp
       id: `op-perm-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
       name,
       machineType: bulkIsVna ? "NONE" : bulkMachine,
-      departmentId: bulkIsVna ? "vna" : "unassigned",
+      departmentId: "unassigned",
       isVnaOnly: bulkIsVna,
+      rosterGroup: bulkIsVna ? "vna" : "transport",
       status: "active",
       shift: activeShift,
       isPermanent: true,
@@ -165,8 +167,9 @@ export const ManagePermanentRosterModal: React.FC<ManagePermanentRosterModalProp
       id: `op-perm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: singleName.trim(),
       machineType: singleIsVna ? "NONE" : singleMachine,
-      departmentId: singleIsVna ? "vna" : "unassigned",
+      departmentId: "unassigned",
       isVnaOnly: singleIsVna,
+      rosterGroup: singleIsVna ? "vna" : "transport",
       status: "active",
       shift: activeShift,
       isPermanent: true,
@@ -335,7 +338,7 @@ export const ManagePermanentRosterModal: React.FC<ManagePermanentRosterModalProp
                 ) : (
                   filteredShiftOperators.map((op) => {
                     const isChecked = selectedPermanentIds.has(op.id);
-                    const isVna = op.departmentId === "vna" || op.isVnaOnly;
+                    const isVna = getRosterGroup(op) === "vna";
 
                     return (
                       <div
@@ -532,7 +535,7 @@ export const ManagePermanentRosterModal: React.FC<ManagePermanentRosterModalProp
                   </div>
                 ) : (
                   currentPermanentOps.map((op) => {
-                    const isVna = op.departmentId === "vna" || op.isVnaOnly;
+                    const isVna = getRosterGroup(op) === "vna";
                     return (
                       <div
                         key={op.id}

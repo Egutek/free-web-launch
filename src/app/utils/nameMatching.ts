@@ -86,30 +86,24 @@ export function findMatchingOperator(ocrName: string, candidates: Operator[]): O
 
   const cleanedOcr = cleanNameForMatching(ocrName);
 
-  // 1. Exact match first
-  for (const op of candidates) {
-    if (cleanNameForMatching(op.name) === cleanedOcr) {
-      return op;
-    }
-  }
+  // 1. Exact match, only when it identifies one person.
+  const exact = candidates.filter((op) => cleanNameForMatching(op.name) === cleanedOcr);
+  if (exact.length > 1) return null;
+  if (exact.length === 1) return exact[0];
 
   // 2. Token match (reverse order / all tokens match)
   const ocrTokens = getNameTokens(ocrName);
-  for (const op of candidates) {
+  const sameTokens = candidates.filter((op) => {
     const opTokens = getNameTokens(op.name);
-    if (ocrTokens.length === opTokens.length && ocrTokens.every((t) => opTokens.includes(t))) {
-      return op;
-    }
-  }
+    return ocrTokens.length === opTokens.length && ocrTokens.every((t) => opTokens.includes(t));
+  });
+  if (sameTokens.length > 1) return null;
+  if (sameTokens.length === 1) return sameTokens[0];
 
-  // 3. Robust match (initials / single surname)
-  for (const op of candidates) {
-    if (isNameMatch(ocrName, op.name)) {
-      return op;
-    }
-  }
-
-  return null;
+  // A shortened OCR name can match several people. Never silently choose the
+  // first one: leave ambiguous names for manual review.
+  const possible = candidates.filter((op) => isNameMatch(ocrName, op.name));
+  return possible.length === 1 ? possible[0] : null;
 }
 
 export interface ReconciliationResult {
@@ -183,11 +177,9 @@ export function reconcileRosterWithOcr(
  * Checks if two operators represent the same person
  */
 export function isSamePerson(a: Operator, b: Operator): boolean {
-  if (a.id === b.id) return true;
-  const cleanA = cleanNameForMatching(a.name);
-  const cleanB = cleanNameForMatching(b.name);
-  if (cleanA && cleanB && cleanA === cleanB) return true;
-  return isNameMatch(a.name, b.name);
+  // Two distinct employees can have the same name. Personnel IDs, unlike OCR
+  // spellings, are safe to use for automatic deduplication and deletion.
+  return a.id === b.id;
 }
 
 /**
@@ -270,6 +262,8 @@ export function deduplicateOperators(operatorsList: Operator[]): {
         status: newest.status,
         absenceReason: newest.absenceReason,
         isPermanent: isPerm,
+        rosterGroup: newest.rosterGroup ?? older.rosterGroup,
+        revision: newest.revision ?? older.revision,
         isVnaOnly: isVna,
         notes: mergedNotes,
         lastMovedAt: newest.lastMovedAt || older.lastMovedAt || new Date().toISOString(),

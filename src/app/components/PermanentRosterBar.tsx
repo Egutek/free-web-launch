@@ -24,6 +24,7 @@ import {
   AbsenceReason,
 } from "../types";
 import { startGlobalDrag, endGlobalDrag } from "../utils/dragState";
+import { getRosterGroup } from "../utils/roster";
 
 interface PermanentRosterBarProps {
   operators: Operator[];
@@ -79,10 +80,10 @@ export const PermanentRosterBar: React.FC<PermanentRosterBarProps> = ({
   const extraOps = operators.filter((o) => o.isPermanent === false);
 
   // VNA operators (managed by 2nd TL) - separated from the user's primary team
-  const vnaOperators = permanentOps.filter((o) => o.departmentId === "vna" || o.isVnaOnly === true);
+  const vnaOperators = permanentOps.filter((o) => getRosterGroup(o) === "vna");
 
   // My permanent operators (excluding VNA specialists, so user doesn't get false warnings for 2nd TL)
-  const myOperators = permanentOps.filter((o) => o.departmentId !== "vna" && o.isVnaOnly !== true);
+  const myOperators = permanentOps.filter((o) => getRosterGroup(o) === "transport");
 
   // Operators waiting for department assignment:
   // Either unassigned AND have no absenceReason, or waiting in the unassigned pool

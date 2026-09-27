@@ -12,6 +12,7 @@ import {
   Department,
   DepartmentId,
   MoveHistoryRecord,
+  MachineType,
   Operator,
   OperatorStatus,
   ShiftCode,
@@ -73,6 +74,8 @@ import {
   X,
 } from "lucide-react";
 import { FilteredOutRecord } from "./services/aiServerFn";
+import { ensureFirebaseAuth } from "./firebase";
+import { getRosterGroup } from "./utils/roster";
 import {
   resolveOperatorFromDrop,
   resolveOperatorIdsFromDrop,
@@ -87,6 +90,7 @@ import {
   deleteOperatorFromCloud,
   syncHistoryRecordToCloud,
   subscribeToHistory,
+  clearHistoryFromCloud,
   subscribeToCustomDepartments,
   syncCustomDepartmentToCloud,
   deleteCustomDepartmentFromCloud,
@@ -213,41 +217,10 @@ export default function App() {
       setSelectedOperatorId(null);
       setBulkSelectedIds(new Set());
 
-      // Automatická kontrola a čištění duplicit při přepnutí směny (ponechá nejnovější stav dle lastMovedAt)
-      runOperatorsDataCleaning(operatorsRef.current).then(({ cleanedOperators, removedCount }) => {
-        if (removedCount > 0) {
-          setOperators(cleanedOperators);
-          showToast(`Přepnuto na Směnu ${shift} (vyčištěno ${removedCount} duplicit)`);
-        } else {
-          showToast(`Přepnuto na Směnu ${shift}`);
-        }
-      });
+      showToast(`Přepnuto na Směnu ${shift}`);
     },
     [showToast],
   );
-
-  // Automatické periodické čištění dat: při startu aplikace a každých 60 sekund
-  useEffect(() => {
-    // 1. Kontrola při startu aplikace
-    runOperatorsDataCleaning(operatorsRef.current).then(({ cleanedOperators, removedCount }) => {
-      if (removedCount > 0) {
-        setOperators(cleanedOperators);
-        console.info(`[Startup DataCleaning] Vyčištěno ${removedCount} duplicitních záznamů.`);
-      }
-    });
-
-    // 2. Periodická kontrola každých 60 sekund (zabraňuje hromadění nekonzistencí)
-    const timerId = setInterval(() => {
-      runOperatorsDataCleaning(operatorsRef.current).then(({ cleanedOperators, removedCount }) => {
-        if (removedCount > 0) {
-          setOperators(cleanedOperators);
-          console.info(`[Periodic DataCleaning] Automaticky vyčištěno ${removedCount} duplicit.`);
-        }
-      });
-    }, 60_000);
-
-    return () => clearInterval(timerId);
-  }, []);
 
   // Manuální spuštění vyčištění duplicit s vizuální odezvou
   const handleManualCleanDuplicates = useCallback(async () => {
@@ -351,56 +324,65 @@ export default function App() {
     saveUndoStack(undoStack);
   }, [undoStack]);
 
-  // Real-time sync for Operators for everyone with the link
+  // Anonymous Firebase identity is created in the background before protected
+  // Firestore listeners start. No login UI is shown to the visitor.
   useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
     setIsCloudSyncing(true);
-    const unsub = subscribeToOperators(
-      (cloudOps) => {
-        setIsCloudSyncing(false);
-        setIsCloudConnected(true);
-        if (cloudOps.length > 0) {
-          const { deduplicated, duplicateIds } = deduplicateOperators(cloudOps);
+    ensureFirebaseAuth().then(() => {
+      if (cancelled) return;
+      unsub = subscribeToOperators(
+        (cloudOps, fromCache) => {
+          setIsCloudSyncing(fromCache);
+          setIsCloudConnected(!fromCache);
+          if (fromCache && cloudOps.length === 0) return;
+          // A confirmed empty server snapshot is a valid empty board. Never
+          // upload stale data from a browser just because the server is empty.
+          const { deduplicated } = deduplicateOperators(cloudOps);
           setOperators(deduplicated);
           saveOperators(deduplicated);
-          if (duplicateIds.length > 0) {
-            bulkDeleteOperatorsFromCloud(duplicateIds).catch((err) =>
-              console.warn("Cloud dedup cleanup error:", err),
-            );
-          }
-        } else {
-          // If cloud is empty on first setup, seed initial operators
-          const { deduplicated } = deduplicateOperators(operatorsRef.current);
-          bulkSyncOperatorsToCloud(deduplicated).catch((err) =>
-            console.warn("Initial cloud seed failed:", err),
-          );
-        }
-      },
-      (err) => {
-        setIsCloudSyncing(false);
-        console.warn("Firestore subscription error:", err);
-      },
-    );
-    return () => unsub();
+        },
+        (err) => {
+          setIsCloudSyncing(false);
+          setIsCloudConnected(false);
+          console.warn("Firestore subscription error:", err);
+        },
+      );
+    }).catch((err) => {
+      setIsCloudSyncing(false);
+      setIsCloudConnected(false);
+      console.warn("Firebase anonymous authentication failed:", err);
+    });
+    return () => { cancelled = true; unsub?.(); };
   }, []);
 
   // Real-time Firestore sync for History for everyone with the link
   useEffect(() => {
-    const unsub = subscribeToHistory((cloudHistory) => {
-      if (cloudHistory.length > 0) {
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    ensureFirebaseAuth().then(() => {
+      if (cancelled) return;
+      unsub = subscribeToHistory((cloudHistory) => {
         setHistory(cloudHistory);
         saveHistory(cloudHistory);
-      }
-    });
-    return () => unsub();
+      });
+    }).catch((err) => console.warn("History sync failed:", err));
+    return () => { cancelled = true; unsub?.(); };
   }, []);
 
   // Real-time Firestore sync for Custom Departments for everyone with the link
   useEffect(() => {
-    const unsub = subscribeToCustomDepartments((cloudCustomDepts) => {
-      setCustomDepartments(cloudCustomDepts);
-      saveCustomDepartments(cloudCustomDepts);
-    });
-    return () => unsub();
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    ensureFirebaseAuth().then(() => {
+      if (cancelled) return;
+      unsub = subscribeToCustomDepartments((cloudCustomDepts) => {
+        setCustomDepartments(cloudCustomDepts);
+        saveCustomDepartments(cloudCustomDepts);
+      });
+    }).catch((err) => console.warn("Department sync failed:", err));
+    return () => { cancelled = true; unsub?.(); };
   }, []);
 
   // Persist view mode
@@ -1163,10 +1145,12 @@ export default function App() {
 
   // Save (add or edit) operator
   const handleSaveOperator = (opData: Partial<Operator>) => {
-    if (!opData.id) return;
+    if (!opData.id || !opData.name?.trim()) return;
 
     const finalStatus: OperatorStatus =
-      opData.departmentId === "unassigned" ? "absence" : opData.status || "active";
+      opData.departmentId === "unassigned" && opData.absenceReason
+        ? "absence"
+        : opData.status || "active";
     const finalDeptId: DepartmentId =
       finalStatus === "absence"
         ? "unassigned"
@@ -1180,9 +1164,10 @@ export default function App() {
     }
 
     const shiftOps = operators.filter((o) => (o.shift || "A") === (opData.shift || activeShift));
-    const existingByName = findMatchingOperator(opData.name, shiftOps);
+    const existingById = shiftOps.find((o) => o.id === opData.id);
+    const existingByName = existingById || findMatchingOperator(opData.name, shiftOps);
 
-    const targetId = existingByName ? existingByName.id : opData.id || `op-${Date.now()}`;
+    const targetId = existingByName?.id ?? opData.id;
 
     const sanitizedOpData = {
       ...opData,
@@ -1191,6 +1176,7 @@ export default function App() {
       status: finalStatus,
       departmentId: finalDeptId,
       isPermanent: existingByName ? existingByName.isPermanent : opData.isPermanent,
+      rosterGroup: existingByName ? existingByName.rosterGroup : opData.rosterGroup,
     };
 
     const isNew = !operators.some((o) => o.id === targetId);
@@ -1244,6 +1230,7 @@ export default function App() {
     const now = new Date().toISOString();
 
     const matchedPermanentIds = new Set<string>();
+    const matchedDrafts = new Map<string, Operator>();
     const extraOpsToAdd: Operator[] = [];
 
     // Identify matches and extras from OCR drafts
@@ -1251,10 +1238,16 @@ export default function App() {
       const permMatch = findMatchingOperator(newOp.name, permanentOps);
       const existingMatch = permMatch || findMatchingOperator(newOp.name, currentShiftOps);
 
+      if (existingMatch && !matchedDrafts.has(existingMatch.id)) {
+        matchedDrafts.set(existingMatch.id, newOp);
+      }
+
       if (permMatch && !matchedPermanentIds.has(permMatch.id)) {
         matchedPermanentIds.add(permMatch.id);
       } else if (!existingMatch) {
-        const alreadyInExtra = extraOpsToAdd.some((e) => isSamePerson(e, newOp));
+        const alreadyInExtra = extraOpsToAdd.some(
+          (e) => cleanNameForMatching(e.name) === cleanNameForMatching(newOp.name),
+        );
         if (!alreadyInExtra) {
           let machine = newOp.machineType;
           const deptId = newOp.departmentId || "hovc";
@@ -1281,7 +1274,7 @@ export default function App() {
     const updatedShiftOps = currentShiftOps
       .map((op) => {
         // Find if this operator was matched by OCR
-        const ocrDraft = cleanNewOps.find((d) => isSamePerson(d, op));
+        const ocrDraft = matchedDrafts.get(op.id);
         if (ocrDraft) {
           const deptId = ocrDraft.departmentId || "hovc";
           const isAbsence = deptId === "unassigned";
@@ -1559,8 +1552,9 @@ export default function App() {
       id: `op-kmen-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       name: name.trim(),
       machineType: isVna ? "NONE" : "LL",
-      departmentId: isVna ? "vna" : "unassigned",
+      departmentId: "unassigned",
       isVnaOnly: isVna,
+      rosterGroup: type,
       status: "active",
       shift: activeShift,
       lastMovedAt: new Date().toISOString(),
@@ -1588,35 +1582,9 @@ export default function App() {
     const updatedOperators = operators.map((op) => {
       if (!idSet.has(op.id)) return op;
 
-      if (isVna) {
-        return {
-          ...op,
-          isPermanent: true,
-          isVnaOnly: true,
-          departmentId: "vna" as DepartmentId,
-          machineType: "NONE" as MachineType,
-          status: op.status === "absence" ? "absence" : ("active" as OperatorStatus),
-          lastMovedAt: now,
-        };
-      } else {
-        let nextDept = op.departmentId;
-        if (nextDept === "vna") {
-          nextDept = "hovc";
-        }
-        let machine = op.machineType;
-        if (!machine || machine === "NONE") {
-          machine = nextDept === "hovs" ? "LL" : "RTR";
-        }
-        return {
-          ...op,
-          isPermanent: true,
-          isVnaOnly: false,
-          departmentId: nextDept,
-          machineType: machine,
-          status: op.status === "absence" ? "absence" : ("active" as OperatorStatus),
-          lastMovedAt: now,
-        };
-      }
+      // Kmen is a stable personnel attribute. Do not move a person on today's
+      // board or change their machine, absence, or status when assigning it.
+      return { ...op, isPermanent: true, rosterGroup: target, lastMovedAt: now };
     });
 
     const { deduplicated: finalOperators, duplicateIds } = deduplicateOperators(updatedOperators);
@@ -1645,10 +1613,12 @@ export default function App() {
   // Remove operator from Kmen
   const handleRemoveKmenOperator = async (operatorId: string) => {
     const op = operators.find((o) => o.id === operatorId);
-    const updated = operators.filter((o) => o.id !== operatorId);
+    const updated = operators.map((o) =>
+      o.id === operatorId ? { ...o, isPermanent: false } : o,
+    );
     setOperators(updated);
     saveOperators(updated);
-    await deleteOperatorFromCloud(operatorId).catch((e) => console.warn("Cloud delete error:", e));
+    if (op) await syncOperatorToCloud({ ...op, isPermanent: false }).catch((e) => console.warn("Cloud sync error:", e));
     if (op) {
       showToast(`Odebrán ${op.name} z kmene směny.`);
     }
@@ -1755,8 +1725,14 @@ export default function App() {
     setHistory([]);
     saveHistory([]);
     setUndoStack([]);
-    await replaceOperatorsInCloud(reset).catch((e) => console.warn("Cloud reset sync error:", e));
-    showToast("Data obnovena na 65 operátorů oddělení PICK.");
+    try {
+      await replaceOperatorsInCloud(reset);
+      await clearHistoryFromCloud();
+      showToast("Data obnovena na 65 operátorů oddělení PICK.");
+    } catch (error) {
+      console.warn("Cloud reset sync error:", error);
+      showToast("Obnovení v cloudu selhalo; ověřte připojení.", true);
+    }
   };
 
   // Reset shift assignments for active shift: moves permanent operators to unassigned roster pool for redistribution
@@ -1770,7 +1746,8 @@ export default function App() {
     const now = new Date().toISOString();
     const updated = operators.map((o) => {
       if ((o.shift || "A") !== activeShift) return o;
-      if (excludeVna && (o.departmentId === "vna" || o.isVnaOnly)) return o;
+      if (o.isPermanent === false) return o;
+      if (excludeVna && getRosterGroup(o) === "vna") return o;
       if (keepAbsences && o.departmentId === "unassigned" && o.absenceReason) return o;
 
       return {
@@ -1791,7 +1768,8 @@ export default function App() {
     const changedOps = updated.filter(
       (o) =>
         (o.shift || "A") === activeShift &&
-        (!excludeVna || (o.departmentId !== "vna" && !o.isVnaOnly)) &&
+        o.isPermanent !== false &&
+        (!excludeVna || getRosterGroup(o) === "transport") &&
         (!keepAbsences || !o.absenceReason),
     );
 
@@ -2834,7 +2812,11 @@ export default function App() {
           isOpen={isHistoryModalOpen}
           history={history}
           onClose={() => setIsHistoryModalOpen(false)}
-          onClearHistory={() => setHistory([])}
+          onClearHistory={() => {
+            clearHistoryFromCloud().catch((error) => console.warn("Cloud history clear error:", error));
+            setHistory([]);
+            saveHistory([]);
+          }}
         />
       )}
 
@@ -2884,7 +2866,7 @@ export default function App() {
         totalPermanentCount={shiftOperators.filter((o) => o.isPermanent !== false).length}
         vnaCount={
           shiftOperators.filter(
-            (o) => o.isPermanent !== false && (o.departmentId === "vna" || o.isVnaOnly),
+            (o) => o.isPermanent !== false && getRosterGroup(o) === "vna",
           ).length
         }
         absenceCount={
@@ -2916,10 +2898,10 @@ export default function App() {
           operators={
             kmenModalType === "vna"
               ? shiftOperators.filter(
-                  (o) => o.isPermanent !== false && (o.departmentId === "vna" || o.isVnaOnly),
+                  (o) => o.isPermanent !== false && getRosterGroup(o) === "vna",
                 )
               : shiftOperators.filter(
-                  (o) => o.isPermanent !== false && o.departmentId !== "vna" && !o.isVnaOnly,
+                  (o) => o.isPermanent !== false && getRosterGroup(o) === "transport",
                 )
           }
           onAdd={handleAddKmenOperator}

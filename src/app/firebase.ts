@@ -1,33 +1,31 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import {
-  initializeFirestore,
-  getFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-} from "firebase/firestore";
-import { getAuth } from "firebase/auth";
-import firebaseConfig from "../../firebase-applet-config.json";
+import { initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
+import { getAuth, signInAnonymously } from "firebase/auth";
 
-export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// These values come from the registered Freeai web app.
+const firebaseConfig = {
+  projectId: "freeai-ff700",
+  apiKey: import.meta.env["VITE_FIREBASE_API_KEY"] || "AIzaSyAxotchbIEirm165a5i64FOA4SBFUtj0_s",
+  appId: import.meta.env["VITE_FIREBASE_APP_ID"] || "1:802136563532:web:22c640be67fb80c99eb9e9",
+  authDomain: "freeai-ff700.firebaseapp.com",
+  messagingSenderId: "802136563532",
+  storageBucket: "freeai-ff700.firebasestorage.app",
+  measurementId: "G-RVV2JG5TD8",
+};
 
-function initDb() {
-  if (typeof window !== "undefined") {
-    try {
-      return initializeFirestore(
-        app,
-        {
-          localCache: persistentLocalCache({
-            tabManager: persistentMultipleTabManager(),
-          }),
-        },
-        firebaseConfig.firestoreDatabaseId,
-      );
-    } catch {
-      return getFirestore(app, firebaseConfig.firestoreDatabaseId);
-    }
-  }
-  return getFirestore(app, firebaseConfig.firestoreDatabaseId);
-}
-
-export const db = initDb();
+export const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+let anonymousAuthPromise: Promise<void> | null = null;
+
+export function ensureFirebaseAuth(): Promise<void> {
+  if (auth.currentUser) return Promise.resolve();
+  if (!anonymousAuthPromise) {
+    anonymousAuthPromise = signInAnonymously(auth).then(() => undefined).catch((error) => {
+      anonymousAuthPromise = null;
+      throw error;
+    });
+  }
+  return anonymousAuthPromise;
+}

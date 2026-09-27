@@ -59,7 +59,9 @@ export const loadOperators = (): Operator[] => {
               machineType: rawOp.machineType || "NONE",
               absenceReason:
                 rawOp.absenceReason ||
-                (rawOp.departmentId === "unassigned" ? "Absence" : undefined),
+                (rawOp.departmentId === "unassigned" && rawOp.status === "absence"
+                  ? "Absence"
+                  : undefined),
             });
           }
         }

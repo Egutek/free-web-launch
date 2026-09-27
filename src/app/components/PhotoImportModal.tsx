@@ -50,7 +50,7 @@ import {
   applyImageAdjustments,
 } from "../utils/imagePreprocessing";
 import { subscribeToOcrInstructions, syncOcrInstructionsToCloud } from "../services/firestoreSync";
-import { findMatchingOperator, isNameMatch, cleanNameForMatching } from "../utils/nameMatching";
+import { findMatchingOperator, cleanNameForMatching } from "../utils/nameMatching";
 
 export const DEFAULT_CUSTOM_OCR_INSTRUCTIONS = `1. Všechny osoby vlevo nahoře pod absencí (pod nápisy Absence, Dovolená, D, PN, Nemoc, NV, OČR nebo zkratkami oddělení např. HOVC - Novák D, Svoboda PN) VŽDY načti a zařaď do nabídky absencí.
 2. Operátoři přiřazení na HOVS mají mít po nahrání výchozí stroj LL (pokud není výslovně napsáno RTR).
@@ -458,7 +458,6 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
       for (const draft of drafts) {
         const existingIdx = uniqueDrafts.findIndex(
           (d) =>
-            isNameMatch(d.name, draft.name) ||
             cleanNameForMatching(d.name) === cleanNameForMatching(draft.name),
         );
         if (existingIdx === -1) {
@@ -593,7 +592,6 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
       (item) =>
         !extractedList.some(
           (d) =>
-            isNameMatch(d.name, item.name) ||
             cleanNameForMatching(d.name) === cleanNameForMatching(item.name),
         ),
     );
@@ -649,7 +647,6 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
     for (const draft of extractedList) {
       const idx = uniqueDrafts.findIndex(
         (d) =>
-          isNameMatch(d.name, draft.name) ||
           cleanNameForMatching(d.name) === cleanNameForMatching(draft.name),
       );
       if (idx === -1) {

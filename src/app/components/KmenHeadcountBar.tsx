@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { Users, RotateCcw, AlertCircle } from "lucide-react";
 import { Operator, ShiftCode } from "../types";
 import { deduplicateOperators } from "../utils/nameMatching";
+import { getRosterGroup, isPermanentOperator } from "../utils/roster";
 
 interface KmenHeadcountBarProps {
   operators: Operator[];
@@ -27,17 +28,14 @@ export const KmenHeadcountBar: React.FC<KmenHeadcountBarProps> = ({
   const transportOps = cleanOperators.filter(
     (o) =>
       (o.shift || "A") === activeShift &&
-      o.isPermanent !== false &&
-      o.departmentId !== "vna" &&
-      !o.isVnaOnly,
+      isPermanentOperator(o) && getRosterGroup(o) === "transport",
   );
 
   // VNA operators: permanent operators in this shift for VNA
   const vnaOps = cleanOperators.filter(
     (o) =>
       (o.shift || "A") === activeShift &&
-      o.isPermanent !== false &&
-      (o.departmentId === "vna" || o.isVnaOnly),
+      isPermanentOperator(o) && getRosterGroup(o) === "vna",
   );
 
   // Missing from board (waiting in unassigned without absence)
