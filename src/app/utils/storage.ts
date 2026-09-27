@@ -1,0 +1,12 @@
+import type {Operator,MoveHistoryRecord,ShiftCode,UndoOperation} from '../types';
+import {getSnapshot} from '../services/sitesStore';
+export const loadActiveShift=():ShiftCode=>{const s=localStorage.getItem('zf_sites_shift');return s==='B'||s==='C'?s:'A';};
+export const saveActiveShift=(s:ShiftCode)=>localStorage.setItem('zf_sites_shift',s);
+export const loadOperators=():Operator[]=>getSnapshot().board.operators;
+export const loadHistory=():MoveHistoryRecord[]=>getSnapshot().board.history.slice(0,100);
+export const saveOperators=(_v:Operator[])=>{};
+export const saveHistory=(_v:MoveHistoryRecord[])=>{};
+export const loadUndoStack=():UndoOperation[]=>[];
+export const saveUndoStack=(_v:UndoOperation[])=>{};
+export const getAllDefaultOperators=():Operator[]=>[];
+export const resetToInitialOperators=():Operator[]=>[];

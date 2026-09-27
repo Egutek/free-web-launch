@@ -1,0 +1,4 @@
+import {useEffect,useState} from 'react';
+import {getQueue,retryItem,discardItem,useBoard} from '../services/sitesStore';
+export function OfflineIndicator(){const s=useBoard();const [items,setItems]=useState<any[]>([]);useEffect(()=>{getQueue().then(setItems);},[s.pending,s.error]);if(!s.pending&&!s.error)return null;return <aside className="sync-status" aria-live="polite"><b>{s.saving?'Odesílání…':s.pending+' změn čeká na odeslání'}</b><p>{s.error}</p>{items.map(item=><div key={item.id}><span>{item.command.date} · {item.command.type} {item.blocked&&'· potřebuje kontrolu'}</span>{item.blocked&&<><button onClick={()=>{if(confirm('Nástěnka se změnila. Opravdu chcete znovu použít svou uloženou změnu?'))retryItem(item.id);}}>Znovu použít moji změnu</button><button onClick={()=>{if(confirm('Zahodit tuto neodeslanou změnu?'))discardItem(item.id);}}>Zahodit</button></>}</div>)}</aside>;}
+

@@ -1,0 +1,37 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync,readdirSync} from 'node:fs';
+import worker from '../server/worker.ts';
+import {emptyBoard,applyCommand,audit,matchPerson,personSchema} from '../src/domain.ts';
+const person=(id,name='Jan Novák',role='operator')=>({id,name,role,shift:'A',team:'transport',aliases:[],distinction:'',activeFrom:'2026-01-01',activeTo:null});
+const op=(id,extra={})=>({id,name:'Jan Novák',shift:'A',departmentId:'hovc',machineType:'NONE',status:'active',lastMovedAt:'2026-09-27T08:00:00Z',...extra});
+const command=(type,payload)=>({id:crypto.randomUUID(),date:'2099-01-01',revision:0,type,payload});
+const apply=(b,type,payload)=>applyCommand(b,command(type,payload),'2099-01-01T08:00:00Z');
+const row=(extra={})=>({rowId:'row1',name:'Jan Novák',departmentId:'hovc',machineType:'NONE',kind:'operator',rawText:'Jan Novák',issues:[],reviewed:true,...extra});
+test('prázdná nástěnka',()=>assert.equal(emptyBoard().operators.length,0));
+test('jednoznačné jméno bez diakritiky',()=>assert.equal(matchPerson(' JAN  NOVAK ',[person('1')])[0].id,'1'));
+test('shodná jména zůstávají nejednoznačná',()=>assert.equal(matchPerson('Jan Novák',[person('1'),person('2')]).length,2));
+test('potvrzená zkratka',()=>assert.equal(matchPerson('JN',[{...person('1'),aliases:['JN']}]).length,1));
+test('platnost seznamu',()=>assert.throws(()=>personSchema.parse({...person('1'),activeTo:'2025-01-01'})));
+test('vedoucí nejsou OP',()=>{const b=emptyBoard();b.roster=[person('1'),person('2','Vedoucí','lead')];assert.equal(audit(b,'2099-01-01','A').total,1);});
+test('bez fotografie čeká na rozpis',()=>{const b=emptyBoard();b.roster=[person('1')];assert.equal(audit(b,'2099-01-01','A').rows[0].status,'waiting');});
+test('chybějící člověk není automatická absence',()=>{const b=emptyBoard();b.roster=[person('1')];const n=apply(b,'import',{importId:'i1',shift:'A',rows:[],replaceManual:false});assert.equal(n.operators.length,0);assert.equal(audit(n,'2099-01-01','A').pending,1);});
+test('vyřazený řádek není absence',()=>{const b=emptyBoard();b.roster=[person('1')];const n=apply(b,'import',{importId:'i1',shift:'A',rows:[row({kind:'excluded'})],replaceManual:false});assert.equal(audit(n,'2099-01-01','A').pending,1);});
+test('ruční důvod vyřeší člověka',()=>{const b=emptyBoard();b.roster=[person('1')];b.imports=[{shift:'A',rows:[]}];const n=apply(b,'resolve',{personId:'1',shift:'A',note:'Výpomoc mimo halu'});assert.equal(audit(n,'2099-01-01','A').rows[0].status,'manual');});
+test('import a historie společně',()=>{const b=emptyBoard();b.roster=[person('1')];const n=apply(b,'import',{importId:'i1',shift:'A',rows:[row()],replaceManual:false});assert.equal(n.operators[0].personId,'1');assert.equal(n.history.length,1);assert.equal(audit(n,'2099-01-01','A').resolved,1);});
+test('opakovaný import nevytvoří duplicitu',()=>{const p={importId:'i1',shift:'A',rows:[row()],replaceManual:false};const a=apply(emptyBoard(),'import',p);const b=apply(a,'import',p);assert.equal(b.operators.length,1);assert.equal(b.history.length,1);});
+test('ruční oprava přetrvá další import',()=>{let b=emptyBoard();b.roster=[person('1')];b=apply(b,'operators',[op('person-1',{personId:'1',departmentId:'vna'})]);b=apply(b,'import',{importId:'i1',shift:'A',rows:[row()],replaceManual:false});assert.equal(b.operators[0].departmentId,'vna');});
+test('neověřený řádek nelze potvrdit',()=>assert.throws(()=>apply(emptyBoard(),'import',{importId:'i1',shift:'A',rows:[row({reviewed:false})],replaceManual:false})));
+test('duplicita identity nelze potvrdit',()=>{const b=emptyBoard();b.roster=[person('1')];assert.throws(()=>apply(b,'import',{importId:'i1',shift:'A',rows:[row(),row({rowId:'r2'})],replaceManual:false}));});
+test('vymazání posledního operátora',()=>{let b=apply(emptyBoard(),'operators',[op('1')]);b=apply(b,'delete_operator','1');assert.equal(b.operators.length,0);});
+function database(){const db=new DatabaseSync(':memory:');for(const f of readdirSync('drizzle').filter(f=>f.endsWith('.sql')))db.exec(readFileSync('drizzle/'+f,'utf8'));const prepared=(sql,args=[])=>({bind:(...values)=>prepared(sql,values),first:()=>db.prepare(sql).get(...args)??null,all:()=>({results:db.prepare(sql).all(...args)}),run:()=>({results:db.prepare(sql).all(...args)})});return {raw:db,prepare:prepared,batch:async(list)=>{db.exec('BEGIN');try{const result=list.map(x=>x.all());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}};}
+const env=()=>({DB:database(),ASSETS:{fetch:async()=>new Response('asset')}});
+const req=(path,data,origin='https://test.example')=>new Request('https://test.example'+path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json',Origin:origin}:{},body:data?JSON.stringify(data):undefined});
+test('API CAS, idempotence a historie',async()=>{const e=env();const c=command('operators',[op('1')]);assert.equal((await worker.fetch(req('/api/command',c),e)).status,200);assert.equal((await worker.fetch(req('/api/command',c),e)).status,200);assert.equal((await worker.fetch(req('/api/command',command('operators',[op('2')])),e)).status,409);const b=await (await worker.fetch(req('/api/board?date=2099-01-01'),e)).json();assert.equal(b.board.history.length,1);assert.equal(b.revision,1);assert.equal(e.DB.raw.prepare('SELECT count(*) as n FROM board_revisions').get().n,1);});
+test('cizí origin zamítnut',async()=>assert.equal((await worker.fetch(req('/api/command',command('operators',[op('1')]),'https://foreign.example'),env())).status,403));
+test('textový import zdarma a z cache',async()=>{const e=env(),input={date:'2099-01-01',shift:'A',textInput:'Jan Novák; hovc'};const a=await(await worker.fetch(req('/api/ocr',input),e)).json();const b=await(await worker.fetch(req('/api/ocr',input),e)).json();assert.equal(a.importId,b.importId);assert.equal(b.cached,true);assert.equal(e.DB.raw.prepare('SELECT count(*) as n FROM ocr_jobs').get().n,0);});
+test('rozpočet zastaví placenou službu',async()=>{const e=env();e.GEMINI_API_KEY='test';e.OCR_MONTHLY_CZK='0';const response=await worker.fetch(req('/api/ocr',{date:'2099-01-01',shift:'A',imageBase64:'AAAA'}),e);assert.equal(response.status,429);});
+test('jiný den nesmí potvrdit OCR',async()=>{const e=env();const data=await(await worker.fetch(req('/api/ocr',{date:'2099-01-02',shift:'A',textInput:'Jan Novák; hovc'}),e)).json();const response=await worker.fetch(req('/api/command',command('import',{importId:data.importId,shift:'A',rows:[row()],replaceManual:false})),e);assert.equal(response.status,400);});
+test('seznam se přenese do dalšího dne',async()=>{const e=env();assert.equal((await worker.fetch(req('/api/command',command('roster',[person('1')])),e)).status,200);const b=await(await worker.fetch(req('/api/board?date=2099-01-02'),e)).json();assert.equal(b.board.roster[0].id,'1');});
+
