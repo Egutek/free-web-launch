@@ -550,7 +550,7 @@ ${customInstructions.trim()}
     let filteredOut: FilteredOutRecord[] = [];
 
     // Use documented Gemini API model IDs; an unknown model makes OCR fail even with a valid key.
-    const modelsToTry = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+    const modelsToTry = ["gemini-3.5-flash-lite"];
     let lastError: Error | null = null;
 
     for (const model of modelsToTry) {
