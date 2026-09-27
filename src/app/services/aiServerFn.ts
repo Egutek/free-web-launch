@@ -1,8 +1,3 @@
-const MAX_IMAGE_BASE64_LENGTH = 12_000_000; // ~9 MB of binary image data
-const MAX_TEXT_INPUT_LENGTH = 50_000;
-const MAX_CUSTOM_INSTRUCTIONS_LENGTH = 10_000;
-const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-
 import { createServerFn } from "@tanstack/react-start";
 
 const EXTRACTION_PROMPT = `Jsi špičkový expert na počítačové vidění (OCR) a čtení rukopisu pro logistické centrum ZF Aftermarket v Ostrově.
@@ -476,50 +471,53 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
       mimeType?: string;
       textInput?: string;
       customInstructions?: string;
+      permanentRosterNames?: string[];
     }) => d,
   )
   .handler(async ({ data }) => {
-    const { imageBase64, mimeType = "image/jpeg", textInput, customInstructions } = data;
+    const {
+      imageBase64,
+      mimeType = "image/jpeg",
+      textInput,
+      customInstructions,
+      permanentRosterNames,
+    } = data;
 
     if (!imageBase64 && !textInput) {
       throw new Error("Nebyly poskytnuty žádné obrazové ani textové údaje.");
     }
 
-    if (imageBase64 && imageBase64.length > MAX_IMAGE_BASE64_LENGTH) {
-      throw new Error("Obrázek je příliš velký. Zmenšete fotografii a zkuste to znovu.");
-    }
+    const geminiKey = process.env["GEMINI_API_KEY"];
 
-    if (textInput && textInput.length > MAX_TEXT_INPUT_LENGTH) {
-      throw new Error("Vstupní text je příliš dlouhý.");
-    }
-
-    if (customInstructions && customInstructions.length > MAX_CUSTOM_INSTRUCTIONS_LENGTH) {
-      throw new Error("Vlastní instrukce jsou příliš dlouhé.");
-    }
-
-    if (imageBase64 && !ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
-      throw new Error("Nepodporovaný typ obrázku. Použijte JPG, PNG nebo WebP.");
-    }
-
-    // Support the current Netlify name plus legacy names already used by this site.
-    // The values stay server-side and are never returned to the browser or logs.
-    const geminiKeys = [
-      process.env["GEMINI_API_KEY"],
-      process.env["Gemini_API_Key"],
-      process.env["aifree"],
-    ].filter((key): key is string => Boolean(key?.trim()));
-
-    if (geminiKeys.length === 0) {
+    if (!geminiKey) {
       if (textInput) {
         const fallbackResult = parseTextFallback(textInput);
         return { operators: fallbackResult.operators, filteredOut: fallbackResult.filteredOut };
       }
       throw new Error(
-        "V prostředí chybí klíč Gemini. Přidejte do administrace Netlify proměnnou GEMINI_API_KEY.",
+        "V prostředí chybí proměnná GEMINI_API_KEY. Přidejte si do administrace Netlify (Site configuration -> Environment variables) klíč GEMINI_API_KEY.",
       );
     }
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
     let promptText = EXTRACTION_PROMPT;
+
+    if (permanentRosterNames && permanentRosterNames.length > 0) {
+      promptText += `\n\n======================================================
+PAMĚŤ STÁLÝCH ZAMĚSTNANCŮ SMĚNY (HLÍDÁNÍ A KONTROLA OCR NA POZADÍ):
+Dispečer má v kmenovém stavu směny uložena tato konkrétní jména (${permanentRosterNames.length} stálých operátorů):
+${permanentRosterNames.join(", ")}
+
+POVINNÁ PRAVIDLA PRO AI OPRAVU A HLÍDÁNÍ:
+1. AUTOKOREKCE: Každé rukopisné jméno nebo jméno na štítku porovnej s tímto stálým seznamem. Pokud je jméno zapsáno s překlepem, foneticky, zkráceně, bez diakritiky nebo prohozeně (např. 'Novak', 'Svobada D.', 'Pitec', 'Bojko'), AUTOMATICKY ho oprav a vrať přesné celé jméno z tohoto stálého seznamu!
+2. PŘIŘAZENÍ: Pokud osoba ze stálého seznamu je v nějakém sloupci, zařaď ji do odpovídajícího departmentId. Pokud je v sekci absence (dovolená, PN), zařaď ji do absences.
+3. KONTROLA NAVÍC: Pokud je na tabuli někdo, kdo v tomto stálém seznamu NENÍ (např. výpomoc z jiné směny, brigádník), zařaď ho normálně také a do 'notes' uveď 'Mimo stálý stav'.
+======================================================\n`;
+    }
+
     if (customInstructions && customInstructions.trim()) {
       promptText += `\n\n======================================================
 DODATEČNÉ VLASTNÍ INSTRUKCE A POKYNY OD DISPEČERA (NEJVYŠŠÍ PRIORITA):
@@ -551,121 +549,121 @@ ${customInstructions.trim()}
     let operators: ExtractedOperator[] = [];
     let filteredOut: FilteredOutRecord[] = [];
 
-    // Stable multimodal Gemini models, newest first with production-safe fallbacks.
-    const modelsToTry = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite"];
+    // Prioritized working Gemini models (gemini-3.8-flash is primary per gemini-api skill, followed by gemini-flash-latest and gemini-3.1-flash-lite)
+    const modelsToTry = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
     let lastError: Error | null = null;
 
-    for (const geminiKey of geminiKeys) {
-      let keyWasInvalid = false;
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": geminiKey,
-      };
+    for (const model of modelsToTry) {
+      try {
+        console.log(`[OCR] Pokus o extrakci modelem ${model}...`);
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+        const aiResponse = await fetch(apiUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.1,
+            },
+          }),
+          signal: AbortSignal.timeout(65000), // 65s timeout for large whiteboard images
+        });
 
-      for (const model of modelsToTry) {
-        try {
-          console.log(`[OCR] Pokus o extrakci modelem ${model}...`);
-          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-          const aiResponse = await fetch(apiUrl, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              contents: [{ parts }],
-              generationConfig: {
-                responseMimeType: "application/json",
-              },
-            }),
-            signal: AbortSignal.timeout(20000),
-          });
+        if (!aiResponse.ok) {
+          const detail = await aiResponse.text();
+          console.warn(`[OCR] Gemini model ${model} vrátil kód ${aiResponse.status}:`, detail);
 
-          if (!aiResponse.ok) {
-            const detail = await aiResponse.text();
-            console.warn(`[OCR] Gemini model ${model} vrátil kód ${aiResponse.status}:`, detail);
-
-            let parsedErrorMessage = `Chyba modelu ${model} (${aiResponse.status})`;
-            try {
-              const errObj = JSON.parse(detail);
-              if (errObj?.error?.message) {
-                parsedErrorMessage = errObj.error.message;
-              }
-            } catch {
-              // Keep fallback message
+          let parsedErrorMessage = `Chyba modelu ${model} (${aiResponse.status})`;
+          try {
+            const errObj = JSON.parse(detail);
+            if (errObj?.error?.message) {
+              parsedErrorMessage = errObj.error.message;
             }
-
-            if (aiResponse.status === 400 && detail.includes("API key not valid")) {
-              keyWasInvalid = true;
-              lastError = new Error("Žádný nakonfigurovaný klíč Gemini není platný.");
-              break;
-            }
-
-            // On 429 or 503, continue to try fallback model
-            lastError = new Error(parsedErrorMessage);
-            continue;
+          } catch {
+            // Keep fallback message
           }
 
-          const payload = (await aiResponse.json()) as {
-            candidates?: Array<{
-              content?: {
-                parts?: Array<{ text?: string; thought?: boolean }>;
-              };
-            }>;
-          };
-
-          const candidateParts = payload.candidates?.[0]?.content?.parts || [];
-        // Combine text from non-thought parts first, or fallback to all text parts
-          const nonThoughtText = candidateParts
-            .filter((p) => !p.thought && typeof p.text === "string")
-            .map((p) => p.text)
-            .join("\n")
-            .trim();
-
-          const allText = candidateParts
-            .filter((p) => typeof p.text === "string")
-            .map((p) => p.text)
-            .join("\n")
-            .trim();
-
-          const textToParse = nonThoughtText || allText || "{}";
-
-          const parsed = parseGeminiJson(textToParse);
-          if (!parsed) {
-            console.warn(
-              `[OCR] Model ${model} vrátil text, který se nepodařilo zparsovat jako JSON:`,
-              textToParse.slice(0, 200),
+          if (aiResponse.status === 400 && detail.includes("API key not valid")) {
+            throw new Error(
+              "Zadaný GEMINI_API_KEY není platný. Zkontrolujte prosím svůj klíč v Google AI Studio.",
             );
-            lastError = new Error(`Model ${model} nevrátil platný JSON.`);
-            continue;
           }
 
-          const rawList = Array.isArray(parsed)
-            ? parsed
-            : (parsed as { operators?: unknown[] })?.operators;
-          const rawAbsences = !Array.isArray(parsed)
-            ? (parsed as { absences?: unknown[] })?.absences
-            : undefined;
+          // On 429 or 503, continue to try fallback model
+          lastError = new Error(parsedErrorMessage);
+          continue;
+        }
 
-          const extracted = normalize(rawList, rawAbsences);
-          console.log(
-            `[OCR] Model ${model} úspěšně extrahoval ${extracted.operators.length} operátorů a ${extracted.filteredOut.length} vyřazených/absencí.`,
+        const payload = (await aiResponse.json()) as {
+          candidates?: Array<{
+            content?: {
+              parts?: Array<{ text?: string; thought?: boolean }>;
+            };
+          }>;
+        };
+
+        const candidateParts = payload.candidates?.[0]?.content?.parts || [];
+        // Combine text from non-thought parts first, or fallback to all text parts
+        const nonThoughtText = candidateParts
+          .filter((p) => !p.thought && typeof p.text === "string")
+          .map((p) => p.text)
+          .join("\n")
+          .trim();
+
+        const allText = candidateParts
+          .filter((p) => typeof p.text === "string")
+          .map((p) => p.text)
+          .join("\n")
+          .trim();
+
+        const textToParse = nonThoughtText || allText || "{}";
+
+        const parsed = parseGeminiJson(textToParse);
+        if (!parsed) {
+          console.warn(
+            `[OCR] Model ${model} vrátil text, který se nepodařilo zparsovat jako JSON:`,
+            textToParse.slice(0, 200),
           );
+          lastError = new Error(`Model ${model} nevrátil platný JSON.`);
+          continue;
+        }
 
-          if (extracted.operators.length > 0 || extracted.filteredOut.length > 0) {
-            operators = extracted.operators;
-            filteredOut = extracted.filteredOut;
-            break; // Successfully extracted
-          }
-        } catch (err: unknown) {
+        const rawList = Array.isArray(parsed)
+          ? parsed
+          : (parsed as { operators?: unknown[] })?.operators;
+        const rawAbsences = !Array.isArray(parsed)
+          ? (parsed as { absences?: unknown[] })?.absences
+          : undefined;
+
+        const extracted = normalize(rawList, rawAbsences);
+        console.log(
+          `[OCR] Model ${model} úspěšně extrahoval ${extracted.operators.length} operátorů a ${extracted.filteredOut.length} vyřazených/absencí.`,
+        );
+
+        if (extracted.operators.length > 0 || extracted.filteredOut.length > 0) {
+          operators = extracted.operators;
+          filteredOut = extracted.filteredOut;
+          break; // Successfully extracted
+        }
+      } catch (err: unknown) {
+        const isTimeout =
+          (err instanceof Error &&
+            (err.name === "TimeoutError" || err.message.includes("timeout"))) ||
+          String(err).includes("TimeoutError");
+        if (isTimeout) {
+          console.warn(`[OCR] Model ${model} vypršel (timeout). Zkouším další model...`);
+          lastError = new Error(
+            "Časový limit pro rozpoznání fotografie vypršel. Zkuste to prosím znovu nebo snímek ořízněte na menší část.",
+          );
+        } else {
           console.warn(`[OCR] Pokus s modelem ${model} selhal:`, err);
           lastError = err instanceof Error ? err : new Error(String(err));
-          if (lastError.message.includes("klíč Gemini není platný")) {
-            keyWasInvalid = true;
-            break;
-          }
+        }
+        if (lastError.message.includes("GEMINI_API_KEY není platný")) {
+          break;
         }
       }
-
-      if (operators.length > 0 || filteredOut.length > 0) break;
-      if (keyWasInvalid) continue;
     }
 
     if (operators.length === 0 && filteredOut.length === 0) {

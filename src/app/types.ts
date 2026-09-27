@@ -26,6 +26,7 @@ export interface Department {
   isCustom?: boolean;
   shift?: ShiftCode;
   createdAt?: string;
+  isSecondTl?: boolean; // VNA oddělení má druhého Team Leadera
 }
 
 export interface Operator {
@@ -39,8 +40,7 @@ export interface Operator {
   absenceReason?: AbsenceReason; // 'Absence' | 'Dovolená' | 'PN'
   notes?: string;
   lastMovedAt: string; // ISO string
-  /** Monotonically increasing cloud revision used to protect concurrent edits. */
-  revision?: number;
+  isPermanent?: boolean; // Stálý kmenový operátor (default true)
 }
 
 export interface MoveHistoryRecord {

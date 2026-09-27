@@ -87,8 +87,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                 (template) =>
                   template.isBuiltIn &&
                   !cloudTemplates.some(
-                    (cloudTemplate) =>
-                      cloudTemplate.id === template.id && cloudTemplate.isDeleted,
+                    (cloudTemplate) => cloudTemplate.id === template.id && cloudTemplate.isDeleted,
                   ),
               ),
               ...cloudTemplates.filter((template) => !template.isBuiltIn && !template.isDeleted),

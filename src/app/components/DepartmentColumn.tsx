@@ -349,15 +349,15 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
                     Vícepráce
                   </span>
                 )}
+                {(department.isSecondTl || department.id === "vna") && (
+                  <span
+                    className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-200 border border-emerald-400/50 tracking-wider shrink-0 shadow-xs"
+                    title="Oddělení VNA spravuje druhý Team Leader — slouží pro váš přehled"
+                  >
+                    2. TL (Přehled)
+                  </span>
+                )}
               </div>
-              {department.description && (
-                <p
-                  className="text-[11px] text-white/80 line-clamp-1 mt-0.5"
-                  title={department.description}
-                >
-                  {department.description}
-                </p>
-              )}
             </div>
           </div>
 
@@ -438,9 +438,25 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
         {/* Live Counters & Machine breakdown row */}
         <div className="mt-3 flex items-center justify-between text-xs pt-2.5 border-t border-white/20">
           <div className="flex flex-col">
-            <div className="flex items-center gap-1.5 text-white font-black">
+            <div className="flex items-center gap-1.5 text-white font-black flex-wrap">
               <Users className="w-3.5 h-3.5 opacity-80" />
               <span>{operators.length} lidí</span>
+              {operators.filter((o) => o.isPermanent === false).length > 0 && (
+                <span
+                  className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 font-black text-[10px] leading-none shadow-xs"
+                  title={`${operators.filter((o) => o.isPermanent === false).length} pracovníků v tomto oddělení je navíc mimo stálý kmen`}
+                >
+                  ! {operators.filter((o) => o.isPermanent === false).length} navíc
+                </span>
+              )}
+              {isAbsence && operators.filter((o) => !o.absenceReason).length > 0 && (
+                <span
+                  className="px-1.5 py-0.2 rounded bg-rose-500 text-white font-black text-[10px] leading-none animate-pulse shadow-xs"
+                  title={`${operators.filter((o) => !o.absenceReason).length} stálých operátorů zatím nemá přidělené oddělení`}
+                >
+                  ! {operators.filter((o) => !o.absenceReason).length} k rozřazení
+                </span>
+              )}
             </div>
             {/* Menší text pod tím: v provozu nebo rozdělení absence */}
             {isAbsence ? (

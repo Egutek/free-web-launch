@@ -15,6 +15,7 @@ import {
   Users,
   Download,
   Wifi,
+  WifiOff,
   Sparkles,
   ChevronDown,
   ChevronUp,
@@ -27,25 +28,48 @@ import {
   UserX,
   X,
   Share,
+  Search,
+  Plus,
+  Undo2,
+  UserCheck,
+  ArrowRight,
+  Filter,
 } from "lucide-react";
 import { DEPARTMENTS } from "../data/departments";
-import { Department, Operator, ShiftCode } from "../types";
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
-}
+import {
+  Department,
+  Operator,
+  ShiftType,
+  DepartmentId,
+  MachineType,
+  OperatorStatus,
+  AbsenceReason,
+} from "../types";
+import { usePWAInstall } from "../hooks/usePWAInstall";
+import { useNetworkStatus } from "../services/offlineSync";
+import { MobileOperatorDrawer } from "./MobileOperatorDrawer";
 
 interface WidgetViewProps {
   operators: Operator[];
   customDepartments?: Department[];
-  activeShift?: ShiftCode;
-  onShiftChange?: (shift: ShiftCode) => void;
+  activeShift?: ShiftType;
+  onShiftChange?: (shift: ShiftType) => void;
   isCloudConnected?: boolean;
   isCloudSyncing?: boolean;
-  hasCloudWriteError?: boolean;
   onSelectDepartment?: (deptId: string) => void;
   onSwitchToBoard?: () => void;
+  onMoveOperator?: (
+    operatorId: string,
+    targetDeptId: DepartmentId,
+    absenceReason?: AbsenceReason,
+  ) => void;
+  onChangeStatus?: (operatorId: string, status: OperatorStatus) => void;
+  onChangeMachineType?: (operatorId: string, machineType: MachineType) => void;
+  onChangeAbsenceReason?: (operatorId: string, reason: AbsenceReason) => void;
+  onEditOperator?: (operator: Operator) => void;
+  onAddNewOperator?: () => void;
+  onUndoSingle?: () => void;
+  hasUndo?: boolean;
 }
 
 export const WidgetView: React.FC<WidgetViewProps> = ({
@@ -55,18 +79,33 @@ export const WidgetView: React.FC<WidgetViewProps> = ({
   onShiftChange,
   isCloudConnected = true,
   isCloudSyncing = false,
-  hasCloudWriteError = false,
   onSelectDepartment,
   onSwitchToBoard,
+  onMoveOperator,
+  onChangeStatus,
+  onChangeMachineType,
+  onChangeAbsenceReason,
+  onEditOperator,
+  onAddNewOperator,
+  onUndoSingle,
+  hasUndo = false,
 }) => {
+  // Mobile sub-tab: "pocket" (Obchůzka haly 1 rukou) or "summary" (Přehled & Widget)
+  const [mobileTab, setMobileTab] = useState<"pocket" | "summary">("pocket");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("all");
+  const [selectedMachineFilter, setSelectedMachineFilter] = useState<string>("all");
+  const [activeDrawerOp, setActiveDrawerOp] = useState<Operator | null>(null);
+
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [expandedDeptId, setExpandedDeptId] = useState<string | null>(null);
   const [showInstallModal, setShowInstallModal] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [showAbsenceList, setShowAbsenceList] = useState(false);
+
+  const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
+  const { isOnline, pendingCount } = useNetworkStatus();
 
   // Live real-time clock update every second
   useEffect(() => {
@@ -76,42 +115,10 @@ export const WidgetView: React.FC<WidgetViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Check if running in standalone PWA mode and capture install prompt
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const isStandalone =
-        window.matchMedia("(display-mode: standalone)").matches ||
-        (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-      setIsInstalled(isStandalone);
-
-      const handleBeforeInstall = (e: Event) => {
-        e.preventDefault();
-        setDeferredPrompt(e as BeforeInstallPromptEvent);
-      };
-
-      window.addEventListener("beforeinstallprompt", handleBeforeInstall);
-      window.addEventListener("appinstalled", () => {
-        setIsInstalled(true);
-        setDeferredPrompt(null);
-      });
-
-      return () => {
-        window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
-      };
-    }
-    return undefined;
-  }, []);
-
   const handleInstallClick = async () => {
-    if (deferredPrompt) {
-      try {
-        await deferredPrompt.prompt();
-        const choice = await deferredPrompt.userChoice;
-        if (choice.outcome === "accepted") {
-          setIsInstalled(true);
-        }
-        setDeferredPrompt(null);
-      } catch {
+    if (isInstallable) {
+      const success = await install();
+      if (!success) {
         setShowInstallModal(true);
       }
     } else {
@@ -246,395 +253,538 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
     },
   ];
 
+  // Filtering for Pocket Mode
+  const filteredPocketOps = useMemo(() => {
+    return operators.filter((op) => {
+      // Name search
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim();
+        const matchesName = op.name.toLowerCase().includes(query);
+        const matchesNote = op.note ? op.note.toLowerCase().includes(query) : false;
+        if (!matchesName && !matchesNote) return false;
+      }
+      // Department filter
+      if (selectedDeptFilter !== "all") {
+        if (selectedDeptFilter === "absence") {
+          if (op.departmentId !== "unassigned") return false;
+        } else if (op.departmentId !== selectedDeptFilter) {
+          return false;
+        }
+      }
+      // Machine filter
+      if (selectedMachineFilter !== "all") {
+        if (op.machineType !== selectedMachineFilter) return false;
+      }
+      return true;
+    });
+  }, [operators, searchQuery, selectedDeptFilter, selectedMachineFilter]);
+
+  const allDeptsMap = useMemo(() => {
+    const map = new Map<string, string>();
+    DEPARTMENTS.forEach((d) => map.set(d.id, d.name));
+    customDepartments.forEach((d) => map.set(d.id, d.name));
+    map.set("unassigned", "Absence");
+    return map;
+  }, [customDepartments]);
+
   return (
-    <div className="w-full max-w-2xl mx-auto space-y-4 pb-12">
-      {/* Top Action & PWA Controls Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2.5 bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-blue-600 text-white shadow-sm shrink-0">
-            <Smartphone className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                Mobilní Widget • Živý přehled
-              </h2>
-              {isInstalled && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                  Nainstalováno
-                </span>
-              )}
+    <div className="w-full max-w-2xl mx-auto space-y-3 pb-24 px-1 sm:px-0">
+      {/* Top Header Card */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-3.5 sm:p-4 text-white shadow-xl space-y-3">
+        {/* Title & Quick Controls */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-2xl bg-gradient-to-tr from-sky-600 to-blue-500 text-white shadow-md shrink-0">
+              <Smartphone className="w-5 h-5" />
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
-              Stále aktuální přehled směny pro plochu mobilu i PC.
-            </p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm sm:text-base font-black truncate">Kapesní mistr haly</h2>
+                {!isOnline ? (
+                  <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                    <WifiOff className="w-3 h-3" />
+                    <span>Offline (Regály)</span>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span>Live Cloud</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 truncate">
+                Rychlé ovládání jednou rukou přímo mezi regály
+              </p>
+            </div>
+          </div>
+
+          {/* Action icons */}
+          <div className="flex items-center gap-1.5">
+            {!isInstalled && (
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-sm active:scale-95 cursor-pointer"
+                title="Nainstalovat na plochu mobilu jako PWA"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden xs:inline">Instalovat</span>
+              </button>
+            )}
+
+            {onSwitchToBoard && (
+              <button
+                type="button"
+                onClick={onSwitchToBoard}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                title="Přepnout na velkou tabuli"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Tabule</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+              title="Celá obrazovka"
+            >
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-          {!isInstalled && (
-            <button
-              id="install-widget-pwa-btn"
-              type="button"
-              onClick={handleInstallClick}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md active:scale-95 transition-all cursor-pointer"
-              title="Přidat aplikaci na plochu telefonu"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Přidat na plochu mobilu</span>
-            </button>
+        {/* Shift switcher & Mode Switcher tabs */}
+        <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-slate-800">
+          {/* Shift Picker pills */}
+          {onShiftChange && (
+            <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-2xl border border-slate-800">
+              <span className="text-[10px] font-bold text-slate-400 px-2 uppercase">Směna:</span>
+              {(["A", "B", "C"] as ShiftType[]).map((shift) => (
+                <button
+                  key={`widget-shift-btn-${shift}`}
+                  type="button"
+                  onClick={() => onShiftChange(shift)}
+                  className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer active:scale-95 ${
+                    activeShift === shift
+                      ? "bg-blue-600 text-white shadow-md ring-2 ring-blue-400"
+                      : "text-slate-400 hover:text-white hover:bg-slate-800"
+                  }`}
+                >
+                  {shift}
+                </button>
+              ))}
+            </div>
           )}
 
-          <button
-            type="button"
-            onClick={copyWidgetText}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
-            title="Zkopírovat stav směny do schránky pro WhatsApp nebo Teams"
-          >
-            {copied ? (
-              <Check className="w-3.5 h-3.5 text-emerald-500" />
-            ) : (
-              <Copy className="w-3.5 h-3.5" />
-            )}
-            <span className="hidden xs:inline">{copied ? "Zkopírováno!" : "Kopírovat"}</span>
-          </button>
-
-          {onSwitchToBoard && (
+          {/* Sub-view toggle (Pocket vs Summary) */}
+          <div className="flex items-center bg-slate-950/80 p-1 rounded-2xl border border-slate-800">
             <button
               type="button"
-              onClick={onSwitchToBoard}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
-              title="Přejít do interaktivní tabule pro přesun operátorů"
+              onClick={() => setMobileTab("pocket")}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                mobileTab === "pocket"
+                  ? "bg-sky-600 text-white shadow-xs"
+                  : "text-slate-400 hover:text-white"
+              }`}
             >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">Plná tabule</span>
+              📱 Obchůzka (1 ruka)
             </button>
-          )}
-
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="inline-flex items-center justify-center p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            title="Režim celé obrazovky"
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
+            <button
+              type="button"
+              onClick={() => setMobileTab("summary")}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                mobileTab === "summary"
+                  ? "bg-sky-600 text-white shadow-xs"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              📊 Widget & Přehled
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* SHIFT PICKER PILLS (SMĚNA A / B / C) */}
-      {onShiftChange && (
-        <div className="flex items-center justify-between bg-slate-900/90 text-white p-2 rounded-2xl border border-slate-800 shadow-md">
-          <span className="text-xs font-bold text-slate-400 px-2 flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-blue-400" />
-            <span>Aktivní směna:</span>
-          </span>
-          <div className="flex items-center gap-1">
-            {(["A", "B", "C"] as ShiftCode[]).map((shift) => (
+      {/* OFFLINE NOTICE BANNER FOR AISLES */}
+      {!isOnline && (
+        <div className="bg-amber-950/80 border border-amber-500/40 rounded-2xl p-3 text-amber-200 text-xs flex items-center justify-between gap-2.5 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <WifiOff className="w-4 h-4 text-amber-400 shrink-0" />
+            <div>
+              <span className="font-bold">Slabý signál v uličkách mezi regály:</span>{" "}
+              <span>Aplikace funguje 100% offline. Změny se samy odešlou po návratu na Wi-Fi.</span>
+            </div>
+          </div>
+          {pendingCount > 0 && (
+            <span className="font-mono px-2 py-0.5 rounded-lg bg-amber-500/30 text-amber-100 font-bold shrink-0">
+              {pendingCount} ve frontě
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODE 1: POCKET HALL WALK (KAPESNÍ OBCHŮZKA PRO JEDNU RUKU) */}
+      {/* ========================================================= */}
+      {mobileTab === "pocket" && (
+        <div className="space-y-3 animate-in fade-in duration-150">
+          {/* Search bar + filter reset */}
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Rychlé vyhledání operátora v hale..."
+              className="w-full pl-10 pr-10 py-3 rounded-2xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all shadow-inner"
+            />
+            {searchQuery && (
               <button
-                key={`widget-shift-btn-${shift}`}
                 type="button"
-                onClick={() => onShiftChange(shift)}
-                className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer active:scale-95 ${
-                  activeShift === shift
-                    ? "bg-blue-600 text-white shadow-md ring-2 ring-blue-400"
-                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-full bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Department Filter Pills (Horizontal scroll for thumb) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none select-none text-xs">
+            <button
+              type="button"
+              onClick={() => setSelectedDeptFilter("all")}
+              className={`px-3 py-2 rounded-xl font-bold shrink-0 transition-all cursor-pointer active:scale-95 ${
+                selectedDeptFilter === "all"
+                  ? "bg-sky-600 text-white shadow-md ring-2 ring-sky-400/40"
+                  : "bg-slate-900 text-slate-400 border border-slate-800 hover:text-white"
+              }`}
+            >
+              Všichni ({total})
+            </button>
+
+            {DEPT_DEFINITIONS.map((dept) => {
+              const count = dept.ops.length;
+              const isSelected = selectedDeptFilter === dept.id;
+              return (
+                <button
+                  key={`pill-${dept.id}`}
+                  type="button"
+                  onClick={() => setSelectedDeptFilter(dept.id)}
+                  className={`px-3 py-2 rounded-xl font-bold shrink-0 transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 ${
+                    isSelected
+                      ? "bg-slate-800 border-sky-400 text-white ring-2 ring-sky-400/40 border"
+                      : "bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700"
+                  }`}
+                >
+                  <span className={dept.color}>{dept.code}</span>
+                  <span className="font-mono opacity-80">({count})</span>
+                </button>
+              );
+            })}
+
+            {/* OBWI pill */}
+            <button
+              type="button"
+              onClick={() => setSelectedDeptFilter("obwi")}
+              className={`px-3 py-2 rounded-xl font-bold shrink-0 transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 ${
+                selectedDeptFilter === "obwi"
+                  ? "bg-slate-800 border-rose-400 text-white ring-2 ring-rose-400/40 border"
+                  : "bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700"
+              }`}
+            >
+              <span className="text-rose-400">OBWI</span>
+              <span className="font-mono opacity-80">({obwiOps.length})</span>
+            </button>
+
+            {/* Custom depts */}
+            {customDepartments.map((dept) => {
+              const count = getDeptOps(dept.id).length;
+              const isSelected = selectedDeptFilter === dept.id;
+              return (
+                <button
+                  key={`pill-${dept.id}`}
+                  type="button"
+                  onClick={() => setSelectedDeptFilter(dept.id)}
+                  className={`px-3 py-2 rounded-xl font-bold shrink-0 transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 ${
+                    isSelected
+                      ? "bg-amber-600 text-white ring-2 ring-amber-400/40"
+                      : "bg-amber-950/20 text-amber-300 border border-amber-500/30 hover:border-amber-400"
+                  }`}
+                >
+                  <span>{dept.code || dept.name}</span>
+                  <span className="font-mono opacity-80">({count})</span>
+                </button>
+              );
+            })}
+
+            {/* Absence pill */}
+            <button
+              type="button"
+              onClick={() => setSelectedDeptFilter("absence")}
+              className={`px-3 py-2 rounded-xl font-bold shrink-0 transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 ${
+                selectedDeptFilter === "absence"
+                  ? "bg-red-600 text-white ring-2 ring-red-400/40"
+                  : "bg-red-950/20 text-red-300 border border-red-500/30 hover:border-red-400"
+              }`}
+            >
+              <UserX className="w-3.5 h-3.5" />
+              <span>Absence</span>
+              <span className="font-mono opacity-80">({absenceTotal})</span>
+            </button>
+          </div>
+
+          {/* Machine Filter Quick Bar */}
+          <div className="flex items-center gap-1.5 text-xs px-1">
+            <span className="text-[11px] text-slate-400 font-semibold flex items-center gap-1">
+              <Filter className="w-3 h-3" /> Stroj:
+            </span>
+            {(
+              [
+                { id: "all", label: "Vše" },
+                { id: "LL", label: "🚜 LL" },
+                { id: "RTR", label: "⚡ RTR" },
+                { id: "NONE", label: "🚶 Pěší" },
+              ] as const
+            ).map((item) => (
+              <button
+                key={`machine-pill-${item.id}`}
+                type="button"
+                onClick={() => setSelectedMachineFilter(item.id)}
+                className={`px-2.5 py-1 rounded-lg font-mono text-[11px] transition-all cursor-pointer ${
+                  selectedMachineFilter === item.id
+                    ? "bg-slate-700 text-white font-bold"
+                    : "text-slate-400 hover:text-white"
                 }`}
               >
-                Směna {shift}
+                {item.label}
               </button>
             ))}
+          </div>
+
+          {/* Operator Cards List - Thumb Friendly Size */}
+          <div className="space-y-2">
+            {filteredPocketOps.length === 0 ? (
+              <div className="text-center py-12 bg-slate-900/60 rounded-3xl border border-slate-800 text-slate-400 space-y-2">
+                <Users className="w-8 h-8 mx-auto text-slate-600" />
+                <p className="text-sm font-semibold">Žádný pracovník neodpovídá filtru</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSelectedDeptFilter("all");
+                    setSelectedMachineFilter("all");
+                  }}
+                  className="text-xs text-sky-400 underline font-medium cursor-pointer"
+                >
+                  Zrušit vyhledávací filtry
+                </button>
+              </div>
+            ) : (
+              filteredPocketOps.map((op) => {
+                const deptName = allDeptsMap.get(op.departmentId) || "Nepřiřazen";
+                const isAbsence = op.departmentId === "unassigned";
+
+                return (
+                  <div
+                    key={op.id}
+                    onClick={() => setActiveDrawerOp(op)}
+                    className="flex items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-sky-500/50 active:scale-[0.99] transition-all cursor-pointer shadow-sm group select-none"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Status indicator dot */}
+                      <div className="shrink-0">
+                        {isAbsence ? (
+                          <div className="w-3.5 h-3.5 rounded-full bg-red-500/20 border border-red-500 flex items-center justify-center">
+                            <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                          </div>
+                        ) : op.status === "break" ? (
+                          <div className="w-3.5 h-3.5 rounded-full bg-amber-500/20 border border-amber-500 flex items-center justify-center">
+                            <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                          </div>
+                        ) : (
+                          <div className="w-3.5 h-3.5 rounded-full bg-emerald-500/20 border border-emerald-500 flex items-center justify-center">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Name & Department details */}
+                      <div className="min-w-0">
+                        <div className="font-bold text-sm text-slate-100 group-hover:text-sky-300 truncate">
+                          {op.name}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5 truncate">
+                          <span
+                            className={`font-semibold ${
+                              isAbsence ? "text-red-400" : "text-sky-400"
+                            }`}
+                          >
+                            {deptName}
+                          </span>
+                          {op.absenceReason && isAbsence && (
+                            <span className="text-[10px] text-red-300">• {op.absenceReason}</span>
+                          )}
+                          {op.status === "break" && !isAbsence && (
+                            <span className="text-[10px] text-amber-300 font-bold">• Pauza</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Machine badge & Tap action arrow */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span
+                        className={`text-xs font-mono font-bold px-2 py-1 rounded-xl ${
+                          op.machineType === "LL"
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                            : op.machineType === "RTR"
+                              ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                              : "bg-slate-800 text-slate-400 border border-slate-700"
+                        }`}
+                      >
+                        {op.machineType === "NONE" ? "Pěší" : op.machineType}
+                      </span>
+                      <div className="p-1 rounded-xl text-slate-500 group-hover:text-sky-400 transition-colors">
+                        <ArrowRight className="w-4 h-4" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
 
-      {/* THE LIVE PHONE WIDGET CARD */}
-      <div
-        id="mobile-wallpaper-widget"
-        className="w-full bg-slate-950 text-white rounded-[28px] sm:rounded-[36px] p-4 sm:p-6 shadow-2xl border-4 border-slate-800 relative overflow-hidden select-none"
-      >
-        {/* Subtle background ambient glows */}
-        <div className="absolute -top-16 -right-16 w-56 h-56 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-16 -left-16 w-56 h-56 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
-
-        {/* Live Top Status Strip */}
-        <div className="flex items-center justify-between text-xs text-slate-400 mb-3 pb-3 border-b border-slate-800/80">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-            </span>
-            <span className="font-extrabold text-slate-200 tracking-wider text-[11px] uppercase">
-              ZF OSTROV • SMĚNA {activeShift}
-            </span>
-            {hasCloudWriteError ? (
-              <span className="text-[10px] text-red-400 font-mono">
-                Chyba ukládání — obnovte stránku
-              </span>
-            ) : isCloudSyncing ? (
-              <span className="text-[10px] text-amber-400 font-mono animate-pulse">
-                Ukládání...
-              </span>
-            ) : isCloudConnected ? (
-              <span className="text-[10px] text-emerald-400/80 font-mono hidden xs:inline">
-                ● Live Online
-              </span>
-            ) : (
-              <span className="text-[10px] text-amber-400 font-mono">Bez online spojení</span>
-            )}
-          </div>
-          <div className="font-mono text-slate-300 font-bold text-xs flex items-center gap-1.5">
-            <span>{dateStr}</span>
-            <span className="text-blue-400 font-black">{timeStr}</span>
-          </div>
-        </div>
-
-        {/* HERO TOTAL BANNER */}
-        <div className="mb-3.5 bg-gradient-to-br from-blue-950/90 via-slate-900 to-slate-900 border-2 border-blue-500/50 rounded-2xl p-4 relative shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-blue-400">
-                  HLAVNÍ ODDĚLENÍ
+      {/* ========================================================= */}
+      {/* MODE 2: SUMMARY & WIDGET (PŮVODNÍ DETAILNÍ PŘEHLED SMĚNY) */}
+      {/* ========================================================= */}
+      {mobileTab === "summary" && (
+        <div className="space-y-4 animate-in fade-in duration-150">
+          {/* Main Widget Card */}
+          <div className="bg-slate-950 text-white rounded-3xl p-4 sm:p-5 border border-slate-800 shadow-2xl relative overflow-hidden">
+            {/* Top Bar of Widget */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-black text-xs sm:text-sm tracking-wide text-slate-200">
+                  ZF OSTROV • PICK
                 </span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 font-bold">
+                <span className="bg-blue-600/30 text-blue-300 border border-blue-500/40 text-[10px] font-bold px-1.5 py-0.2 rounded-md font-mono">
                   Směna {activeShift}
                 </span>
               </div>
-              <h3 className="text-lg font-black text-white mt-0.5">CELKEM PICK</h3>
-              <div className="flex items-center gap-2 mt-1.5">
-                <span className="text-xs font-black text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2.5 py-0.5 rounded-lg shadow-2xs">
-                  {llTotal}× LL
-                </span>
-                <span className="text-xs font-black text-blue-300 bg-blue-500/20 border border-blue-500/30 px-2.5 py-0.5 rounded-lg shadow-2xs">
-                  {rtrTotal}× RTR
-                </span>
+              <div className="flex items-center gap-2 text-slate-400 text-xs font-mono">
+                <Clock className="w-3.5 h-3.5 text-blue-400" />
+                <span>{timeStr}</span>
               </div>
             </div>
-            <div className="text-right">
-              <div className="flex items-baseline justify-end">
-                <span className="text-4xl sm:text-5xl font-black text-blue-400 tracking-tight">
-                  {total}
-                </span>
-                <span className="text-xs text-blue-200/80 ml-1.5 font-bold">lidí</span>
-              </div>
-              <div className="text-[11px] font-bold text-emerald-300 flex items-center justify-end gap-1 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>
-                  v provozu:{" "}
-                  <strong className="text-white text-xs font-black">{activeTotal}</strong>
-                </span>
-              </div>
-            </div>
-          </div>
 
-          <div className="mt-2.5 pt-2 border-t border-blue-500/20 flex items-center justify-between text-[11px] text-slate-300">
-            <span className="text-emerald-300 font-bold flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span>{activeTotal} aktivních na hale</span>
-            </span>
-            <div className="flex items-center gap-2 text-slate-400 font-mono text-[11px]">
-              {breakTotal > 0 && (
-                <span className="text-amber-300 font-semibold">{breakTotal} pauza</span>
-              )}
-              {breakTotal > 0 && absenceTotal > 0 && <span>•</span>}
-              {absenceTotal > 0 && (
-                <span className="text-rose-300 font-semibold">{absenceTotal} absence</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 6 SUB-DEPARTMENTS GRID */}
-        <div className="grid grid-cols-2 gap-2.5 mb-3">
-          {DEPT_DEFINITIONS.map((dept) => {
-            const Icon = dept.icon;
-            const llCount = dept.ops.filter((o) => o.machineType === "LL").length;
-            const rtrCount = dept.ops.filter((o) => o.machineType === "RTR").length;
-            const isExpanded = expandedDeptId === dept.id;
-
-            return (
-              <div
-                key={dept.id}
-                onClick={() => setExpandedDeptId(isExpanded ? null : dept.id)}
-                className={`bg-slate-900/90 border ${
-                  isExpanded ? `${dept.border} ring-2 ring-blue-500/40` : "border-slate-800"
-                } hover:${dept.border} rounded-2xl p-3 flex flex-col justify-between transition-all cursor-pointer active:scale-[0.98] shadow-sm`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 min-w-0 pr-1">
-                    <Icon className={`w-4 h-4 ${dept.color} shrink-0`} />
-                    <span className="font-black text-sm text-white truncate">{dept.name}</span>
-                  </div>
-                  <span className={`text-2xl font-black ${dept.color} shrink-0`}>
-                    {dept.ops.length}
-                  </span>
+            {/* Quick Metrics Bar */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-2.5 text-center">
+                <div className="text-[10px] text-slate-400 uppercase font-semibold">
+                  Celkem na směně
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1 flex items-center justify-between font-mono">
-                  <span>
-                    {llCount} LL • {rtrCount} RTR
-                  </span>
-                  <span className="text-slate-500 text-[9px]">
-                    {isExpanded ? (
-                      <ChevronUp className="w-3 h-3" />
-                    ) : (
-                      <ChevronDown className="w-3 h-3" />
-                    )}
-                  </span>
-                </div>
-
-                {/* Expanded list of operators on tap */}
-                {isExpanded && (
-                  <div className="mt-2 pt-2 border-t border-slate-800 space-y-1 animate-in fade-in duration-150">
-                    {dept.ops.length === 0 ? (
-                      <p className="text-[10px] text-slate-500 italic">Nikdo není přiřazen</p>
-                    ) : (
-                      dept.ops.map((op) => (
-                        <div
-                          key={op.id}
-                          className="flex items-center justify-between text-[11px] bg-slate-950/60 px-2 py-1 rounded-lg"
-                        >
-                          <span className="font-bold text-slate-200 truncate pr-1">{op.name}</span>
-                          <span
-                            className={`text-[9px] font-black px-1.5 py-0.2 rounded font-mono ${
-                              op.machineType === "LL"
-                                ? "bg-amber-500/20 text-amber-300"
-                                : "bg-blue-500/20 text-blue-300"
-                            }`}
-                          >
-                            {op.machineType}
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* OBWI (Full width card) */}
-        <div
-          onClick={() => setExpandedDeptId(expandedDeptId === "obwi" ? null : "obwi")}
-          className={`bg-slate-900/90 border ${
-            expandedDeptId === "obwi"
-              ? "border-rose-500/60 ring-2 ring-rose-500/40"
-              : "border-slate-800"
-          } hover:border-rose-500/50 rounded-2xl p-3 flex flex-col mb-3 transition-all cursor-pointer active:scale-[0.98] shadow-sm`}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-lg bg-rose-500/15 text-rose-400">
-                <Globe className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="font-black text-sm text-white">OBWI</div>
+                <div className="text-xl sm:text-2xl font-black text-white">{total}</div>
                 <div className="text-[10px] text-slate-400 font-mono">
-                  {obwiOps.filter((o) => o.machineType === "LL").length}× LL •{" "}
-                  {obwiOps.filter((o) => o.machineType === "RTR").length}× RTR
+                  {llTotal}× LL • {rtrTotal}× RTR
+                </div>
+              </div>
+
+              <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-2xl p-2.5 text-center">
+                <div className="text-[10px] text-emerald-400 uppercase font-semibold">
+                  V provozu
+                </div>
+                <div className="text-xl sm:text-2xl font-black text-emerald-400">{activeTotal}</div>
+                <div className="text-[10px] text-emerald-500/80 font-mono">
+                  {total > 0 ? Math.round((activeTotal / total) * 100) : 0} % kapacity
+                </div>
+              </div>
+
+              <div className="bg-rose-950/30 border border-rose-500/30 rounded-2xl p-2.5 text-center">
+                <div className="text-[10px] text-rose-400 uppercase font-semibold">
+                  Absence / Pauza
+                </div>
+                <div className="text-xl sm:text-2xl font-black text-rose-400">
+                  {absenceTotal + breakTotal}
+                </div>
+                <div className="text-[10px] text-rose-400/80 font-mono">
+                  {breakTotal} ☕ • {absenceTotal} 🏠
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-black text-rose-400">{obwiOps.length}</span>
-              <span className="text-slate-500 text-[10px]">
-                {expandedDeptId === "obwi" ? (
-                  <ChevronUp className="w-3.5 h-3.5" />
-                ) : (
-                  <ChevronDown className="w-3.5 h-3.5" />
-                )}
-              </span>
-            </div>
-          </div>
 
-          {expandedDeptId === "obwi" && (
-            <div className="mt-2 pt-2 border-t border-slate-800 space-y-1 animate-in fade-in duration-150">
-              {obwiOps.length === 0 ? (
-                <p className="text-[10px] text-slate-500 italic">Nikdo není přiřazen</p>
-              ) : (
-                obwiOps.map((op) => (
-                  <div
-                    key={op.id}
-                    className="flex items-center justify-between text-[11px] bg-slate-950/60 px-2 py-1 rounded-lg"
-                  >
-                    <span className="font-bold text-slate-200 truncate pr-1">{op.name}</span>
-                    <span
-                      className={`text-[9px] font-black px-1.5 py-0.2 rounded font-mono ${
-                        op.machineType === "LL"
-                          ? "bg-amber-500/20 text-amber-300"
-                          : "bg-blue-500/20 text-blue-300"
-                      }`}
-                    >
-                      {op.machineType}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* CUSTOM DEPARTMENTS (VÍCEPRÁCE) */}
-        {customDepartments.length > 0 && (
-          <div className="mb-3">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-2 flex items-center gap-1.5">
-              <Wrench className="w-3.5 h-3.5" />
-              <span>Vícepráce a mimořádné úkoly</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {customDepartments.map((dept) => {
-                const ops = getDeptOps(dept.id);
+            {/* Department Grid */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {DEPT_DEFINITIONS.map((dept) => {
                 const isExpanded = expandedDeptId === dept.id;
+                const Icon = dept.icon;
                 return (
                   <div
                     key={dept.id}
                     onClick={() => setExpandedDeptId(isExpanded ? null : dept.id)}
-                    className={`bg-amber-950/20 border ${
-                      isExpanded
-                        ? "border-amber-400 ring-2 ring-amber-400/40"
-                        : "border-amber-500/30"
-                    } hover:border-amber-500/60 rounded-xl p-2.5 flex flex-col justify-between transition-all cursor-pointer active:scale-[0.98]`}
+                    className={`bg-slate-900/90 border ${
+                      isExpanded ? `${dept.border} ring-2 ring-blue-500/30` : "border-slate-800"
+                    } hover:${dept.border} rounded-2xl p-2.5 flex flex-col justify-between transition-all cursor-pointer active:scale-[0.98] shadow-sm`}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="min-w-0 pr-1">
-                        <span className="font-bold text-xs text-white truncate block">
-                          {dept.name}
-                        </span>
-                        <span className="text-[10px] text-amber-400 font-mono">{dept.code}</span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <div className={`p-1.5 rounded-lg ${dept.bg} ${dept.color}`}>
+                          <Icon className="w-3.5 h-3.5 shrink-0" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="font-bold text-xs text-white truncate block">
+                            {dept.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">{dept.code}</span>
+                        </div>
                       </div>
-                      <span className="text-xl font-black text-amber-400 shrink-0">
-                        {ops.length}
+                      <span className={`text-xl font-black ${dept.color} shrink-0 pl-1`}>
+                        {dept.ops.length}
                       </span>
                     </div>
+
                     <div className="text-[10px] text-slate-400 mt-1 font-mono flex items-center justify-between">
                       <span>
-                        {ops.filter((o) => o.machineType === "LL").length} LL •{" "}
-                        {ops.filter((o) => o.machineType === "RTR").length} RTR
+                        {dept.ops.filter((o) => o.machineType === "LL").length} LL •{" "}
+                        {dept.ops.filter((o) => o.machineType === "RTR").length} RTR
                       </span>
                       <span>
                         {isExpanded ? (
-                          <ChevronUp className="w-2.5 h-2.5" />
+                          <ChevronUp className="w-3 h-3 text-slate-400" />
                         ) : (
-                          <ChevronDown className="w-2.5 h-2.5" />
+                          <ChevronDown className="w-3 h-3 text-slate-500" />
                         )}
                       </span>
                     </div>
 
                     {isExpanded && (
-                      <div className="mt-2 pt-2 border-t border-amber-500/20 space-y-1">
-                        {ops.length === 0 ? (
+                      <div className="mt-2 pt-2 border-t border-slate-800 space-y-1 animate-in fade-in duration-150">
+                        {dept.ops.length === 0 ? (
                           <p className="text-[10px] text-slate-500 italic">Nikdo není přiřazen</p>
                         ) : (
-                          ops.map((op) => (
+                          dept.ops.map((op) => (
                             <div
                               key={op.id}
-                              className="flex items-center justify-between text-[11px] bg-slate-950/60 px-2 py-1 rounded-lg"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveDrawerOp(op);
+                              }}
+                              className="flex items-center justify-between text-[11px] bg-slate-950/60 hover:bg-slate-800 px-2 py-1 rounded-lg cursor-pointer transition-colors"
                             >
                               <span className="font-bold text-slate-200 truncate pr-1">
                                 {op.name}
                               </span>
-                              <span className="text-[9px] font-black text-amber-300 font-mono">
+                              <span
+                                className={`text-[9px] font-black px-1.5 py-0.2 rounded font-mono ${
+                                  op.machineType === "LL"
+                                    ? "bg-amber-500/20 text-amber-300"
+                                    : "bg-blue-500/20 text-blue-300"
+                                }`}
+                              >
                                 {op.machineType}
                               </span>
                             </div>
@@ -646,91 +796,275 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
                 );
               })}
             </div>
-          </div>
-        )}
 
-        {/* BOTTOM SUMMARY & ABSENCE DRAWER TOGGLE */}
-        <div
-          onClick={() => setShowAbsenceList((prev) => !prev)}
-          className="bg-slate-900 rounded-2xl p-3 border border-slate-800 flex items-center justify-between text-xs cursor-pointer hover:border-slate-700 transition-colors"
-        >
-          <div className="flex items-center gap-1.5">
-            <Users className="w-4 h-4 text-blue-400" />
-            <span className="text-slate-400">Celkem:</span>
-            <span className="font-bold text-white text-sm">{total}</span>
-          </div>
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="text-emerald-400 font-bold">{activeTotal} na hale</span>
-            <span className="text-slate-600">•</span>
-            <span className="text-amber-400 font-semibold">{breakTotal} pauza</span>
-            <span className="text-slate-600">•</span>
-            <span className="text-slate-400">{absenceTotal} absence</span>
-            <span className="text-slate-500 ml-1">
-              {showAbsenceList ? (
-                <ChevronUp className="w-3.5 h-3.5 inline" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5 inline" />
+            {/* OBWI card */}
+            <div
+              onClick={() => setExpandedDeptId(expandedDeptId === "obwi" ? null : "obwi")}
+              className={`bg-slate-900/90 border ${
+                expandedDeptId === "obwi"
+                  ? "border-rose-500/60 ring-2 ring-rose-500/40"
+                  : "border-slate-800"
+              } hover:border-rose-500/50 rounded-2xl p-3 flex flex-col mb-3 transition-all cursor-pointer active:scale-[0.98] shadow-sm`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-rose-500/15 text-rose-400">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-black text-sm text-white">OBWI</div>
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      {obwiOps.filter((o) => o.machineType === "LL").length}× LL •{" "}
+                      {obwiOps.filter((o) => o.machineType === "RTR").length}× RTR
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-black text-rose-400">{obwiOps.length}</span>
+                  <span className="text-slate-500 text-[10px]">
+                    {expandedDeptId === "obwi" ? (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {expandedDeptId === "obwi" && (
+                <div className="mt-2 pt-2 border-t border-slate-800 space-y-1 animate-in fade-in duration-150">
+                  {obwiOps.length === 0 ? (
+                    <p className="text-[10px] text-slate-500 italic">Nikdo není přiřazen</p>
+                  ) : (
+                    obwiOps.map((op) => (
+                      <div
+                        key={op.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveDrawerOp(op);
+                        }}
+                        className="flex items-center justify-between text-[11px] bg-slate-950/60 hover:bg-slate-800 px-2 py-1 rounded-lg cursor-pointer"
+                      >
+                        <span className="font-bold text-slate-200 truncate pr-1">{op.name}</span>
+                        <span
+                          className={`text-[9px] font-black px-1.5 py-0.2 rounded font-mono ${
+                            op.machineType === "LL"
+                              ? "bg-amber-500/20 text-amber-300"
+                              : "bg-blue-500/20 text-blue-300"
+                          }`}
+                        >
+                          {op.machineType}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
               )}
+            </div>
+
+            {/* Custom Departments */}
+            {customDepartments.length > 0 && (
+              <div className="mb-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-2 flex items-center gap-1.5">
+                  <Wrench className="w-3.5 h-3.5" />
+                  <span>Vícepráce a mimořádné úkoly</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {customDepartments.map((dept) => {
+                    const ops = getDeptOps(dept.id);
+                    const isExpanded = expandedDeptId === dept.id;
+                    return (
+                      <div
+                        key={dept.id}
+                        onClick={() => setExpandedDeptId(isExpanded ? null : dept.id)}
+                        className={`bg-amber-950/20 border ${
+                          isExpanded
+                            ? "border-amber-400 ring-2 ring-amber-400/40"
+                            : "border-amber-500/30"
+                        } hover:border-amber-500/60 rounded-xl p-2.5 flex flex-col justify-between transition-all cursor-pointer active:scale-[0.98]`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0 pr-1">
+                            <span className="font-bold text-xs text-white truncate block">
+                              {dept.name}
+                            </span>
+                            <span className="text-[10px] text-amber-400 font-mono">
+                              {dept.code}
+                            </span>
+                          </div>
+                          <span className="text-xl font-black text-amber-400 shrink-0">
+                            {ops.length}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1 font-mono flex items-center justify-between">
+                          <span>
+                            {ops.filter((o) => o.machineType === "LL").length} LL •{" "}
+                            {ops.filter((o) => o.machineType === "RTR").length} RTR
+                          </span>
+                          <span>
+                            {isExpanded ? (
+                              <ChevronUp className="w-2.5 h-2.5" />
+                            ) : (
+                              <ChevronDown className="w-2.5 h-2.5" />
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Bottom Absence toggle */}
+            <div
+              onClick={() => setShowAbsenceList((prev) => !prev)}
+              className="bg-slate-900 rounded-2xl p-3 border border-slate-800 flex items-center justify-between text-xs cursor-pointer hover:border-slate-700 transition-colors"
+            >
+              <div className="flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-blue-400" />
+                <span className="text-slate-400">Celkem:</span>
+                <span className="font-bold text-white">{total}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-emerald-400 font-semibold">{activeTotal} aktivní</span>
+                <span className="text-amber-400 font-semibold">{breakTotal} pauza</span>
+                <span className="text-rose-400 font-semibold">{absenceTotal} absence</span>
+                <span className="text-slate-500">
+                  {showAbsenceList ? (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  )}
+                </span>
+              </div>
+            </div>
+
+            {/* Absence Drawer */}
+            {showAbsenceList && (
+              <div className="mt-2 p-3 bg-slate-900/90 rounded-2xl border border-slate-800 animate-in fade-in duration-150">
+                <div className="text-[11px] font-bold text-rose-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                  <UserX className="w-3.5 h-3.5" />
+                  <span>Dnešní absence ({absenceOps.length})</span>
+                </div>
+                {absenceOps.length === 0 ? (
+                  <p className="text-[11px] text-slate-500 italic">Všichni jsou přítomni</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {absenceOps.map((op) => (
+                      <span
+                        key={op.id}
+                        onClick={() => setActiveDrawerOp(op)}
+                        className="px-2 py-1 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30 text-[11px] font-medium cursor-pointer hover:bg-rose-500/25"
+                      >
+                        {op.name}
+                        {op.absenceReason ? ` • ${op.absenceReason}` : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Quick Copy Text Button */}
+          <button
+            type="button"
+            onClick={copyWidgetText}
+            className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98"
+          >
+            {copied ? (
+              <Check className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <Copy className="w-4 h-4 text-sky-400" />
+            )}
+            <span>
+              {copied ? "Zkopírováno do schránky!" : "Zkopírovat stav pro WhatsApp / Teams"}
             </span>
-          </div>
+          </button>
         </div>
+      )}
 
-        {/* EXPANDED ABSENCE & PAUSE LIST */}
-        {showAbsenceList && (
-          <div className="mt-2.5 p-3 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2 text-xs animate-in fade-in duration-150">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-              <span className="font-bold text-slate-300 flex items-center gap-1.5">
-                <Coffee className="w-3.5 h-3.5 text-amber-400" />
-                <span>Na pauze ({breakOps.length})</span>
-              </span>
-            </div>
-            {breakOps.length === 0 ? (
-              <p className="text-[11px] text-slate-500 italic">Nikdo není na pauze</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {breakOps.map((op) => (
-                  <span
-                    key={op.id}
-                    className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px] font-medium"
-                  >
-                    {op.name} ({op.machineType})
-                  </span>
-                ))}
+      {/* ========================================================= */}
+      {/* STICKY BOTTOM THUMB ACTION BAR FOR MOBILE WALK */}
+      {/* ========================================================= */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 p-2.5 sm:p-3 shadow-2xl">
+        <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
+          {/* Quick Add Person (Thumb action) */}
+          {onAddNewOperator && (
+            <button
+              type="button"
+              onClick={onAddNewOperator}
+              className="flex-1 py-3 px-4 rounded-2xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 active:scale-95 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Přidat člověka na směnu</span>
+            </button>
+          )}
+
+          {/* Undo button if available */}
+          {hasUndo && onUndoSingle && (
+            <button
+              type="button"
+              onClick={onUndoSingle}
+              className="py-3 px-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 cursor-pointer"
+              title="Vrátit poslední přesun"
+            >
+              <Undo2 className="w-4 h-4 text-amber-400" />
+              <span className="hidden xs:inline">Zpět</span>
+            </button>
+          )}
+
+          {/* Cloud Sync indicator dot */}
+          <div className="px-3 py-3 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0">
+            {isOnline ? (
+              <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-emerald-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="hidden sm:inline">Online</span>
               </div>
-            )}
-
-            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 pt-2">
-              <span className="font-bold text-slate-300 flex items-center gap-1.5">
-                <UserX className="w-3.5 h-3.5 text-rose-400" />
-                <span>Nepřítomnost / Absence ({absenceOps.length})</span>
-              </span>
-            </div>
-            {absenceOps.length === 0 ? (
-              <p className="text-[11px] text-slate-500 italic">Všichni jsou přítomni</p>
             ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {absenceOps.map((op) => (
-                  <span
-                    key={op.id}
-                    className="px-2 py-0.5 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30 text-[11px] font-medium"
-                  >
-                    {op.name}
-                    {op.absenceReason ? ` • ${op.absenceReason}` : ""}
-                  </span>
-                ))}
+              <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-amber-400">
+                <WifiOff className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Offline</span>
               </div>
             )}
           </div>
-        )}
-
-        {/* Quick Hint Strip */}
-        <div className="mt-3 text-center text-[10px] text-slate-500 flex items-center justify-center gap-1">
-          <Sparkles className="w-3 h-3 text-blue-400" />
-          <span>Kliknutím na jakékoliv oddělení rozbalíte jména operátorů</span>
         </div>
       </div>
 
-      {/* INSTALL INSTRUCTIONS MODAL */}
+      {/* MOBILE OPERATOR ACTION DRAWER (BOTTOM SHEET) */}
+      <MobileOperatorDrawer
+        operator={activeDrawerOp}
+        customDepartments={customDepartments}
+        onClose={() => setActiveDrawerOp(null)}
+        onMoveDepartment={(opId, targetDeptId, reason) => {
+          if (onMoveOperator) {
+            onMoveOperator(opId, targetDeptId, reason);
+          }
+        }}
+        onChangeMachineType={(opId, machine) => {
+          if (onChangeMachineType) {
+            onChangeMachineType(opId, machine);
+          }
+        }}
+        onChangeStatus={(opId, status) => {
+          if (onChangeStatus) {
+            onChangeStatus(opId, status);
+          }
+        }}
+        onChangeAbsenceReason={(opId, reason) => {
+          if (onChangeAbsenceReason) {
+            onChangeAbsenceReason(opId, reason);
+          }
+        }}
+        onEditOperator={(op) => {
+          if (onEditOperator) {
+            onEditOperator(op);
+          }
+        }}
+      />
+
+      {/* PWA INSTALL INSTRUCTIONS MODAL */}
       {showInstallModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-slate-900 text-white rounded-3xl p-5 sm:p-6 border border-slate-800 shadow-2xl relative space-y-4">
@@ -747,9 +1081,9 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
                 <Smartphone className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-base font-black">Jak přidat Widget na plochu</h3>
+                <h3 className="text-base font-black">Jak přidat aplikaci na plochu</h3>
                 <p className="text-xs text-slate-400">
-                  Budete mít online přehled stále po ruce přímo z plochy mobilu.
+                  Přístup k rozpisu jedním klepnutím přímo z displeje telefonu.
                 </p>
               </div>
             </div>
@@ -764,14 +1098,14 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
                   <span>Android (Google Chrome):</span>
                 </div>
                 <p className="text-slate-300 pl-7">
-                  1. Vpravo nahoře v prohlížeči Chrome klikněte na <strong>tři tečky (⋮)</strong>.
+                  1. Vpravo nahoře v prohlížeči Chrome klepněte na <strong>tři tečky (⋮)</strong>.
                 </p>
                 <p className="text-slate-300 pl-7">
                   2. Zvolte <strong>„Přidat na plochu“</strong> nebo{" "}
                   <strong>„Instalovat aplikaci“</strong>.
                 </p>
                 <p className="text-emerald-300 pl-7 text-[11px] font-medium">
-                  ✓ Na ploše mobilu se vám vytvoří ikona ZF Widget se živým online přehledem.
+                  ✓ Vytvoří se samostatná aplikace, která funguje i bez připojení k internetu.
                 </p>
               </div>
 
@@ -784,21 +1118,20 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
                   <span>iPhone / iPad (Safari):</span>
                 </div>
                 <p className="text-slate-300 pl-7 flex items-center gap-1.5">
-                  1. Dole v Safari klikněte na tlačítko <strong>Sdílet</strong> (
+                  1. Dole v Safari klepněte na tlačítko <strong>Sdílet</strong> (
                   <Share className="w-3.5 h-3.5 inline text-blue-400" />
                   ).
                 </p>
                 <p className="text-slate-300 pl-7">
-                  2. Sjeďte dolů a vyberte <strong>„Přidat na plochu“</strong> (ikona čtverce se
-                  symbolem +).
+                  2. Sjeďte dolů a vyberte <strong>„Přidat na plochu“</strong> (ikona +).
                 </p>
                 <p className="text-slate-300 pl-7">
-                  3. Klikněte na <strong>Přidat</strong> vpravo nahoře.
+                  3. Klepněte na <strong>Přidat</strong> vpravo nahoře.
                 </p>
               </div>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-2">
               <button
                 type="button"
                 onClick={() => setShowInstallModal(false)}

@@ -13,7 +13,8 @@
         "shift": { "type": "string", "enum": ["A", "B", "C"] },
         "absenceReason": { "type": "string", "enum": ["Absence", "Dovolená", "PN"] },
         "notes": { "type": "string", "maxLength": 500 },
-        "lastMovedAt": { "type": "string", "maxLength": 50 }
+        "lastMovedAt": { "type": "string", "maxLength": 50 },
+        "isPermanent": { "type": "boolean" }
       },
       "required": ["name", "machineType", "departmentId", "status", "lastMovedAt"]
     },

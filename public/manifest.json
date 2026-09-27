@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "ZF Operativa - Živý Widget & Přehled",
-  "short_name": "ZF Widget",
-  "description": "Živý online widget a přehled oddělení skladu ZF Ostrov na plochu telefonu.",
+  "name": "ZF Operativa - Kapesní mistr haly",
+  "short_name": "ZF Mistr",
+  "description": "Mobilní kapesní verze a offline přehled směn skladu ZF Ostrov pro obchůzku haly.",
   "start_url": "/?view=widget",
   "scope": "/",
   "display": "standalone",
