@@ -1971,6 +1971,10 @@ export default function App() {
           onOpenRoster={() => setIsKmenModalOpen(true)}
           onOpenReport={() => setIsReportModalOpen(true)}
           onSetView={setViewMode}
+          onFocusDepartment={(departmentId) => {
+            setViewMode("board");
+            window.setTimeout(() => scrollToDepartment(departmentId), 50);
+          }}
           onEditOperator={(operator) => setAddEditOperator({ operator })}
         />
 
