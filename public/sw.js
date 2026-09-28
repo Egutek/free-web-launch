@@ -1,5 +1,5 @@
-// ZF Operativa Service Worker for Mobile Widget
-const CACHE_NAME = "zf-operativa-v1";
+// ZF Operativa Service Worker for Mobile Widget\n// Bump CACHE_NAME whenever the deployed app shell changes to avoid stale bundles.
+const CACHE_NAME = "zf-operativa-v2";
 const STATIC_ASSETS = [
   "/",
   "/manifest.json",
