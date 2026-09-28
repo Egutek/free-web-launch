@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Copy, Check, MessageSquare, Layers, ChevronDown, ChevronUp } from "lucide-react";
+import { Copy, Check, MessageSquare, Layers, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { Department, Operator, ShiftCode } from "../types";
 import { DEPARTMENTS } from "../data/departments";
 
@@ -284,7 +284,10 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
                     const state = op.workforceUnconfirmed ? "MOŽNÁ CHYBA" : absent ? op.absenceReason || "absence" : op.isLoaned ? "zapůjčený" : op.departmentId === "vna" ? "na VNA" : "na hale";
                     return (
                       <button key={op.id} type="button" onClick={() => onEditOperator?.(op)} className="flex items-center justify-between gap-2 rounded bg-slate-950/20 px-1.5 py-0.5 text-left hover:bg-slate-800/60 transition-colors">
-                        <span className="truncate">{op.name}</span>
+                        <span className="flex min-w-0 items-center gap-1 truncate">
+                          {op.workforceUnconfirmed && <AlertTriangle className="h-3 w-3 shrink-0 text-amber-300" title="MOŽNÁ CHYBA – zkontrolovat přiřazení" />}
+                          <span className="truncate">{op.name}</span>
+                        </span>
                         <span className={`shrink-0 text-[10px] ${absent ? "text-slate-500" : "text-emerald-300"}`}>{team} · {state}</span>
                       </button>
                     );
