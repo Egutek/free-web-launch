@@ -28,6 +28,7 @@ function isCounted(operator: Operator) {
 }
 
 function acceptsMachine(department: Department, operator: Operator) {
+  if (operator.isVnaOnly && department.id !== "vna") return false;
   if (department.id === "vna") return true;
   if (operator.machineType === "NONE") return true;
   if (department.id === "hovs") return operator.machineType === "LL";
