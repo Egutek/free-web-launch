@@ -111,6 +111,7 @@ export async function syncOperatorToCloud(
       queueOfflineAction("sync_operator", operator);
     }
     console.warn(`Firestore sync operator ${operator.name} failed (queued offline):`, error);
+    if (!shouldQueueIfOffline) throw error;
   }
 }
 
@@ -132,6 +133,7 @@ export async function deleteOperatorFromCloud(
       queueOfflineAction("delete_operator", operatorId);
     }
     console.warn(`Firestore delete operator ${operatorId} failed (queued offline):`, error);
+    if (!shouldQueueIfOffline) throw error;
   }
 }
 
@@ -263,6 +265,7 @@ export async function syncHistoryRecordToCloud(
       queueOfflineAction("sync_history", record);
     }
     console.warn(`Firestore sync history record ${record.id} failed (queued offline):`, error);
+    if (!shouldQueueIfOffline) throw error;
   }
 }
 
@@ -455,6 +458,7 @@ export async function syncRosterMemberToCloud(
       queueOfflineAction("sync_roster", member);
     }
     console.warn(`Firestore sync roster member ${member.name} failed (queued offline):`, error);
+    if (!shouldQueueIfOffline) throw error;
   }
 }
 
