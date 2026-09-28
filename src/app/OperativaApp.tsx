@@ -188,11 +188,7 @@ export default function App() {
   const [isKmenModalOpen, setIsKmenModalOpen] = useState(false);
 
   // Background AI learning engine: tracks patterns, learning history, and recognizes teams / PN
-  const { trackOperatorChange, aiSuggestions } = useOperatorLearning(
-    operators,
-    activeShift,
-    roster,
-  );
+  const { trackOperatorChange } = useOperatorLearning(operators, activeShift, roster);
 
   const handleShiftChange = useCallback((shift: ShiftCode) => {
     setActiveShift(shift);
@@ -1883,41 +1879,6 @@ export default function App() {
     (o) => o.departmentId === "vna" && isOperatorInOperation(o),
   ).length;
 
-  const handleAutoAssignAISuggestions = useCallback(() => {
-    if (aiSuggestions.length === 0) {
-      showToast("Všichni operátoři jsou již rozřazeni.");
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const updatedOperators = operators.map((op) => {
-      const matchSug = aiSuggestions.find((s) => s.operator.id === op.id);
-      if (matchSug) {
-        return {
-          ...op,
-          departmentId: matchSug.suggestedDeptId,
-          machineType: matchSug.suggestedMachine,
-          status: "active" as const,
-          absenceReason: undefined,
-          lastMovedAt: now,
-        };
-      }
-      return op;
-    });
-
-    setOperators(updatedOperators);
-    saveOperators(updatedOperators);
-
-    const movedOps = updatedOperators.filter((o) =>
-      aiSuggestions.some((s) => s.operator.id === o.id),
-    );
-    bulkSyncOperatorsToCloud(movedOps).catch((e) => console.warn("Cloud bulk sync error:", e));
-
-    showToast(
-      `⚡ AI úspěšně rozřadila ${aiSuggestions.length} operátorů podle jejich obvyklých pracovišť a strojů!`,
-    );
-  }, [aiSuggestions, operators]);
-
   return (
     <div className="min-h-screen flex flex-col bg-slate-100/70 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans selection:bg-blue-500 selection:text-white">
       {/* Top Application Header with Global Undo & Auto-scroll */}
@@ -1963,7 +1924,6 @@ export default function App() {
           activeShift={activeShift}
           onOpenReportModal={() => setIsReportModalOpen(true)}
           onOpenKmenModal={() => setIsKmenModalOpen(true)}
-          onAutoAssignAISuggestions={handleAutoAssignAISuggestions}
         />
 
         {/* View Mode 1: Department Columns (Board) */}
