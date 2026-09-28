@@ -57,6 +57,7 @@ const DEPT_HEADER_THEMES: Record<
     chipBgRTR: string;
   }
 > = {
+  problem_solver:{headerBg:'bg-violet-700 text-white',border:'border-violet-300 dark:border-violet-700',iconBg:'bg-white/20 text-white',addBtnHover:'hover:bg-white/20 text-white',chipBgLL:'bg-white/20 text-white',chipBgRTR:'bg-white/20 text-white'},
   hovc: {
     headerBg: "bg-gradient-to-r from-blue-700 via-blue-600 to-blue-800 text-white",
     border: "border-blue-300/80 dark:border-blue-700/80",

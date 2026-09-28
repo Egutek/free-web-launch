@@ -1,5 +1,5 @@
 export type BuiltinDepartmentId =
-  "hovc" | "hovs" | "putaway" | "vas" | "obwf" | "vna" | "obwi" | "unassigned";
+  "hovc" | "hovs" | "putaway" | "vas" | "obwf" | "vna" | "obwi" | "unassigned" | "problem_solver";
 
 export type DepartmentId = BuiltinDepartmentId | (string & {});
 
@@ -29,6 +29,8 @@ export interface Department {
 }
 
 export interface Operator {
+  personId?: string;
+  source?: 'manual' | 'ocr';
   id: string;
   name: string;
   machineType: MachineType; // jen LL nebo RTR

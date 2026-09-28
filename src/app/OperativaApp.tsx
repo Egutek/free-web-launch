@@ -91,6 +91,7 @@ const JUMP_THEMES: Record<
     badgeActive: string;
   }
 > = {
+  problem_solver:{border:'hover:border-violet-400',activeBorder:'border-violet-500',activeBg:'bg-violet-600 text-white',dragHoverBg:'bg-violet-100 border-violet-400',badgeBg:'bg-violet-100 text-violet-700',badgeActive:'bg-white/25 text-white'},
   hovc: {
     border: "hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/30",
     activeBorder: "border-blue-500 ring-4 ring-blue-500/30",

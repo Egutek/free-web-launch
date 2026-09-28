@@ -32,6 +32,8 @@ export const DEFAULT_ADJUSTMENTS: ImageAdjustments = {
   },
 };
 
+export const AUTO_OCR_ADJUSTMENTS: ImageAdjustments = {...DEFAULT_ADJUSTMENTS,autoLevels:true,contrast:12,brightness:3};
+
 export const WHITEBOARD_PRESET: ImageAdjustments = {
   grayscale: true,
   contrast: 45,
@@ -353,7 +355,7 @@ export async function applyImageAdjustments(
           ctx.putImageData(imageData, 0, 0);
         }
 
-        const outputDataUrl = canvas.toDataURL("image/jpeg", 0.86);
+        const outputDataUrl = canvas.toDataURL("image/jpeg", 0.94);
         resolve(outputDataUrl);
       } catch (err) {
         console.error("Image adjustment error:", err);

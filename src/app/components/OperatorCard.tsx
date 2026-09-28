@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import {useBoard} from '../services/sitesStore';
+import {activePeople,matchPerson} from '../../domain';
 import { ArrowRightLeft, Clock, Edit2, GripVertical, Users } from "lucide-react";
 import { Operator, OperatorStatus, DepartmentId, AbsenceReason, MachineType } from "../types";
 import {
@@ -41,6 +43,8 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
   onDropOperator,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const rosterState=useBoard();const members=activePeople(rosterState.board.roster,rosterState.date,operator.shift??'A');
+  const outsideRoster=members.length>0&&!members.some(p=>p.id===operator.personId)&&matchPerson(operator.name,members).length!==1;
 
   // Time since last assignment formatted
   const formatTimeAgo = (dateStr: string) => {
@@ -170,6 +174,7 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
             }`}
           >
             {operator.name}
+            {outsideRoster&&<span className="ml-2 text-xs font-normal text-slate-500">Výpomoc</span>}
           </h4>
 
           {/* Machine qualification tag: ONLY IF LL or RTR (never on VNA or Absence) - Click to toggle LL <-> RTR */}

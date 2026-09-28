@@ -2,6 +2,7 @@ import {getSnapshot} from "../services/sitesStore";
 import { Department, DepartmentId, ShiftCode } from "../types";
 
 export const DEPARTMENTS: Department[] = [
+ {id:'problem_solver',name:'Problem Solvers',code:'PS',fullName:'Problem Solvers',description:'Denní zařazení PS · kmenový tým zůstává Transport nebo VNA',color:'violet',badgeBg:'bg-violet-50 text-violet-800 border-violet-200 dark:bg-violet-950 dark:text-violet-200',badgeText:'text-violet-700',borderColor:'border-violet-500',iconName:'Wrench',targetCount:0},
   {
     id: "vna",
     name: "VNA",
