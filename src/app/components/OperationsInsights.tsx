@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   Activity,
+  ArrowRight,
   AlertTriangle,
   BarChart3,
   CheckCircle2,
@@ -32,6 +33,7 @@ interface OperationsInsightsProps {
   onOpenRoster: () => void;
   onOpenReport: () => void;
   onSetView: (view: "board" | "table" | "widget") => void;
+  onFocusDepartment: (departmentId: Department["id"]) => void;
   onEditOperator: (operator: Operator) => void;
 }
 
@@ -66,6 +68,7 @@ export function OperationsInsights({
   onOpenRoster,
   onOpenReport,
   onSetView,
+  onFocusDepartment,
   onEditOperator,
 }: OperationsInsightsProps) {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -125,6 +128,12 @@ export function OperationsInsights({
         .sort((a, b) => a.percentage - b.percentage),
     [departments, operators],
   );
+
+  const recentActivity = history.slice(0, 4);
+
+  const getDepartmentName = (departmentId: Department["id"]) =>
+    departments.find((department) => department.id === departmentId)?.name ??
+    (departmentId === "unassigned" ? "Absence" : departmentId);
 
   const copySummary = async () => {
     const summary = [
@@ -241,7 +250,10 @@ export function OperationsInsights({
                 <button
                   key={department.id}
                   type="button"
-                  onClick={() => onSetView("board")}
+                  onClick={() => {
+                    onSetView("board");
+                    onFocusDepartment(department.id);
+                  }}
                   className="group w-full text-left"
                   title={`Otevřít oddělení ${department.name}`}
                 >
@@ -317,6 +329,41 @@ export function OperationsInsights({
           <ExternalLink className="h-3.5 w-3.5" /> Report
         </button>
       </div>
+
+      {recentActivity.length > 0 && (
+        <div className="border-t border-slate-200/70 px-3 py-2.5 dark:border-slate-800/80">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Poslední pohyby
+            </h3>
+            <span className="text-[11px] text-slate-400">Směna {activeShift}</span>
+          </div>
+          <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+            {recentActivity.map((record) => (
+              <button
+                key={record.id}
+                type="button"
+                onClick={() => onOpenHistory()}
+                className="group flex min-w-0 items-center gap-2 rounded-lg bg-slate-50/80 px-2.5 py-2 text-left transition hover:bg-blue-50 dark:bg-slate-950/50 dark:hover:bg-slate-800"
+                title="Otevřít celou historii"
+              >
+                <Clock3 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[11px] font-extrabold text-slate-700 group-hover:text-blue-700 dark:text-slate-200 dark:group-hover:text-blue-300">
+                    {record.operatorName}
+                  </span>
+                  <span className="flex items-center gap-1 truncate text-[10px] text-slate-400">
+                    {getDepartmentName(record.fromDept)}
+                    <ArrowRight className="h-3 w-3 shrink-0" />
+                    {getDepartmentName(record.toDept)}
+                  </span>
+                </span>
+                <span className="shrink-0 text-[10px] font-bold text-slate-400">{formatTime(record.timestamp)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
