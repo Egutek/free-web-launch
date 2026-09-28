@@ -95,6 +95,14 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   const transportRosterCount = shiftRoster.filter((m) => !isVnaRosterMember(m)).length;
   const vnaRosterCount = shiftRoster.filter((m) => isVnaRosterMember(m)).length;
 
+  // Jemné upozornění: stálý operátor není na směně ani mezi evidovanými absencemi.
+  const missingRosterMembers = shiftRoster.filter(
+    (member) =>
+      !operators.some(
+        (op) => matchOperatorWithRoster(op.name, [member]).confidence >= 0.8,
+      ),
+  );
+
   // 4. Výpomoci mezi týmy
   const vnaLoanedToTransport = transportActiveOps.filter((op) => {
     const m = matchOperatorWithRoster(op.name, roster).match;
@@ -228,6 +236,16 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
                   </span>
                 )}
               </span>
+            </div>
+          )}
+
+          {missingRosterMembers.length > 0 && (
+            <div
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-950/50 border border-amber-700/50 text-[11px] text-amber-300"
+              title={missingRosterMembers.map((m) => m.name).join(", ")}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Možná chybí: {missingRosterMembers.length}</span>
             </div>
           )}
 
@@ -623,6 +641,15 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
             </button>
           </div>
         </div>
+
+        {missingRosterMembers.length > 0 && (
+          <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-2.5 py-2 text-[11px] text-amber-200">
+            <span className="font-semibold">Možná chybí: </span>
+            {missingRosterMembers.slice(0, 3).map((m) => m.name).join(", ")}
+            {missingRosterMembers.length > 3 ? ` +${missingRosterMembers.length - 3}` : ""}
+            <span className="text-amber-400/80"> • není na směně ani v evidované absenci</span>
+          </div>
+        )}
 
         {/* AI Key Rule Highlight */}
         <div className="text-[11px] text-indigo-300/90 flex items-center gap-1.5 flex-wrap">
