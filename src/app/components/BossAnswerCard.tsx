@@ -266,7 +266,7 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
                   <span key={team} className={`rounded-md border px-2 py-0.5 ${deficit > 1 ? "border-rose-500/40 bg-rose-500/15 text-rose-200" : deficit ? "border-amber-500/40 bg-amber-500/15 text-amber-200" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"}`}>
                     {team === "transport" ? "Transport" : "VNA"}: Kapaciťák {expected} · hala {present}
                     {absent > 0 && <span className="ml-1 text-[10px] opacity-70">({absent} abs.)</span>}
-                    {unconfirmed > 0 && <span className="ml-1 text-[10px] text-amber-200">({unconfirmed} ověřit)</span>}
+                    {unconfirmed > 0 && <span className="ml-1 text-[10px] text-amber-200">({unconfirmed} MOŽNÁ CHYBA)</span>}
                     {borrowed > 0 && <span className="ml-1 text-[10px] opacity-70">({borrowed} mimo)</span>}
                   </span>
                 ))}
@@ -281,7 +281,7 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
                   {permanent.map((op) => {
                     const absent = !op.workforceUnconfirmed && (op.status === "absence" || op.departmentId === "unassigned");
                     const team = getPrimaryTeam(op) === "vna" ? "VNA" : "Transport";
-                    const state = op.workforceUnconfirmed ? "ověřit" : absent ? op.absenceReason || "absence" : op.isLoaned ? "zapůjčený" : op.departmentId === "vna" ? "na VNA" : "na hale";
+                    const state = op.workforceUnconfirmed ? "MOŽNÁ CHYBA" : absent ? op.absenceReason || "absence" : op.isLoaned ? "zapůjčený" : op.departmentId === "vna" ? "na VNA" : "na hale";
                     return (
                       <button key={op.id} type="button" onClick={() => onEditOperator?.(op)} className="flex items-center justify-between gap-2 rounded bg-slate-950/20 px-1.5 py-0.5 text-left hover:bg-slate-800/60 transition-colors">
                         <span className="truncate">{op.name}</span>
