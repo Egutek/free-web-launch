@@ -85,7 +85,7 @@ export function subscribeToOperators(
       onUpdate(ops);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "operators");
+      console.error("Firestore subscription failed:", "operators", error);
       if (onError) onError(error);
     },
   );
@@ -235,7 +235,7 @@ export function subscribeToHistory(
       onUpdate(records);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "history");
+      console.error("Firestore subscription failed:", "history", error);
       if (onError) onError(error);
     },
   );
@@ -279,7 +279,7 @@ export function subscribeToTemplates(
       onUpdate(templates);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "templates");
+      console.error("Firestore subscription failed:", "templates", error);
       if (onError) onError(error);
     },
   );
@@ -355,7 +355,7 @@ export function subscribeToCustomDepartments(
       onUpdate(depts);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "custom_departments");
+      console.error("Firestore subscription failed:", "custom_departments", error);
       if (onError) onError(error);
     },
   );
@@ -427,7 +427,7 @@ export function subscribeToRoster(
       }
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, "roster");
+      console.error("Firestore subscription failed:", "roster", error);
       if (onError) onError(error);
     },
   );
