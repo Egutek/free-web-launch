@@ -310,21 +310,21 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
                 title={
                   missingRosterCount > 0
-                    ? `Kmen: ${rosterCount} lidí • ⚠️ ${missingRosterCount} chybí v evidenci směny ani v absenci. Klikněte pro kontrolu docházky.`
-                    : `Kmen: ${rosterCount} lidí • Všichni evidováni. Klikněte pro správu kmene.`
+                    ? `Stálý stav: ${rosterCount} lidí • ⚠️ ${missingRosterCount} chybí v evidenci směny ani v absenci. Klikněte pro kontrolu docházky.`
+                    : `Stálý stav: ${rosterCount} lidí • Všichni evidováni. Klikněte pro správu stálého týmu.`
                 }
               >
                 <Users
                   className={`w-3.5 h-3.5 ${missingRosterCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}`}
                 />
-                <span>Kmen</span>
+                <span>Stálý stav</span>
                 {rosterCount > 0 && (
                   <span className="font-mono text-[11px] opacity-80">({rosterCount})</span>
                 )}
                 {missingRosterCount > 0 && (
                   <span
                     className="inline-flex items-center justify-center px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-500 text-white shadow-2xs"
-                    title={`${missingRosterCount} lidí z kmene neevidováno`}
+                    title={`${missingRosterCount} lidí ze stálého stavu neevidováno`}
                   >
                     ! {missingRosterCount}
                   </span>

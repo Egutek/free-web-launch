@@ -120,24 +120,52 @@ export function matchOperatorWithRoster(
   return { match: null, confidence: 0, isExact: false };
 }
 
+export interface LoanedWorkerInfo {
+  operator: Operator;
+  homeTeam: "transport" | "vna";
+  currentDeptId: DepartmentId;
+  rosterMember: RosterMember;
+}
+
 export interface RosterDiscrepancyReport {
   totalRosterCount: number;
   presentInShiftCount: number;
   absentInShiftCount: number;
   totalAccountedCount: number;
   missingFromBoard: RosterMember[];
-  extraOnBoard: Operator[];
+  extraOnBoard: Operator[]; // Pouze ti, kteří v celém kmeni vůbec nejsou (externisti/brigádníci)
+  loanedWorkers: LoanedWorkerInfo[]; // Pracovníci zapůjčení z druhého týmu (z VNA na Transport nebo z Transportu na VNA)
   hasDiscrepancy: boolean;
   missingCount: number;
   extraCount: number;
+  loanedCount: number;
   activeShift: ShiftCode;
   filterTL: TeamLeaderRole | "all";
 }
 
 /**
+ * Zjistí, zda kmenový člen patří pod VNA (2. TL) nebo pod Transport (1. TL).
+ */
+export function isVnaRosterMember(member: RosterMember): boolean {
+  return member.teamLeader === "vna" || member.defaultDepartmentId === "vna";
+}
+
+export function isTransportRosterMember(member: RosterMember): boolean {
+  return !isVnaRosterMember(member);
+}
+
+/**
+ * Zjistí, zda dané oddělení patří pod Transport (tj. Putaway, HOVS, Outbound/hovc, VAS, OBWF, OBWI).
+ */
+export function isTransportDepartment(deptId: DepartmentId | string): boolean {
+  return deptId !== "vna" && deptId !== "unassigned";
+}
+
+/**
  * Spočítá nesrovnalosti mezi kmenem a aktuální směnou (tabulí):
- * - Kdo z kmene chybí v evidenci (není na oddělení ani v absenci)
- * - Kdo je na tabuli navíc mimo kmen (výpomoc / externista)
+ * - Kdo z kmene chybí v evidenci (není na žádném oddělení ani v absenci)
+ * - Kdo z druhého týmu aktuálně vypomáhá (zapůjčen mezi Transportem a VNA)
+ * - Kdo je na tabuli skutečně navíc mimo kmen (externista / brigádník bez záznamu v kmeni)
  */
 export function computeRosterDiscrepancies(
   currentOperators: Operator[],
@@ -148,7 +176,12 @@ export function computeRosterDiscrepancies(
   // Filtrujeme kmen pro danou směnu a zvoleného Team Leadera
   const shiftRoster = roster.filter((m) => {
     const isRightShift = !m.shift || m.shift === "all" || m.shift === activeShift;
-    const isRightTL = filterTL === "all" || m.teamLeader === filterTL;
+    const isRightTL =
+      filterTL === "all"
+        ? true
+        : filterTL === "vna"
+          ? isVnaRosterMember(m)
+          : isTransportRosterMember(m);
     const isActive = m.isActiveInRoster !== false;
     return isRightShift && isRightTL && isActive;
   });
@@ -179,18 +212,86 @@ export function computeRosterDiscrepancies(
     }
   }
 
-  // Hledáme lidi na tabuli, kteří nejsou v celém kmeni (nebo v daném kmeni)
+  // Hledáme:
+  // 1. Skutečné lidi navíc mimo kmen (nemají žádný záznam v celém kmeni)
+  // 2. Zapůjčené pracovníky mezi Transportem a VNA (patří do kmenu, ale vypomáhají druhému týmu)
   const extraOnBoard: Operator[] = [];
+  const loanedWorkers: LoanedWorkerInfo[] = [];
+
   for (const op of shiftOperators) {
-    const { match } = matchOperatorWithRoster(op.name, shiftRoster);
-    if (!match) {
-      extraOnBoard.push(op);
+    // Nepočítáme lidi v absenci jako "navíc"
+    if (op.departmentId === "unassigned" || op.status === "absence") {
+      continue;
+    }
+
+    // Shoda operátora s celým kmenem (Transport + VNA)
+    const fullMatch = matchOperatorWithRoster(op.name, roster).match;
+
+    if (!fullMatch) {
+      // Člověk vůbec není v žádném kmeni -> skutečně navíc (externista / brigádník)
+      if (filterTL === "transport") {
+        if (isTransportDepartment(op.departmentId)) {
+          extraOnBoard.push(op);
+        }
+      } else if (filterTL === "vna") {
+        if (op.departmentId === "vna") {
+          extraOnBoard.push(op);
+        }
+      } else {
+        extraOnBoard.push(op);
+      }
+      continue;
+    }
+
+    // Člověk JE v kmeni -> NIKDY nesmí být označen jako "Lidé navíc na směně / mimo kmen"!
+    const isVnaMember = isVnaRosterMember(fullMatch);
+
+    if (filterTL === "transport") {
+      // Díváme se na Transport:
+      // Pokud VNA člověk pracuje na Transportním oddělení -> je to VÝPOMOC z VNA, nikoliv člověk navíc!
+      if (isVnaMember && isTransportDepartment(op.departmentId)) {
+        loanedWorkers.push({
+          operator: op,
+          homeTeam: "vna",
+          currentDeptId: op.departmentId,
+          rosterMember: fullMatch,
+        });
+      }
+    } else if (filterTL === "vna") {
+      // Díváme se na VNA:
+      // Pokud Transportní člověk pracuje na VNA -> je to VÝPOMOC z Transportu, nikoliv člověk navíc!
+      if (!isVnaMember && op.departmentId === "vna") {
+        loanedWorkers.push({
+          operator: op,
+          homeTeam: "transport",
+          currentDeptId: op.departmentId,
+          rosterMember: fullMatch,
+        });
+      }
+    } else {
+      // Celý sklad: zachytit jakékoliv křížové výpomoci mezi týmy
+      if (isVnaMember && isTransportDepartment(op.departmentId)) {
+        loanedWorkers.push({
+          operator: op,
+          homeTeam: "vna",
+          currentDeptId: op.departmentId,
+          rosterMember: fullMatch,
+        });
+      } else if (!isVnaMember && op.departmentId === "vna") {
+        loanedWorkers.push({
+          operator: op,
+          homeTeam: "transport",
+          currentDeptId: op.departmentId,
+          rosterMember: fullMatch,
+        });
+      }
     }
   }
 
   const totalAccountedCount = presentInShiftCount + absentInShiftCount;
   const missingCount = missingFromBoard.length;
   const extraCount = extraOnBoard.length;
+  const loanedCount = loanedWorkers.length;
 
   return {
     totalRosterCount: shiftRoster.length,
@@ -199,9 +300,11 @@ export function computeRosterDiscrepancies(
     totalAccountedCount,
     missingFromBoard,
     extraOnBoard,
-    hasDiscrepancy: missingCount > 0 || extraCount > 0,
+    loanedWorkers,
+    hasDiscrepancy: missingCount > 0 || extraCount > 0 || loanedCount > 0,
     missingCount,
     extraCount,
+    loanedCount,
     activeShift,
     filterTL,
   };
@@ -244,11 +347,20 @@ export function reconcileExtractedOperatorsWithRoster(
   return { operators, reconciledCount };
 }
 
+export interface MissingDepartmentRosterMember {
+  member: RosterMember;
+  status: "missing_from_shift" | "in_absence" | "on_other_department";
+  currentDeptId?: DepartmentId;
+  absenceReason?: AbsenceReason;
+  existingOperatorId?: string;
+}
+
 export interface DepartmentHeadcountValidation {
   departmentId: DepartmentId;
   expectedRosterCount: number;
   actualActiveCount: number;
   actualTotalCount: number;
+  targetCount: number;
   diff: number; // actualActiveCount - expectedRosterCount
   hasDiscrepancy: boolean;
   hasSignificantDiscrepancy: boolean;
@@ -256,11 +368,20 @@ export interface DepartmentHeadcountValidation {
   severity: "none" | "moderate" | "significant";
   label: string;
   tooltip: string;
+  expectedMembers: RosterMember[];
+  missingMembers: MissingDepartmentRosterMember[];
+  extraOperators: Operator[];
+  loanedOperators: Operator[];
 }
 
 /**
  * Validace obsazení oddělení oproti očekávanému kmeni pro danou směnu.
  * Sleduje počet aktivních operátorů v provozu vůči oficiálnímu kmenu.
+ * Klíčové pravidlo:
+ * Všechna transportní oddělení (Putaway, HOVS, Outbound, VAS, OBWF, OBWI)
+ * patří pod jednotný KMEN TRANSPORT (1. TL). Kmenoví operátoři Transportu
+ * zde nejsou falešně označováni za "navíc" ani "zapůjčené z Outboundu"!
+ * VNA (2. TL) má svůj samostatný kmen.
  */
 export function validateDepartmentHeadcount(
   departmentId: DepartmentId,
@@ -275,6 +396,7 @@ export function validateDepartmentHeadcount(
       expectedRosterCount: 0,
       actualActiveCount: 0,
       actualTotalCount: operators.filter((o) => o.departmentId === "unassigned").length,
+      targetCount: 0,
       diff: 0,
       hasDiscrepancy: false,
       hasSignificantDiscrepancy: false,
@@ -282,89 +404,159 @@ export function validateDepartmentHeadcount(
       severity: "none",
       label: "Absence",
       tooltip: "Evidence absencí (dovolené, PN, absence)",
+      expectedMembers: [],
+      missingMembers: [],
+      extraOperators: [],
+      loanedOperators: [],
     };
   }
 
-  // Očekávaný počet kmenových lidí pro toto oddělení a směnu
-  const expectedMembers = roster.filter((m) => {
-    const isActive = m.isActiveInRoster !== false;
-    const isShiftMatch = !m.shift || m.shift === "all" || m.shift === activeShift;
-    const isDeptMatch = (m.defaultDepartmentId || "hovc") === departmentId;
-    return isActive && isShiftMatch && isDeptMatch;
-  });
-  const expectedRosterCount = expectedMembers.length;
+  // Operátoři na aktuální směně
+  const shiftOperators = operators.filter((o) => (o.shift || "A") === activeShift || !o.shift);
 
-  // Operátoři na tomto oddělení
-  const deptOps = operators.filter(
-    (o) => o.departmentId === departmentId && ((o.shift || "A") === activeShift || !o.shift),
-  );
+  // Operátoři přímo na tomto oddělení
+  const deptOps = shiftOperators.filter((o) => o.departmentId === departmentId);
   const actualActiveCount = deptOps.filter((o) => o.status === "active").length;
   const actualTotalCount = deptOps.length;
 
-  const diff = actualActiveCount - expectedRosterCount;
-  const absDiff = Math.abs(diff);
+  // 1. ODDĚLENÍ VNA (spravováno 2. Team Leaderem)
+  if (departmentId === "vna") {
+    const expectedMembers = roster.filter((m) => {
+      const isActive = m.isActiveInRoster !== false;
+      const isShiftMatch = !m.shift || m.shift === "all" || m.shift === activeShift;
+      return isActive && isShiftMatch && isVnaRosterMember(m);
+    });
+    const expectedRosterCount = expectedMembers.length;
+    const targetCount = 7;
 
-  // Pokud pro oddělení není kmen definován (např. dočasné vícepráce)
-  if (expectedRosterCount === 0) {
+    const missingMembers: MissingDepartmentRosterMember[] = [];
+    for (const member of expectedMembers) {
+      const foundOp = shiftOperators.find((o) => {
+        return matchOperatorWithRoster(o.name, [member]).confidence >= 0.8;
+      });
+
+      if (!foundOp) {
+        missingMembers.push({
+          member,
+          status: "missing_from_shift",
+        });
+      } else if (foundOp.departmentId === "unassigned" || foundOp.status === "absence") {
+        missingMembers.push({
+          member,
+          status: "in_absence",
+          currentDeptId: "unassigned",
+          absenceReason: foundOp.absenceReason || "Absence",
+          existingOperatorId: foundOp.id,
+        });
+      } else if (foundOp.departmentId !== "vna") {
+        missingMembers.push({
+          member,
+          status: "on_other_department",
+          currentDeptId: foundOp.departmentId,
+          existingOperatorId: foundOp.id,
+        });
+      }
+    }
+
+    // Výpomoc z Transportu: stálí operátoři Transport kmene pracující na VNA
+    const loanedOperators: Operator[] = deptOps.filter((op) => {
+      if (op.status !== "active") return false;
+      const match = matchOperatorWithRoster(op.name, roster).match;
+      return match && isTransportRosterMember(match);
+    });
+
+    // Skutečně mimo kmen: externisté / brigádníci bez záznamu v kmeni
+    const extraOperators: Operator[] = deptOps.filter((op) => {
+      if (op.status !== "active") return false;
+      const match = matchOperatorWithRoster(op.name, roster).match;
+      return !match;
+    });
+
+    const diff = actualActiveCount - expectedRosterCount;
+    const absDiff = Math.abs(diff);
+    const hasDiscrepancy = absDiff > 0 || loanedOperators.length > 0 || extraOperators.length > 0;
+    const isSignificant = absDiff >= 2 || extraOperators.length > 0;
+
+    let status: "balanced" | "deficit" | "surplus" = "balanced";
+    let severity: "none" | "moderate" | "significant" = "none";
+    let label = `Stálý stav VNA: ${expectedRosterCount} • Nyní: ${actualActiveCount}`;
+    let tooltip = `Stálý stav VNA: ${actualActiveCount} z ${expectedRosterCount} stálých VNA operátorů.`;
+
+    if (diff < 0) {
+      status = "deficit";
+      severity = isSignificant ? "significant" : "moderate";
+      label = `Stálý stav VNA: ${expectedRosterCount} • Nyní: ${actualActiveCount} (${diff})`;
+      tooltip = `VNA podstav (${diff}): na směně je ${actualActiveCount} z ${expectedRosterCount} stálých VNA operátorů.`;
+    } else if (diff > 0) {
+      status = "surplus";
+      severity = isSignificant ? "significant" : "moderate";
+      label = `Stálý stav VNA: ${expectedRosterCount} • Nyní: ${actualActiveCount} (+${diff})`;
+      tooltip = `VNA posílení (+${diff}): na směně je ${actualActiveCount} operátorů oproti ${expectedRosterCount} stálým.`;
+    }
+
     return {
       departmentId,
-      expectedRosterCount: 0,
+      expectedRosterCount,
       actualActiveCount,
       actualTotalCount,
-      diff: 0,
-      hasDiscrepancy: false,
-      hasSignificantDiscrepancy: false,
-      status: "balanced",
-      severity: "none",
-      label: "Bez kmenového plánu",
-      tooltip: "Pro toto oddělení není stanoven kmenový počet.",
+      targetCount,
+      diff,
+      hasDiscrepancy,
+      hasSignificantDiscrepancy: hasDiscrepancy && isSignificant,
+      status,
+      severity,
+      label,
+      tooltip,
+      expectedMembers,
+      missingMembers,
+      extraOperators,
+      loanedOperators,
     };
   }
 
-  // Určení významnosti odchylky:
-  // - malá oddělení (do 3 lidí): odchylka >= 1 je významná
-  // - střední oddělení (4-7 lidí): odchylka >= 2 je významná
-  // - velká oddělení (8+ lidí): odchylka >= 3 nebo relativní odchylka >= 25 %
-  let isSignificant = false;
-  if (expectedRosterCount <= 3) {
-    isSignificant = absDiff >= 1;
-  } else if (expectedRosterCount <= 7) {
-    isSignificant = absDiff >= 2;
-  } else {
-    isSignificant = absDiff >= 3 || absDiff / expectedRosterCount >= 0.25;
-  }
+  // 2. TRANSPORTNÍ ODDĚLENÍ (HOVC / Outbound, Putaway, HOVS, VAS, OBWF, OBWI)
+  // Všechna tato oddělení tvoří jeden společný KMEN TRANSPORT pod 1. Team Leaderem.
+  // Kmenoví lidé Transportu nejsou uzamčeni na Outboundu, pracují flexibilně kdekoliv v Transportu.
+  const transportRoster = roster.filter((m) => {
+    const isActive = m.isActiveInRoster !== false;
+    const isShiftMatch = !m.shift || m.shift === "all" || m.shift === activeShift;
+    return isActive && isShiftMatch && isTransportRosterMember(m);
+  });
 
-  const hasDiscrepancy = absDiff > 0;
-  const hasSignificantDiscrepancy = hasDiscrepancy && isSignificant;
+  // Operátoři z VNA kmene, kteří vypomáhají na tomto Transportním oddělení
+  const loanedOperators: Operator[] = deptOps.filter((op) => {
+    if (op.status !== "active") return false;
+    const match = matchOperatorWithRoster(op.name, roster).match;
+    return match && isVnaRosterMember(match);
+  });
 
-  let status: "balanced" | "deficit" | "surplus" = "balanced";
-  let severity: "none" | "moderate" | "significant" = "none";
-  let label = `Kmen: ${expectedRosterCount} • Nyní: ${actualActiveCount}`;
-  let tooltip = `Obsazení odpovídá kmeni (${actualActiveCount} z ${expectedRosterCount} kmenových operátorů).`;
+  // Operátoři bez kmenového záznamu (externisté / brigádníci)
+  const extraOperators: Operator[] = deptOps.filter((op) => {
+    if (op.status !== "active") return false;
+    const match = matchOperatorWithRoster(op.name, roster).match;
+    return !match;
+  });
 
-  if (diff < 0) {
-    status = "deficit";
-    severity = hasSignificantDiscrepancy ? "significant" : "moderate";
-    label = `Kmen: ${expectedRosterCount} • Nyní: ${actualActiveCount} (${diff})`;
-    tooltip = `Kmenová kontrola: Podstav na oddělení (${diff}). Na směně je ${actualActiveCount} operátorů z očekávaných ${expectedRosterCount} kmenových.`;
-  } else if (diff > 0) {
-    status = "surplus";
-    severity = hasSignificantDiscrepancy ? "significant" : "moderate";
-    label = `Kmen: ${expectedRosterCount} • Nyní: ${actualActiveCount} (+${diff})`;
-    tooltip = `Kmenová kontrola: Přestav na oddělení (+${diff}). Na směně je ${actualActiveCount} operátorů oproti ${expectedRosterCount} kmenovým (výpomoc / posílení).`;
-  }
+  const hasLoaned = loanedOperators.length > 0;
+  const hasExtra = extraOperators.length > 0;
+  const hasDiscrepancy = hasLoaned || hasExtra;
 
   return {
     departmentId,
-    expectedRosterCount,
+    expectedRosterCount: transportRoster.length,
     actualActiveCount,
     actualTotalCount,
-    diff,
+    targetCount: 10,
+    diff: 0,
     hasDiscrepancy,
-    hasSignificantDiscrepancy,
-    status,
-    severity,
-    label,
-    tooltip,
+    hasSignificantDiscrepancy: hasExtra,
+    status: "balanced",
+    severity: hasExtra ? "moderate" : "none",
+    label: `Tým Transport (${actualActiveCount})`,
+    tooltip: `Oddělení spadá pod Tým Transport (celkem ${transportRoster.length} stálých operátorů). Na tomto oddělení je ${actualActiveCount} operátorů.${hasLoaned ? ` Z toho ${loanedOperators.length} zapůjčeno z VNA.` : ""}${hasExtra ? ` Z toho ${extraOperators.length} externistů mimo stálý stav.` : ""}`,
+    expectedMembers: [],
+    missingMembers: [],
+    extraOperators,
+    loanedOperators,
   };
 }

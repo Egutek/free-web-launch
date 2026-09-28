@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   X,
   ArrowRightLeft,
@@ -11,14 +11,18 @@ import {
   Globe,
   UserX,
   Check,
+  Home,
+  Users,
 } from "lucide-react";
-import { DEPARTMENTS } from "../data/departments";
-import { AbsenceReason, Department, DepartmentId, Operator } from "../types";
+import { DEPARTMENTS, getDepartmentById } from "../data/departments";
+import { AbsenceReason, Department, DepartmentId, Operator, RosterMember } from "../types";
+import { matchOperatorWithRoster } from "../utils/rosterMatcher";
 
 interface QuickMoveModalProps {
   operator: Operator | null;
   operators: Operator[];
   customDepartments?: Department[];
+  roster?: RosterMember[];
   isOpen: boolean;
   onClose: () => void;
   onMove: (targetDeptId: DepartmentId, absenceReason?: AbsenceReason) => void;
@@ -28,14 +32,36 @@ export const QuickMoveModal: React.FC<QuickMoveModalProps> = ({
   operator,
   operators,
   customDepartments = [],
+  roster = [],
   isOpen,
   onClose,
   onMove,
 }) => {
+  // Match with roster to check home department
+  const matchedRoster = useMemo(() => {
+    if (!operator || !roster || roster.length === 0) return null;
+    return matchOperatorWithRoster(operator.name, roster).match;
+  }, [operator, roster]);
+
   if (!isOpen || !operator) return null;
 
   const allDepts = [...DEPARTMENTS, ...customDepartments];
   const currentDept = allDepts.find((d) => d.id === operator.departmentId);
+
+  const isVnaMember = Boolean(
+    matchedRoster &&
+    (matchedRoster.teamLeader === "vna" || matchedRoster.defaultDepartmentId === "vna"),
+  );
+  const teamName = isVnaMember
+    ? "VNA (2. TL)"
+    : matchedRoster
+      ? "Transport (1. TL)"
+      : "Mimo stálý stav";
+  const isCrossTeamLoan = Boolean(
+    matchedRoster &&
+    ((isVnaMember && operator.departmentId !== "vna") ||
+      (!isVnaMember && operator.departmentId === "vna")),
+  );
 
   const getDeptIcon = (id: DepartmentId, isCustom?: boolean) => {
     if (isCustom) {
@@ -106,18 +132,72 @@ export const QuickMoveModal: React.FC<QuickMoveModalProps> = ({
             </span>
           </div>
 
-          {operator.machineType && operator.machineType !== "NONE" && (
+          <div className="flex items-center gap-1.5">
             <span
-              className={`font-black text-xs px-2.5 py-0.5 rounded-md ${
-                operator.machineType === "RTR"
-                  ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
-                  : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+              className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
+                isVnaMember
+                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700"
+                  : matchedRoster
+                    ? "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300 dark:border-blue-700"
+                    : "bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300 dark:border-purple-700"
               }`}
             >
-              {operator.machineType}
+              Tým: {teamName}
             </span>
-          )}
+            {operator.machineType && operator.machineType !== "NONE" && (
+              <span
+                className={`font-black text-xs px-2.5 py-0.5 rounded-md ${
+                  operator.machineType === "RTR"
+                    ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
+                    : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+                }`}
+              >
+                {operator.machineType}
+              </span>
+            )}
+          </div>
         </div>
+
+        {/* Cross-team assistance banner (Transport <-> VNA) */}
+        {isCrossTeamLoan && (
+          <div className="px-5 py-2.5 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/80 flex items-center justify-between gap-3 animate-in fade-in">
+            <div className="min-w-0">
+              <span className="text-[10px] font-extrabold uppercase text-amber-800 dark:text-amber-300 block">
+                Dočasná výpomoc mezi úseky
+              </span>
+              <p className="text-xs text-slate-700 dark:text-slate-200">
+                {isVnaMember ? (
+                  <>
+                    Pracovník z{" "}
+                    <strong className="text-emerald-700 dark:text-emerald-400">VNA</strong> pomáhá
+                    na úseku <strong>{currentDept?.name}</strong>
+                  </>
+                ) : (
+                  <>
+                    Pracovník z{" "}
+                    <strong className="text-blue-700 dark:text-blue-400">Transportu</strong> pomáhá
+                    na <strong>VNA</strong>
+                  </>
+                )}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onMove(isVnaMember ? "vna" : "hovc");
+                onClose();
+              }}
+              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shrink-0"
+              title={
+                isVnaMember
+                  ? `Přesunout ${operator.name} zpět na VNA úsek`
+                  : `Přesunout ${operator.name} zpět na Transport úsek`
+              }
+            >
+              <span>Přesunout na {isVnaMember ? "VNA" : "Transport"}</span>
+            </button>
+          </div>
+        )}
 
         {/* Department Selection Grid */}
         <div className="p-4 sm:p-5 overflow-y-auto flex-1">

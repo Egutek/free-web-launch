@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   X,
   Users,
@@ -12,18 +12,20 @@ import {
   Save,
   RotateCcw,
   Sparkles,
-  ArrowRight,
-  ShieldCheck,
-  Building2,
   Truck,
   Forklift,
   Info,
-  Check,
   CheckSquare,
   Square,
   FileText,
-  ChevronDown,
-  Layers,
+  Copy,
+  Check,
+  Building2,
+  ShieldCheck,
+  ArrowRight,
+  Filter,
+  CheckCircle,
+  HelpCircle,
 } from "lucide-react";
 import {
   AbsenceReason,
@@ -35,7 +37,11 @@ import {
   TeamLeaderRole,
 } from "../types";
 import { DEPARTMENTS, getDepartmentById } from "../data/departments";
-import { computeRosterDiscrepancies, normalizeNameForMatching } from "../utils/rosterMatcher";
+import {
+  computeRosterDiscrepancies,
+  normalizeNameForMatching,
+  matchOperatorWithRoster,
+} from "../utils/rosterMatcher";
 
 interface KmenModalProps {
   isOpen: boolean;
@@ -43,6 +49,8 @@ interface KmenModalProps {
   roster: RosterMember[];
   currentOperators: Operator[];
   activeShift: ShiftCode;
+  initialDepartmentId?: DepartmentId | "all";
+  initialTab?: "check" | "list" | "add";
   onAddRosterMember: (member: Omit<RosterMember, "id" | "createdAt">) => void;
   onUpdateRosterMember: (member: RosterMember) => void;
   onDeleteRosterMember: (memberId: string) => void;
@@ -62,6 +70,7 @@ interface KmenModalProps {
     reason?: AbsenceReason,
   ) => void;
   onAddCurrentOperatorToRoster?: (operator: Operator) => void;
+  onMoveOperator?: (operatorId: string, targetDeptId: DepartmentId, reason?: AbsenceReason) => void;
 }
 
 interface ParsedBulkEntry {
@@ -81,6 +90,8 @@ export const KmenModal: React.FC<KmenModalProps> = ({
   roster,
   currentOperators,
   activeShift,
+  initialDepartmentId = "all",
+  initialTab = "list",
   onAddRosterMember,
   onUpdateRosterMember,
   onDeleteRosterMember,
@@ -92,11 +103,27 @@ export const KmenModal: React.FC<KmenModalProps> = ({
   onResetRosterToDefaults,
   onQuickAssignMissingOperator,
   onAddCurrentOperatorToRoster,
+  onMoveOperator,
 }) => {
-  const [activeTab, setActiveTab] = useState<"check" | "list" | "add">("check");
+  const [activeTab, setActiveTab] = useState<"check" | "list" | "add">(initialTab);
   const [addMode, setAddMode] = useState<"single" | "bulk">("bulk");
   const [selectedTLFilter, setSelectedTLFilter] = useState<TeamLeaderRole | "all">("transport");
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<DepartmentId | "all">(
+    initialDepartmentId,
+  );
+  const [selectedPresenceFilter, setSelectedPresenceFilter] = useState<
+    "all" | "active" | "absence" | "missing" | "loaned"
+  >("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [copiedNotification, setCopiedNotification] = useState(false);
+
+  // Sync initial parameters when opening modal
+  useEffect(() => {
+    if (isOpen) {
+      if (initialDepartmentId) setSelectedDeptFilter(initialDepartmentId);
+      if (initialTab) setActiveTab(initialTab);
+    }
+  }, [isOpen, initialDepartmentId, initialTab]);
 
   // Bulk selection in members list
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
@@ -133,16 +160,56 @@ export const KmenModal: React.FC<KmenModalProps> = ({
   const [bulkDefaultShift, setBulkDefaultShift] = useState<ShiftCode | "all">("all");
   const [skipDuplicates, setSkipDuplicates] = useState(true);
 
-  // Discrepancy report calculation
+  // Discrepancy report calculation for the whole kmen
   const report = useMemo(() => {
     return computeRosterDiscrepancies(currentOperators, roster, activeShift, selectedTLFilter);
   }, [currentOperators, roster, activeShift, selectedTLFilter]);
 
-  // Filtered members list
+  // Map active shift operators by matched roster member ID
+  const shiftOperatorMatchMap = useMemo(() => {
+    const map = new Map<string, Operator>();
+    const shiftOps = currentOperators.filter((o) => (o.shift || "A") === activeShift);
+    for (const member of roster) {
+      const match = shiftOps.find(
+        (op) => matchOperatorWithRoster(op.name, [member]).confidence >= 0.8,
+      );
+      if (match) {
+        map.set(member.id, match);
+      }
+    }
+    return map;
+  }, [currentOperators, roster, activeShift]);
+
+  // Filtered members list with TL, Department, Presence, and Search filters
   const filteredMembers = useMemo(() => {
     return roster.filter((m) => {
       const matchTL = selectedTLFilter === "all" || m.teamLeader === selectedTLFilter;
       const matchShift = !m.shift || m.shift === "all" || m.shift === activeShift;
+      const matchDept =
+        selectedDeptFilter === "all" || (m.defaultDepartmentId || "hovc") === selectedDeptFilter;
+
+      // Presence filter
+      const opOnShift = shiftOperatorMatchMap.get(m.id);
+      let matchPresence = true;
+      if (selectedPresenceFilter === "active") {
+        matchPresence = Boolean(
+          opOnShift && opOnShift.departmentId !== "unassigned" && opOnShift.status === "active",
+        );
+      } else if (selectedPresenceFilter === "absence") {
+        matchPresence = Boolean(
+          opOnShift && (opOnShift.departmentId === "unassigned" || opOnShift.status === "absence"),
+        );
+      } else if (selectedPresenceFilter === "missing") {
+        matchPresence = !opOnShift;
+      } else if (selectedPresenceFilter === "loaned") {
+        matchPresence = Boolean(
+          opOnShift &&
+          opOnShift.departmentId !== "unassigned" &&
+          opOnShift.status === "active" &&
+          opOnShift.departmentId !== (m.defaultDepartmentId || "hovc"),
+        );
+      }
+
       const q = searchQuery.toLowerCase().trim();
       const matchSearch =
         !q ||
@@ -151,9 +218,59 @@ export const KmenModal: React.FC<KmenModalProps> = ({
         getDepartmentById(m.defaultDepartmentId || "hovc")
           .name.toLowerCase()
           .includes(q);
-      return matchTL && matchShift && matchSearch;
+
+      return matchTL && matchShift && matchDept && matchPresence && matchSearch;
     });
-  }, [roster, selectedTLFilter, activeShift, searchQuery]);
+  }, [
+    roster,
+    selectedTLFilter,
+    activeShift,
+    selectedDeptFilter,
+    selectedPresenceFilter,
+    searchQuery,
+    shiftOperatorMatchMap,
+  ]);
+
+  // Counts by department for quick filter badges
+  const departmentCounts = useMemo(() => {
+    const counts = new Map<DepartmentId, number>();
+    roster.forEach((m) => {
+      if (selectedTLFilter !== "all" && m.teamLeader !== selectedTLFilter) return;
+      if (m.shift && m.shift !== "all" && m.shift !== activeShift) return;
+      const d = m.defaultDepartmentId || "hovc";
+      counts.set(d, (counts.get(d) || 0) + 1);
+    });
+    return counts;
+  }, [roster, selectedTLFilter, activeShift]);
+
+  // Counts by presence on shift
+  const presenceCounts = useMemo(() => {
+    let active = 0;
+    let absence = 0;
+    let missing = 0;
+    let loaned = 0;
+
+    roster.forEach((m) => {
+      if (selectedTLFilter !== "all" && m.teamLeader !== selectedTLFilter) return;
+      if (m.shift && m.shift !== "all" && m.shift !== activeShift) return;
+      if (selectedDeptFilter !== "all" && (m.defaultDepartmentId || "hovc") !== selectedDeptFilter)
+        return;
+
+      const op = shiftOperatorMatchMap.get(m.id);
+      if (!op) {
+        missing++;
+      } else if (op.departmentId === "unassigned" || op.status === "absence") {
+        absence++;
+      } else {
+        active++;
+        if (op.departmentId !== (m.defaultDepartmentId || "hovc")) {
+          loaned++;
+        }
+      }
+    });
+
+    return { active, absence, missing, loaned, total: active + absence + missing };
+  }, [roster, selectedTLFilter, activeShift, selectedDeptFilter, shiftOperatorMatchMap]);
 
   // Existing names map for duplicate detection
   const existingNamesMap = useMemo(() => {
@@ -176,14 +293,12 @@ export const KmenModal: React.FC<KmenModalProps> = ({
       const trimmed = rawLine.trim();
       if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
 
-      // Check if line has separators: semicolon, tab, or comma
       let tokens: string[] = [];
       if (trimmed.includes(";")) {
         tokens = trimmed.split(";").map((t) => t.trim());
       } else if (trimmed.includes("\t")) {
         tokens = trimmed.split("\t").map((t) => t.trim());
       } else if (trimmed.includes(",")) {
-        // Only split by comma if there's no single whole name like "Novák, Jan"
         const commaParts = trimmed.split(",").map((t) => t.trim());
         if (commaParts.length > 2) {
           tokens = commaParts;
@@ -197,19 +312,16 @@ export const KmenModal: React.FC<KmenModalProps> = ({
       const name = tokens[0]?.trim();
       if (!name || name.length < 2) continue;
 
-      // Prevent exact duplicates inside the same pasted batch
       const norm = normalizeNameForMatching(name);
       if (seenInBatch.has(norm)) continue;
       seenInBatch.add(norm);
 
-      // Parse optional columns or fall back to defaults
       let itemTL = bulkDefaultTL;
       let itemDept = bulkDefaultDept;
       let itemMachine = bulkDefaultMachine;
       let itemShift = bulkDefaultShift;
       let itemNotes: string | undefined = undefined;
 
-      // Optional column 1: TL or Dept
       if (tokens.length >= 2 && tokens[1]) {
         const val1 = tokens[1].toLowerCase();
         if (val1.includes("vna")) {
@@ -229,7 +341,6 @@ export const KmenModal: React.FC<KmenModalProps> = ({
         }
       }
 
-      // Optional column 2: Dept or Machine
       if (tokens.length >= 3 && tokens[2]) {
         const val2 = tokens[2].toLowerCase();
         const matchedDept = DEPARTMENTS.find(
@@ -249,7 +360,6 @@ export const KmenModal: React.FC<KmenModalProps> = ({
         }
       }
 
-      // Optional column 3: Machine
       if (tokens.length >= 4 && tokens[3]) {
         const val3 = tokens[3].toUpperCase();
         if (val3.includes("RTR")) itemMachine = "RTR";
@@ -257,7 +367,6 @@ export const KmenModal: React.FC<KmenModalProps> = ({
         else if (val3.includes("NONE")) itemMachine = "NONE";
       }
 
-      // Optional column 4: Shift
       if (tokens.length >= 5 && tokens[4]) {
         const val4 = tokens[4].toUpperCase();
         if (val4 === "A" || val4 === "B" || val4 === "C") {
@@ -267,12 +376,10 @@ export const KmenModal: React.FC<KmenModalProps> = ({
         }
       }
 
-      // Optional column 5: Notes
       if (tokens.length >= 6 && tokens[5]) {
         itemNotes = tokens[5];
       }
 
-      // Machine adjustment for VNA
       if (itemDept === "vna") {
         itemMachine = "NONE";
       }
@@ -430,7 +537,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
     setConfirmDeleteData({
       ids,
       title: `Hromadné odstranění ${ids.length} pracovníků z kmene`,
-      description: `Opravdu chcete odebrat z kmene ${ids.length} vybraných pracovníků (${preview})? Tuto akci nelze vrátit jedním kliknutím.`,
+      description: `Opravdu chcete odebrat z kmene ${ids.length} vybraných pracovníků (${preview})?`,
     });
   };
 
@@ -439,16 +546,6 @@ export const KmenModal: React.FC<KmenModalProps> = ({
       ids: [member.id],
       title: `Odstranění pracovníka z kmene`,
       description: `Opravdu chcete odebrat z kmene pracovníka "${member.name}"?`,
-    });
-  };
-
-  const handleTriggerDeleteAllFiltered = () => {
-    if (filteredMembers.length === 0) return;
-    const ids = filteredMembers.map((m) => m.id);
-    setConfirmDeleteData({
-      ids,
-      title: `Smazat všech ${ids.length} zobrazených pracovníků z kmene`,
-      description: `Opravdu chcete odebrat všech ${ids.length} pracovníků odpovídajících aktuálnímu filtru?`,
     });
   };
 
@@ -466,6 +563,42 @@ export const KmenModal: React.FC<KmenModalProps> = ({
       return next;
     });
     setConfirmDeleteData(null);
+  };
+
+  // Bulk Deploy selected missing members to shift
+  const handleBulkDeploySelectedToShift = () => {
+    const selectedMembers = roster.filter((m) => selectedMemberIds.has(m.id));
+    if (selectedMembers.length === 0) return;
+
+    selectedMembers.forEach((member) => {
+      const existingOp = shiftOperatorMatchMap.get(member.id);
+      if (existingOp) {
+        if (existingOp.departmentId === "unassigned" || existingOp.status === "absence") {
+          onMoveOperator?.(existingOp.id, member.defaultDepartmentId || "hovc");
+        }
+      } else {
+        onQuickAssignMissingOperator(member, "dept");
+      }
+    });
+
+    handleClearSelection();
+  };
+
+  // Bulk assign selected to Vacation / PN
+  const handleBulkAssignSelectedAbsence = (reason: AbsenceReason) => {
+    const selectedMembers = roster.filter((m) => selectedMemberIds.has(m.id));
+    if (selectedMembers.length === 0) return;
+
+    selectedMembers.forEach((member) => {
+      const existingOp = shiftOperatorMatchMap.get(member.id);
+      if (existingOp) {
+        onMoveOperator?.(existingOp.id, "unassigned", reason);
+      } else {
+        onQuickAssignMissingOperator(member, "absence", reason);
+      }
+    });
+
+    handleClearSelection();
   };
 
   // Bulk change TL for selected
@@ -505,14 +638,14 @@ export const KmenModal: React.FC<KmenModalProps> = ({
     setSelectedMemberIds(new Set());
   };
 
-  // Bulk change Shift for selected
-  const handleBulkChangeShift = (shift: ShiftCode | "all") => {
+  // Bulk change Machine for selected
+  const handleBulkChangeMachine = (machine: MachineType) => {
     const targetMembers = roster.filter((m) => selectedMemberIds.has(m.id));
     if (targetMembers.length === 0) return;
 
     const updated = targetMembers.map((m) => ({
       ...m,
-      shift,
+      defaultMachineType: machine,
     }));
 
     if (onBulkUpdateRosterMembers) {
@@ -523,11 +656,64 @@ export const KmenModal: React.FC<KmenModalProps> = ({
     setSelectedMemberIds(new Set());
   };
 
+  // Return all loaned workers belonging to the current filter back to their home department
+  const handleReturnAllLoanedToDefaultDept = () => {
+    roster.forEach((member) => {
+      if (selectedTLFilter !== "all" && member.teamLeader !== selectedTLFilter) return;
+      const op = shiftOperatorMatchMap.get(member.id);
+      if (
+        op &&
+        op.departmentId !== "unassigned" &&
+        op.status === "active" &&
+        member.defaultDepartmentId &&
+        op.departmentId !== member.defaultDepartmentId
+      ) {
+        onMoveOperator?.(op.id, member.defaultDepartmentId);
+      }
+    });
+  };
+
+  // Deploy all missing workers of current filter to their default department on shift
+  const handleDeployAllMissingToShift = () => {
+    roster.forEach((member) => {
+      if (selectedTLFilter !== "all" && member.teamLeader !== selectedTLFilter) return;
+      if (member.shift && member.shift !== "all" && member.shift !== activeShift) return;
+      const op = shiftOperatorMatchMap.get(member.id);
+      if (!op) {
+        onQuickAssignMissingOperator(member, "dept");
+      } else if (op.departmentId === "unassigned" || op.status === "absence") {
+        onMoveOperator?.(op.id, member.defaultDepartmentId || "hovc");
+      }
+    });
+  };
+
+  // Copy roster list to clipboard
+  const handleCopyRosterToClipboard = () => {
+    const lines = filteredMembers.map((m) => {
+      const dept = getDepartmentById(m.defaultDepartmentId || "hovc");
+      const op = shiftOperatorMatchMap.get(m.id);
+      const statusText = !op
+        ? "Chybí"
+        : op.departmentId === "unassigned" || op.status === "absence"
+          ? `Absence: ${op.absenceReason || "Dovolená"}`
+          : `V provozu: ${getDepartmentById(op.departmentId).name}`;
+      return `${m.name}\t${m.teamLeader === "transport" ? "Transport" : "VNA"}\t${dept.name}\t${m.defaultMachineType || "LL"}\t${statusText}`;
+    });
+
+    const header = "Jméno\tTeam Leader\tVýchozí oddělení\tStroj\tStav na směně";
+    const text = [header, ...lines].join("\n");
+
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedNotification(true);
+      setTimeout(() => setCopiedNotification(false), 2500);
+    });
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="relative w-full max-w-5xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/90">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/90">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-blue-700 dark:bg-blue-600 text-white flex items-center justify-center shadow-md shrink-0">
               <Users className="w-5 h-5" />
@@ -535,25 +721,44 @@ export const KmenModal: React.FC<KmenModalProps> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                  Kmen zaměstnanců & Kontrola docházky
+                  Stálý stav zaměstnanců & Docházka
                 </h2>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
                   Směna {activeShift}
                 </span>
+                {copiedNotification && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 flex items-center gap-1 animate-in fade-in">
+                    <Check className="w-3 h-3 text-emerald-600" />
+                    Zkopírováno do schránky!
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Oficiální kmen lidí pod Team Leadery, hromadná správa a porovnání s tabulí směny
+                Přehledné nasazení stálých pracovníků na pracoviště, rychlé přesuny a hromadné
+                úpravy
               </p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            title="Zavřít okno"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleCopyRosterToClipboard}
+              className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+              title="Zkopírovat aktuálně zobrazený seznam do schránky (pro Excel nebo report)"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>Kopírovat seznam</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Zavřít okno (Esc)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* TL Role Selector & Top Metrics Bar */}
@@ -569,7 +774,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
               }`}
             >
               <Truck className="w-3.5 h-3.5" />
-              <span>Můj kmen (Transport)</span>
+              <span>Můj tým (Transport)</span>
             </button>
 
             <button
@@ -592,35 +797,37 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                   : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              <span>Vše</span>
+              <span>Vše ({roster.length})</span>
             </button>
           </div>
 
           {/* Decent metrics summary */}
-          <div className="flex items-center gap-2 text-xs flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs flex-wrap">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold shadow-2xs">
-              <span className="text-slate-400 font-normal">Kmen:</span>
+              <span className="text-slate-400 font-normal">Stálý stav:</span>
               <span className="font-mono font-bold text-slate-900 dark:text-white">
                 {report.totalRosterCount}
               </span>
             </div>
 
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 font-semibold shadow-2xs">
-              <span className="text-emerald-600 dark:text-emerald-400 font-normal">Na odd.:</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-normal">
+                Na pracovištích:
+              </span>
               <span className="font-mono font-bold">{report.presentInShiftCount}</span>
             </div>
 
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold shadow-2xs">
-              <span className="text-slate-400 font-normal">Absence:</span>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 font-semibold shadow-2xs">
+              <span className="text-amber-600 dark:text-amber-400 font-normal">Absence:</span>
               <span className="font-mono font-bold">{report.absentInShiftCount}</span>
             </div>
 
             {report.missingCount > 0 ? (
               <div
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 font-bold shadow-2xs"
-                title={`${report.missingCount} kmenových pracovníků není zapsáno na směně ani v absenci`}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-700 text-rose-900 dark:text-rose-200 font-bold shadow-2xs animate-pulse"
+                title={`${report.missingCount} stálých pracovníků není zapsáno na směně ani v absenci!`}
               >
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                 <span>Chybí: {report.missingCount}</span>
               </div>
             ) : (
@@ -635,6 +842,23 @@ export const KmenModal: React.FC<KmenModalProps> = ({
         {/* Tab switcher */}
         <div className="flex border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 bg-white dark:bg-slate-900 text-xs font-bold">
           <button
+            onClick={() => setActiveTab("list")}
+            className={`py-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === "list"
+                ? "border-blue-600 text-blue-600 dark:text-blue-400"
+                : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Stálí pracovníci ({filteredMembers.length})</span>
+            {selectedMemberIds.size > 0 && (
+              <span className="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-full">
+                {selectedMemberIds.size}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setActiveTab("check")}
             className={`py-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === "check"
@@ -645,25 +869,8 @@ export const KmenModal: React.FC<KmenModalProps> = ({
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>Porovnání se směnou (Kontrola)</span>
             {report.missingCount > 0 && (
-              <span className="text-[10px] bg-amber-500 text-white font-bold px-1.5 py-0.2 rounded-full">
+              <span className="text-[10px] bg-rose-600 text-white font-bold px-1.5 py-0.2 rounded-full">
                 {report.missingCount}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab("list")}
-            className={`py-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "list"
-                ? "border-blue-600 text-blue-600 dark:text-blue-400"
-                : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>Seznam kmenových lidí ({filteredMembers.length})</span>
-            {selectedMemberIds.size > 0 && (
-              <span className="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-full">
-                {selectedMemberIds.size}
               </span>
             )}
           </button>
@@ -677,341 +884,292 @@ export const KmenModal: React.FC<KmenModalProps> = ({
             }`}
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>+ Přidat do kmene (jednotlivě i hromadně)</span>
+            <span>+ Přidat do stálého stavu</span>
           </button>
         </div>
 
         {/* Body Content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-          {/* TAB 1: KONTROLA A POROVNÁNÍ SE SMĚNOU */}
-          {activeTab === "check" && (
-            <div className="space-y-4">
-              {/* Informative banner */}
-              <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2.5">
-                <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="font-semibold">
-                    Automatická tichá kontrola docházky oproti kmeni (
-                    {selectedTLFilter === "transport"
-                      ? "Můj kmen Transport"
-                      : selectedTLFilter === "vna"
-                        ? "Kmen VNA"
-                        : "Všechny kmeny"}
-                    )
-                  </p>
-                  <p className="text-blue-700 dark:text-blue-300">
-                    Aplikace na pozadí hlídá, zda jsou všichni vaši kmenoví lidé buď přiřazeni na
-                    oddělení, nebo zapsáni v absenci (dovolená, PN). OCR z fotografie jména
-                    automaticky v tichosti páruje s tímto kmenem.
-                  </p>
-                </div>
-              </div>
-
-              {/* Status Section 1: Missing Roster Members */}
-              {report.missingFromBoard.length > 0 ? (
-                <div className="space-y-2.5 p-3.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700/80">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <h3 className="font-bold text-xs sm:text-sm text-amber-950 dark:text-amber-200">
-                        Neevidovaní lidé z kmene ({report.missingFromBoard.length})
-                      </h3>
-                      <span className="text-[11px] text-amber-800 dark:text-amber-300 hidden sm:inline">
-                        — Nejsou na žádném oddělení ani v absenci
-                      </span>
-                    </div>
-
-                    {/* Bulk actions for missing */}
-                    {onBulkAssignMissingToShift && (
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <button
-                          onClick={() =>
-                            onBulkAssignMissingToShift(report.missingFromBoard, "dept")
-                          }
-                          className="px-2 py-1 text-[11px] font-bold rounded-lg bg-blue-600 hover:bg-blue-500 text-white shadow-2xs transition-colors cursor-pointer"
-                          title="Hromadně zapsat všechny chybějící na jejich výchozí oddělení"
-                        >
-                          + Všechny na výchozí oddělení
-                        </button>
-                        <button
-                          onClick={() =>
-                            onBulkAssignMissingToShift(
-                              report.missingFromBoard,
-                              "absence",
-                              "Dovolená",
-                            )
-                          }
-                          className="px-2 py-1 text-[11px] font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-white shadow-2xs transition-colors cursor-pointer"
-                          title="Hromadně zapsat všechny chybějící do absence Dovolená"
-                        >
-                          + Všechny: Dovolená
-                        </button>
-                        <button
-                          onClick={() =>
-                            onBulkAssignMissingToShift(report.missingFromBoard, "absence", "PN")
-                          }
-                          className="px-2 py-1 text-[11px] font-bold rounded-lg bg-rose-600 hover:bg-rose-500 text-white shadow-2xs transition-colors cursor-pointer"
-                          title="Hromadně zapsat všechny chybějící do absence PN"
-                        >
-                          + Všechny: PN
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                    {report.missingFromBoard.map((member) => {
-                      const defDept = getDepartmentById(member.defaultDepartmentId || "hovc");
-                      return (
-                        <div
-                          key={member.id}
-                          className="p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800/60 shadow-2xs space-y-2"
-                        >
-                          <div className="flex items-center justify-between gap-1.5">
-                            <div>
-                              <span className="font-bold text-xs text-slate-900 dark:text-white block">
-                                {member.name}
-                              </span>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                                Výchozí: {defDept.name} • {member.defaultMachineType || "LL"}
-                              </span>
-                            </div>
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 border border-amber-300/60">
-                              Chybí na směně
-                            </span>
-                          </div>
-
-                          {/* Quick 1-click action buttons */}
-                          <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-700/60 text-[11px]">
-                            <button
-                              onClick={() => onQuickAssignMissingOperator(member, "dept")}
-                              className="px-2 py-1 rounded font-semibold bg-blue-50 hover:bg-blue-600 hover:text-white dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-colors shrink-0 cursor-pointer shadow-2xs"
-                              title={`Přiřadit na výchozí oddělení ${defDept.name}`}
-                            >
-                              + Na {defDept.name}
-                            </button>
-
-                            <button
-                              onClick={() =>
-                                onQuickAssignMissingOperator(member, "absence", "Dovolená")
-                              }
-                              className="px-2 py-1 rounded font-semibold bg-amber-100/70 hover:bg-amber-600 hover:text-white dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 transition-colors shrink-0 cursor-pointer shadow-2xs"
-                              title="Zapsat jako Dovolená"
-                            >
-                              + Dovolená
-                            </button>
-
-                            <button
-                              onClick={() => onQuickAssignMissingOperator(member, "absence", "PN")}
-                              className="px-2 py-1 rounded font-semibold bg-rose-50 hover:bg-rose-600 hover:text-white dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800 transition-colors shrink-0 cursor-pointer shadow-2xs"
-                              title="Zapsat jako PN (nemoc)"
-                            >
-                              + PN
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/80 flex items-center gap-2.5">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <div>
-                    <h3 className="font-bold text-xs sm:text-sm text-emerald-950 dark:text-emerald-200">
-                      Všichni kmenoví lidé jsou evidováni
-                    </h3>
-                    <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                      Žádný pracovník z vašeho kmene nechybí. Všichni jsou buď v provozu na
-                      odděleních, nebo omluveni v absenci.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Status Section 2: Extra workers on shift (Out of Roster / Výpomoc) with Bulk Add */}
-              {report.extraOnBoard.length > 0 && (
-                <div className="space-y-2.5 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-slate-500" />
-                      <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                        Lidé navíc na směně / mimo kmen ({report.extraOnBoard.length})
-                      </h3>
-                      <span className="text-[11px] text-slate-500 hidden sm:inline">
-                        — Výpomoc, externisté, hosté
-                      </span>
-                    </div>
-
-                    {/* Bulk add all extra to roster button */}
-                    {onAddAllExtraToRoster && (
-                      <button
-                        onClick={() => onAddAllExtraToRoster(report.extraOnBoard)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition-all active:scale-95 cursor-pointer self-start sm:self-auto"
-                        title="Přidat všech tyto pracovníky najednou do kmene"
-                      >
-                        <UserPlus className="w-3.5 h-3.5" />
-                        <span>+ Přidat všech {report.extraOnBoard.length} lidí do kmene</span>
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                    {report.extraOnBoard.map((op) => {
-                      const dept = getDepartmentById(op.departmentId);
-                      return (
-                        <div
-                          key={op.id}
-                          className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs flex items-center justify-between gap-1.5 shadow-2xs"
-                        >
-                          <div className="min-w-0">
-                            <span className="font-bold text-slate-900 dark:text-white truncate block">
-                              {op.name}
-                            </span>
-                            <span className="text-[10px] text-slate-500">
-                              {dept.name} • {op.machineType}
-                            </span>
-                          </div>
-
-                          {onAddCurrentOperatorToRoster && (
-                            <button
-                              onClick={() => onAddCurrentOperatorToRoster(op)}
-                              className="px-2 py-1 rounded text-[10px] font-semibold bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-colors shrink-0 cursor-pointer"
-                              title="Přidat do kmene"
-                            >
-                              + Do kmene
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 2: SEZNAM KMENOVÝCH LIDÍ + HROMADNÝ VÝBĚR A MAZÁNÍ */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3.5">
+          {/* TAB 1: KMENOVÍ PRACOVNÍCI (SEZNAM + RYCHLÁ MANIPULACE + HROMADNÉ AKCE) */}
           {activeTab === "list" && (
             <div className="space-y-3">
-              {/* Search, Reset & Add Switcher */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div className="relative flex-1 max-w-sm">
+              {/* Department Filter Pills (Single-click department filtering) */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
+                <span className="text-slate-400 font-semibold shrink-0 text-[11px] flex items-center gap-1 mr-1">
+                  <Filter className="w-3 h-3" />
+                  Oddělení:
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedDeptFilter("all")}
+                  className={`px-2.5 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer text-xs ${
+                    selectedDeptFilter === "all"
+                      ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-2xs"
+                      : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+                  }`}
+                >
+                  Všechna oddělení
+                </button>
+
+                {DEPARTMENTS.filter((d) => d.id !== "unassigned").map((dept) => {
+                  const count = departmentCounts.get(dept.id) || 0;
+                  const isSelected = selectedDeptFilter === dept.id;
+
+                  return (
+                    <button
+                      key={dept.id}
+                      type="button"
+                      onClick={() => setSelectedDeptFilter(isSelected ? "all" : dept.id)}
+                      className={`px-2.5 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1 text-xs ${
+                        isSelected
+                          ? "bg-blue-600 text-white shadow-2xs"
+                          : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60"
+                      }`}
+                    >
+                      <span>{dept.name}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                          isSelected
+                            ? "bg-blue-800 text-white"
+                            : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Status on shift filter pills (All / Na směně / V absenci / Chybí) */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-1.5 overflow-x-auto text-xs">
+                  <span className="text-slate-400 font-semibold shrink-0 text-[11px]">
+                    Stav na směně {activeShift}:
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPresenceFilter("all")}
+                    className={`px-2 py-0.5 rounded-lg font-bold text-xs transition-colors cursor-pointer ${
+                      selectedPresenceFilter === "all"
+                        ? "bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900"
+                        : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    Všichni ({presenceCounts.total})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPresenceFilter("active")}
+                    className={`px-2 py-0.5 rounded-lg font-bold text-xs transition-colors cursor-pointer flex items-center gap-1 ${
+                      selectedPresenceFilter === "active"
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span>Na směně ({presenceCounts.active})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPresenceFilter("absence")}
+                    className={`px-2 py-0.5 rounded-lg font-bold text-xs transition-colors cursor-pointer flex items-center gap-1 ${
+                      selectedPresenceFilter === "absence"
+                        ? "bg-amber-600 text-white shadow-2xs"
+                        : "text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    <span>V absenci ({presenceCounts.absence})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPresenceFilter("missing")}
+                    className={`px-2 py-0.5 rounded-lg font-bold text-xs transition-colors cursor-pointer flex items-center gap-1 ${
+                      selectedPresenceFilter === "missing"
+                        ? "bg-rose-600 text-white shadow-2xs"
+                        : "text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                    <span>Chybí ({presenceCounts.missing})</span>
+                  </button>
+
+                  {presenceCounts.loaned > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPresenceFilter("loaned")}
+                      className={`px-2 py-0.5 rounded-lg font-bold text-xs transition-colors cursor-pointer flex items-center gap-1 ${
+                        selectedPresenceFilter === "loaned"
+                          ? "bg-amber-600 text-white shadow-2xs"
+                          : "text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                      }`}
+                      title="Kmenoví pracovníci, kteří na směně pracují na jiném oddělení než je jejich výchozí"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                      <span>Zapůjčení ({presenceCounts.loaned})</span>
+                    </button>
+                  )}
+
+                  {/* Fast 1-click batch utilities for shift supervisors */}
+                  {presenceCounts.loaned > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleReturnAllLoanedToDefaultDept}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 cursor-pointer shadow-2xs active:scale-95 transition-all ml-1"
+                      title="Přesunout všechny zapůjčené kmenové pracovníky zpět na jejich úsek (Transport / VNA)"
+                    >
+                      <span>🔄 Vrátit na kmenový úsek ({presenceCounts.loaned})</span>
+                    </button>
+                  )}
+
+                  {presenceCounts.missing > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleDeployAllMissingToShift}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold bg-blue-100 hover:bg-blue-200 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-700 cursor-pointer shadow-2xs active:scale-95 transition-all ml-1"
+                      title="Zařadit všechny dosud neevidované kmenové pracovníky na jejich výchozí pracoviště"
+                    >
+                      <span>⚡ Zařadit ({presenceCounts.missing})</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative flex-1 max-w-xs">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Hledat v kmeni..."
-                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-8 pr-7 py-1 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  {filteredMembers.length > 0 && (
+                  {searchQuery && (
                     <button
-                      onClick={handleToggleSelectAllFiltered}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer"
-                      title={
-                        isAllFilteredSelected
-                          ? "Zrušit výběr zobrazených"
-                          : "Vybrat všechny zobrazené"
-                      }
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                     >
-                      {isAllFilteredSelected ? (
-                        <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
-                      ) : (
-                        <Square className="w-3.5 h-3.5 text-slate-400" />
-                      )}
-                      <span>
-                        {isAllFilteredSelected ? "Odznačit vše" : "Označit vše"} (
-                        {filteredMembers.length})
-                      </span>
+                      <X className="w-3 h-3" />
                     </button>
                   )}
-
-                  <button
-                    onClick={onResetRosterToDefaults}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer"
-                    title="Obnovit výchozí kmen 65 operátorů ZF PICK"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Obnovit výchozí</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setAddMode("bulk");
-                      setActiveTab("add");
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ Přidat do kmene</span>
-                  </button>
                 </div>
               </div>
 
-              {/* Floating / Sticky Bulk Action Bar for Selected Members */}
+              {/* Floating Multi-Select Quick Action Bar */}
               {selectedMemberIds.size > 0 && (
-                <div className="p-2.5 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 rounded-xl flex flex-wrap items-center justify-between gap-2 animate-in fade-in duration-100">
+                <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-lg flex flex-wrap items-center justify-between gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-xs text-blue-900 dark:text-blue-100 flex items-center gap-1.5">
-                      <CheckSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                      Vybráno: <span className="font-mono text-sm">
-                        {selectedMemberIds.size}
-                      </span>{" "}
+                    <CheckSquare className="w-4 h-4 text-blue-200" />
+                    <span className="font-extrabold text-xs">
+                      Vybráno:{" "}
+                      <span className="font-mono text-sm underline">{selectedMemberIds.size}</span>{" "}
                       pracovníků
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Bulk Change TL dropdown */}
-                    <div className="flex items-center gap-1 bg-white dark:bg-slate-800 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
-                      <span className="text-[11px] text-slate-500">Přenést pod TL:</span>
-                      <button
-                        onClick={() => handleBulkChangeTL("transport")}
-                        className="px-1.5 py-0.5 rounded font-bold text-[11px] text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-900/40 cursor-pointer"
-                        title="Přenést všechny vybrané pod Transport"
-                      >
-                        Transport
-                      </button>
-                      <span className="text-slate-300">|</span>
-                      <button
-                        onClick={() => handleBulkChangeTL("vna")}
-                        className="px-1.5 py-0.5 rounded font-bold text-[11px] text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/40 cursor-pointer"
-                        title="Přenést všechny vybrané pod VNA"
-                      >
-                        VNA
-                      </button>
-                    </div>
-
-                    {/* Bulk Delete Button */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Bulk deploy to shift */}
                     <button
+                      type="button"
+                      onClick={handleBulkDeploySelectedToShift}
+                      className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-xs transition-transform active:scale-95 cursor-pointer"
+                      title="Zařadit všechny vybrané na jejich výchozí oddělení na směně"
+                    >
+                      + Zařadit na směnu ({selectedMemberIds.size})
+                    </button>
+
+                    {/* Bulk Absence */}
+                    <button
+                      type="button"
+                      onClick={() => handleBulkAssignSelectedAbsence("Dovolená")}
+                      className="px-2 py-1 text-xs font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors cursor-pointer"
+                      title="Zapsat všechny vybrané jako Dovolená"
+                    >
+                      Dovolená
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleBulkAssignSelectedAbsence("PN")}
+                      className="px-2 py-1 text-xs font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors cursor-pointer"
+                      title="Zapsat všechny vybrané jako PN"
+                    >
+                      PN
+                    </button>
+
+                    {/* Machine switch */}
+                    <button
+                      type="button"
+                      onClick={() => handleBulkChangeMachine("LL")}
+                      className="px-2 py-1 text-xs font-bold rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
+                      title="Nastavit stroj LL pro vybrané"
+                    >
+                      Stroj LL
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleBulkChangeMachine("RTR")}
+                      className="px-2 py-1 text-xs font-bold rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
+                      title="Nastavit stroj RTR pro vybrané"
+                    >
+                      Stroj RTR
+                    </button>
+
+                    {/* TL Switch */}
+                    <button
+                      type="button"
+                      onClick={() => handleBulkChangeTL("transport")}
+                      className="px-2 py-1 text-xs font-bold rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
+                      title="Přenést pod TL Transport"
+                    >
+                      TL: Transport
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleBulkChangeTL("vna")}
+                      className="px-2 py-1 text-xs font-bold rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
+                      title="Přenést pod TL VNA"
+                    >
+                      TL: VNA
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      type="button"
                       onClick={handleTriggerBulkDeleteSelected}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-2xs transition-colors cursor-pointer"
-                      title="Smazat vybrané pracovníky z kmene"
+                      className="px-2.5 py-1 text-xs font-bold rounded-lg bg-rose-700 hover:bg-rose-800 text-white transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                      title="Smazat vybrané z kmene"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Smazat vybrané ({selectedMemberIds.size})</span>
+                      <span>Smazat</span>
                     </button>
 
                     {/* Clear selection */}
                     <button
+                      type="button"
                       onClick={handleClearSelection}
-                      className="px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                      className="px-2 py-1 text-xs font-semibold text-white/80 hover:text-white cursor-pointer ml-1"
                     >
-                      Zrušit výběr
+                      Zrušit
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Members table/cards */}
+              {/* Members Table */}
               <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-2xs">
-                <div className="max-h-[48vh] overflow-y-auto">
+                <div className="max-h-[52vh] overflow-y-auto">
                   <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-50 dark:bg-slate-800/80 sticky top-0 z-10 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold">
+                    <thead className="bg-slate-50 dark:bg-slate-800/90 sticky top-0 z-10 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold">
                       <tr>
                         <th className="py-2.5 px-3 w-8 text-center">
                           <input
@@ -1022,12 +1180,12 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                             title="Vybrat všechny zobrazené"
                           />
                         </th>
-                        <th className="py-2.5 px-3">Jméno pracovníka</th>
+                        <th className="py-2.5 px-3">Pracovník</th>
                         <th className="py-2.5 px-3">Team Leader</th>
-                        <th className="py-2.5 px-3">Výchozí oddělení</th>
-                        <th className="py-2.5 px-3">Výchozí stroj</th>
-                        <th className="py-2.5 px-3">Směna</th>
-                        <th className="py-2.5 px-3 text-right">Akce</th>
+                        <th className="py-2.5 px-3">Výchozí pracoviště</th>
+                        <th className="py-2.5 px-3 text-center">Stroj</th>
+                        <th className="py-2.5 px-3">Aktuální stav na směně {activeShift}</th>
+                        <th className="py-2.5 px-3 text-right">Rychlá akce</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1045,6 +1203,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                           const isEditing = editingMemberId === member.id;
                           const isSelected = selectedMemberIds.has(member.id);
                           const dept = getDepartmentById(member.defaultDepartmentId || "hovc");
+                          const opOnShift = shiftOperatorMatchMap.get(member.id);
 
                           if (isEditing) {
                             return (
@@ -1084,46 +1243,33 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                                     ))}
                                   </select>
                                 </td>
-                                <td className="p-2">
+                                <td className="p-2 text-center">
                                   <select
                                     value={editMachine}
                                     onChange={(e) => setEditMachine(e.target.value as MachineType)}
-                                    className="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                                    className="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono"
                                   >
                                     <option value="LL">LL</option>
                                     <option value="RTR">RTR</option>
                                     <option value="NONE">NONE</option>
                                   </select>
                                 </td>
-                                <td className="p-2">
-                                  <select
-                                    value={editShift}
-                                    onChange={(e) =>
-                                      setEditShift(e.target.value as ShiftCode | "all")
-                                    }
-                                    className="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                                  >
-                                    <option value="A">Směna A</option>
-                                    <option value="B">Směna B</option>
-                                    <option value="C">Směna C</option>
-                                    <option value="all">Všechny</option>
-                                  </select>
-                                </td>
-                                <td className="p-2 text-right space-x-1">
-                                  <button
-                                    onClick={handleSaveEdit}
-                                    className="p-1 rounded bg-blue-600 text-white hover:bg-blue-500 cursor-pointer shadow-2xs"
-                                    title="Uložit změny"
-                                  >
-                                    <Save className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => setEditingMemberId(null)}
-                                    className="p-1 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 cursor-pointer"
-                                    title="Zrušit úpravu"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
+                                <td className="p-2 text-slate-500 text-[11px]" colSpan={2}>
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      onClick={handleSaveEdit}
+                                      className="px-2.5 py-1 rounded bg-blue-600 text-white font-bold hover:bg-blue-500 cursor-pointer shadow-2xs flex items-center gap-1"
+                                    >
+                                      <Save className="w-3.5 h-3.5" />
+                                      <span>Uložit</span>
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingMemberId(null)}
+                                      className="px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 cursor-pointer"
+                                    >
+                                      Zrušit
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -1140,7 +1286,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                               onClick={() => handleToggleSelectMember(member.id)}
                             >
                               <td
-                                className="py-2 px-3 text-center"
+                                className="py-2.5 px-3 text-center"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <input
@@ -1150,55 +1296,227 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                                   className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                 />
                               </td>
-                              <td className="py-2 px-3 font-semibold text-slate-900 dark:text-white">
-                                {member.name}
-                              </td>
-                              <td className="py-2 px-3">
-                                {member.teamLeader === "transport" ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                                    <Truck className="w-2.5 h-2.5" />
-                                    <span>Transport (já)</span>
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                                    <Forklift className="w-2.5 h-2.5" />
-                                    <span>VNA (kolega)</span>
+
+                              <td className="py-2.5 px-3">
+                                <span className="font-bold text-slate-900 dark:text-white block">
+                                  {member.name}
+                                </span>
+                                {member.notes && (
+                                  <span className="text-[10px] text-slate-400 line-clamp-1">
+                                    {member.notes}
                                   </span>
                                 )}
                               </td>
-                              <td className="py-2 px-3 text-slate-600 dark:text-slate-400">
-                                <span
-                                  className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-bold ${dept.badgeBg}`}
+
+                              {/* Team Leader column: 1-click toggle */}
+                              <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nextTL: TeamLeaderRole =
+                                      member.teamLeader === "transport" ? "vna" : "transport";
+                                    onUpdateRosterMember({
+                                      ...member,
+                                      teamLeader: nextTL,
+                                    });
+                                  }}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-transform active:scale-95 cursor-pointer ${
+                                    member.teamLeader === "transport"
+                                      ? "bg-blue-50 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-100"
+                                      : "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100"
+                                  }`}
+                                  title={`Team Leader: ${member.teamLeader === "transport" ? "Transport" : "VNA"}. Kliknutím přepnout.`}
                                 >
-                                  {dept.name}
-                                </span>
+                                  {member.teamLeader === "transport" ? (
+                                    <Truck className="w-2.5 h-2.5" />
+                                  ) : (
+                                    <Forklift className="w-2.5 h-2.5" />
+                                  )}
+                                  <span>
+                                    {member.teamLeader === "transport" ? "Transport" : "VNA"}
+                                  </span>
+                                </button>
                               </td>
-                              <td className="py-2 px-3 font-mono font-bold text-slate-700 dark:text-slate-300">
-                                {member.defaultMachineType || "LL"}
+
+                              {/* Department column: direct select dropdown */}
+                              <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
+                                <select
+                                  value={member.defaultDepartmentId || "hovc"}
+                                  onChange={(e) => {
+                                    const newDept = e.target.value as DepartmentId;
+                                    onUpdateRosterMember({
+                                      ...member,
+                                      defaultDepartmentId: newDept,
+                                      defaultMachineType:
+                                        newDept === "vna"
+                                          ? ("NONE" as MachineType)
+                                          : member.defaultMachineType,
+                                    });
+                                  }}
+                                  className="px-2 py-0.5 rounded text-[11px] font-bold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 cursor-pointer hover:border-blue-400 focus:ring-1 focus:ring-blue-500 shadow-2xs"
+                                  title="Změnit výchozí kmenové pracoviště"
+                                >
+                                  {DEPARTMENTS.filter((d) => d.id !== "unassigned").map((d) => (
+                                    <option key={d.id} value={d.id}>
+                                      {d.name}
+                                    </option>
+                                  ))}
+                                </select>
                               </td>
-                              <td className="py-2 px-3 text-slate-500">
-                                {member.shift === "all" || !member.shift
-                                  ? "Vše"
-                                  : `Směna ${member.shift}`}
-                              </td>
+
+                              {/* 1-Click Toggle Machine Type LL <-> RTR */}
                               <td
-                                className="py-2 px-3 text-right space-x-1"
+                                className="py-2.5 px-3 text-center"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <button
-                                  onClick={() => handleStartEdit(member)}
-                                  className="p-1 rounded text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                                  title="Upravit kmenového pracovníka"
+                                  type="button"
+                                  onClick={() => {
+                                    const nextMachine: MachineType =
+                                      member.defaultMachineType === "LL" ? "RTR" : "LL";
+                                    onUpdateRosterMember({
+                                      ...member,
+                                      defaultMachineType: nextMachine,
+                                    });
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-black font-mono tracking-wider border cursor-pointer transition-transform active:scale-90 ${
+                                    member.defaultMachineType === "RTR"
+                                      ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 border-blue-300 dark:border-blue-700"
+                                      : member.defaultMachineType === "LL"
+                                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200 border-amber-300 dark:border-amber-700"
+                                        : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-300"
+                                  }`}
+                                  title={`Výchozí stroj: ${member.defaultMachineType || "LL"}. Kliknutím přepnout LL/RTR.`}
                                 >
-                                  <Edit2 className="w-3.5 h-3.5" />
+                                  {member.defaultMachineType || "LL"}
                                 </button>
-                                <button
-                                  onClick={() => handleTriggerDeleteSingle(member)}
-                                  className="p-1 rounded text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                                  title="Odstranit z kmene"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                              </td>
+
+                              {/* Live Status on Shift */}
+                              <td className="py-2.5 px-3">
+                                {!opOnShift ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                    <span>Chybí na směně</span>
+                                  </span>
+                                ) : opOnShift.departmentId === "unassigned" ||
+                                  opOnShift.status === "absence" ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                    <span>{opOnShift.absenceReason || "Dovolená"}</span>
+                                  </span>
+                                ) : opOnShift.departmentId !==
+                                  (member.defaultDepartmentId || "hovc") ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200 border border-amber-300 dark:border-amber-700"
+                                    title={`Kmenové oddělení: ${dept.name}, aktuálně na oddělení: ${getDepartmentById(opOnShift.departmentId).name}`}
+                                  >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                    <span>
+                                      Na {getDepartmentById(opOnShift.departmentId).name} (zapůjčen)
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                    <span>
+                                      V provozu: {getDepartmentById(opOnShift.departmentId).name}
+                                    </span>
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Quick 1-Click Action Buttons */}
+                              <td
+                                className="py-2.5 px-3 text-right"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="inline-flex items-center gap-1">
+                                  {!opOnShift ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => onQuickAssignMissingOperator(member, "dept")}
+                                        className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white border border-blue-200 dark:border-blue-800 transition-colors shadow-2xs cursor-pointer"
+                                        title={`Zařadit na výchozí oddělení ${dept.name}`}
+                                      >
+                                        + Zařadit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          onQuickAssignMissingOperator(
+                                            member,
+                                            "absence",
+                                            "Dovolená",
+                                          )
+                                        }
+                                        className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-500 hover:text-white border border-amber-200 dark:border-amber-800 transition-colors cursor-pointer"
+                                        title="Zapsat do Dovolená"
+                                      >
+                                        Dov.
+                                      </button>
+                                    </>
+                                  ) : opOnShift.departmentId === "unassigned" ||
+                                    opOnShift.status === "absence" ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        onMoveOperator?.(
+                                          opOnShift.id,
+                                          member.defaultDepartmentId || "hovc",
+                                        )
+                                      }
+                                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white border border-emerald-200 dark:border-emerald-800 transition-colors shadow-2xs cursor-pointer"
+                                      title="Povolat z absence zpět na oddělení"
+                                    >
+                                      + Do provozu
+                                    </button>
+                                  ) : opOnShift.departmentId !==
+                                    (member.defaultDepartmentId || "hovc") ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        onMoveOperator?.(
+                                          opOnShift.id,
+                                          member.defaultDepartmentId || "hovc",
+                                        )
+                                      }
+                                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-2xs transition-all active:scale-95 cursor-pointer flex items-center gap-0.5"
+                                      title={`Vrátit operátora z ${getDepartmentById(opOnShift.departmentId).name} domů do ${dept.name}`}
+                                    >
+                                      <span>🏠 Domů</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        onMoveOperator?.(opOnShift.id, "unassigned", "Dovolená")
+                                      }
+                                      className="px-1.5 py-0.5 rounded text-[10px] font-medium text-slate-500 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
+                                      title="Přesunout do Dovolená"
+                                    >
+                                      Do absence
+                                    </button>
+                                  )}
+
+                                  <div className="w-px h-3.5 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+
+                                  <button
+                                    onClick={() => handleStartEdit(member)}
+                                    className="p-1 rounded text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                                    title="Upravit kmenového pracovníka"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleTriggerDeleteSingle(member)}
+                                    className="p-1 rounded text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                                    title="Odstranit z kmene"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1209,8 +1527,8 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                 </div>
               </div>
 
-              {/* Bottom bulk summary and actions */}
-              <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+              {/* Bottom bulk summary & tools */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-slate-500 pt-1">
                 <span>
                   Celkem v kmeni:{" "}
                   <span className="font-bold text-slate-900 dark:text-white">{roster.length}</span>{" "}
@@ -1219,22 +1537,302 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                     ` (zobrazeno ${filteredMembers.length})`}
                 </span>
 
-                {filteredMembers.length > 0 && (
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={handleTriggerDeleteAllFiltered}
-                    className="text-xs text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                    onClick={onResetRosterToDefaults}
+                    className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                    title="Obnovit výchozí kmen ZF PICK (65 lidí)"
                   >
-                    Odstranit všechny zobrazené ({filteredMembers.length})
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Obnovit výchozí stav</span>
                   </button>
-                )}
+                </div>
               </div>
             </div>
           )}
 
-          {/* TAB 3: PŘIDAT DO KMENE (JEDNOTLIVĚ I HROMADNĚ) */}
+          {/* TAB 2: POROVNÁNÍ SE SMĚNOU (KONTROLA DOCHÁZKY) */}
+          {activeTab === "check" && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold">
+                    Kontrola docházky oproti kmeni pro Směnu {activeShift} (
+                    {selectedTLFilter === "transport"
+                      ? "Můj kmen Transport"
+                      : selectedTLFilter === "vna"
+                        ? "Kmen VNA"
+                        : "Všechny kmeny"}
+                    )
+                  </p>
+                  <p className="text-blue-700 dark:text-blue-300">
+                    Aplikace porovnává kmen s tabulí směny. Kmenový pracovník musí být buď na
+                    oddělení, nebo v absenci (dovolená, PN).
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Section 1: Missing Roster Members */}
+              {report.missingFromBoard.length > 0 ? (
+                <div className="space-y-2.5 p-3.5 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-700/80">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                      <h3 className="font-bold text-xs sm:text-sm text-rose-950 dark:text-rose-200">
+                        Neevidovaní lidé z kmene ({report.missingFromBoard.length})
+                      </h3>
+                      <span className="text-[11px] text-rose-800 dark:text-rose-300 hidden sm:inline">
+                        — Nejsou na žádném oddělení ani v absenci
+                      </span>
+                    </div>
+
+                    {/* Bulk actions for missing */}
+                    {onBulkAssignMissingToShift && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          onClick={() =>
+                            onBulkAssignMissingToShift(report.missingFromBoard, "dept")
+                          }
+                          className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-blue-600 hover:bg-blue-500 text-white shadow-2xs transition-colors cursor-pointer"
+                          title="Hromadně zapsat všechny chybějící na jejich výchozí oddělení"
+                        >
+                          + Všechny na výchozí oddělení
+                        </button>
+                        <button
+                          onClick={() =>
+                            onBulkAssignMissingToShift(
+                              report.missingFromBoard,
+                              "absence",
+                              "Dovolená",
+                            )
+                          }
+                          className="px-2 py-1 text-[11px] font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-white shadow-2xs transition-colors cursor-pointer"
+                          title="Hromadně zapsat všechny chybějící do absence Dovolená"
+                        >
+                          + Všechny: Dovolená
+                        </button>
+                        <button
+                          onClick={() =>
+                            onBulkAssignMissingToShift(report.missingFromBoard, "absence", "PN")
+                          }
+                          className="px-2 py-1 text-[11px] font-bold rounded-lg bg-rose-600 hover:bg-rose-500 text-white shadow-2xs transition-colors cursor-pointer"
+                          title="Hromadně zapsat všechny chybějící do absence PN"
+                        >
+                          + Všechny: PN
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
+                    {report.missingFromBoard.map((member) => {
+                      const defDept = getDepartmentById(member.defaultDepartmentId || "hovc");
+                      return (
+                        <div
+                          key={member.id}
+                          className="p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-800/60 shadow-2xs space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-1.5">
+                            <div>
+                              <span className="font-bold text-xs text-slate-900 dark:text-white block">
+                                {member.name}
+                              </span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                Výchozí: {defDept.name} • {member.defaultMachineType || "LL"}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200 border border-rose-300/60">
+                              Chybí
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-700/60 text-[11px]">
+                            <button
+                              onClick={() => onQuickAssignMissingOperator(member, "dept")}
+                              className="px-2 py-1 rounded font-bold bg-blue-50 hover:bg-blue-600 hover:text-white dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-colors shrink-0 cursor-pointer shadow-2xs"
+                              title={`Přiřadit na výchozí oddělení ${defDept.name}`}
+                            >
+                              + Na {defDept.name}
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                onQuickAssignMissingOperator(member, "absence", "Dovolená")
+                              }
+                              className="px-2 py-1 rounded font-semibold bg-amber-100/70 hover:bg-amber-600 hover:text-white dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 transition-colors shrink-0 cursor-pointer shadow-2xs"
+                              title="Zapsat jako Dovolená"
+                            >
+                              + Dov.
+                            </button>
+
+                            <button
+                              onClick={() => onQuickAssignMissingOperator(member, "absence", "PN")}
+                              className="px-2 py-1 rounded font-semibold bg-rose-50 hover:bg-rose-600 hover:text-white dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800 transition-colors shrink-0 cursor-pointer shadow-2xs"
+                              title="Zapsat jako PN"
+                            >
+                              + PN
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/80 flex items-center gap-2.5">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div>
+                    <h3 className="font-bold text-xs sm:text-sm text-emerald-950 dark:text-emerald-200">
+                      Všichni kmenoví lidé jsou evidováni
+                    </h3>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                      Žádný pracovník z vašeho kmene nechybí. Všichni jsou buď na odděleních, nebo
+                      omluveni v absenci.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Status Section 2: Cross-team loaned workers (Výpomoc mezi Transportem a VNA) */}
+              {report.loanedWorkers && report.loanedWorkers.length > 0 && (
+                <div className="space-y-2.5 p-3.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                      <h3 className="font-bold text-xs sm:text-sm text-amber-950 dark:text-amber-100">
+                        {selectedTLFilter === "transport"
+                          ? `Zapůjčení z VNA kmene (${report.loanedWorkers.length})`
+                          : selectedTLFilter === "vna"
+                            ? `Zapůjčení z Transport kmene (${report.loanedWorkers.length})`
+                            : `Výpomoc mezi týmy (${report.loanedWorkers.length})`}
+                      </h3>
+                      <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80 hidden sm:inline">
+                        — Kmenoví zaměstnanci ZF dočasně vypomáhající na druhém úseku
+                      </span>
+                    </div>
+
+                    {onMoveOperator && (
+                      <button
+                        onClick={() => {
+                          report.loanedWorkers.forEach((lw) => {
+                            const returnDept: DepartmentId = lw.homeTeam === "vna" ? "vna" : "hovc";
+                            onMoveOperator(lw.operator.id, returnDept);
+                          });
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-xs transition-all active:scale-95 cursor-pointer self-start sm:self-auto"
+                        title="Přesunout všechny zapůjčené pracovníky zpět na jejich úsek (Transport / VNA)"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Přesunout všechny na kmenový úsek</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {report.loanedWorkers.map((lw) => {
+                      const currentDept = getDepartmentById(lw.currentDeptId);
+                      const homeName = lw.homeTeam === "vna" ? "VNA kmen" : "Transport kmen";
+                      return (
+                        <div
+                          key={lw.operator.id}
+                          className="p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800/70 text-xs flex items-center justify-between gap-1.5 shadow-2xs"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-bold text-slate-900 dark:text-white truncate block">
+                              {lw.operator.name}
+                            </span>
+                            <span className="text-[10px] text-amber-700 dark:text-amber-300 font-semibold block">
+                              {homeName} • Nyní na: {currentDept.name}
+                            </span>
+                          </div>
+
+                          {onMoveOperator && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const returnDept: DepartmentId =
+                                  lw.homeTeam === "vna" ? "vna" : "hovc";
+                                onMoveOperator(lw.operator.id, returnDept);
+                              }}
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-amber-100 hover:bg-amber-600 hover:text-white dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 transition-colors shrink-0 cursor-pointer flex items-center gap-1"
+                              title={`Přesunout zpět na ${homeName}`}
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>Přesunout zpět</span>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Status Section 3: Extra workers on shift (Truly Out of Roster / Externisti / Brigádníci) */}
+              {report.extraOnBoard.length > 0 && (
+                <div className="space-y-2.5 p-3.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/80">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                      <h3 className="font-bold text-xs sm:text-sm text-purple-950 dark:text-purple-100">
+                        Lidé navíc na směně / mimo kmen ({report.extraOnBoard.length})
+                      </h3>
+                      <span className="text-[11px] text-purple-800/80 dark:text-purple-300/80 hidden sm:inline">
+                        — Externisté, brigádníci a pracovníci bez záznamu v kmeni
+                      </span>
+                    </div>
+
+                    {onAddAllExtraToRoster && (
+                      <button
+                        onClick={() => onAddAllExtraToRoster(report.extraOnBoard)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition-all active:scale-95 cursor-pointer self-start sm:self-auto"
+                        title="Přidat všechny tyto pracovníky najednou do kmene"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>+ Přidat všech {report.extraOnBoard.length} lidí do kmene</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {report.extraOnBoard.map((op) => {
+                      const dept = getDepartmentById(op.departmentId);
+                      return (
+                        <div
+                          key={op.id}
+                          className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800/70 text-xs flex items-center justify-between gap-1.5 shadow-2xs"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-bold text-slate-900 dark:text-white truncate block">
+                              {op.name}
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              {dept.name} • {op.machineType}
+                            </span>
+                          </div>
+
+                          {onAddCurrentOperatorToRoster && (
+                            <button
+                              onClick={() => onAddCurrentOperatorToRoster(op)}
+                              className="px-2 py-1 rounded text-[10px] font-semibold bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-colors shrink-0 cursor-pointer"
+                              title="Zařadit do stálého stavu"
+                            >
+                              + Do stálého stavu
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: PŘIDAT DO KMENE (HROMADNĚ TEXTEM NEBO JEDNOTLIVĚ) */}
           {activeTab === "add" && (
             <div className="space-y-4 max-w-2xl mx-auto py-1">
-              {/* Mode switch */}
               <div className="flex items-center justify-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 max-w-sm mx-auto">
                 <button
                   type="button"
@@ -1246,7 +1844,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                   }`}
                 >
                   <FileText className="w-3.5 h-3.5" />
-                  <span>Hromadné vložení (text / seznam)</span>
+                  <span>Hromadné vložení (text / Excel)</span>
                 </button>
 
                 <button
@@ -1263,15 +1861,15 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                 </button>
               </div>
 
-              {/* MODE 1: BULK ADD FORM */}
+              {/* Bulk Form */}
               {addMode === "bulk" && (
                 <div className="space-y-3.5 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-900 dark:text-white block">
-                      Vložte seznam jmen (jedno jméno na řádek, nebo zkopírováno z Excelu):
+                      Vložte seznam jmen (jedno jméno na řádek, nebo zkopírováno ze schránky):
                     </label>
                     <p className="text-[11px] text-slate-500">
-                      Můžete vložit prostý seznam jmen, nebo formát s oddělovačem:{" "}
+                      Podporuje prostý seznam jmen i formát s oddělovači:{" "}
                       <code className="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-[10px]">
                         Jan Novák; Transport; HOVC; LL; A
                       </code>
@@ -1289,7 +1887,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                   {/* Batch Defaults */}
                   <div className="space-y-2 pt-1 border-t border-slate-200 dark:border-slate-700/80">
                     <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
-                      Výchozí hodnoty pro vkládané pracovníky:
+                      Výchozí hodnoty pro vkládanou skupinu:
                     </span>
 
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs">
@@ -1332,7 +1930,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                         <select
                           value={bulkDefaultMachine}
                           onChange={(e) => setBulkDefaultMachine(e.target.value as MachineType)}
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono"
                         >
                           <option value="LL">LL</option>
                           <option value="RTR">RTR</option>
@@ -1356,7 +1954,6 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Duplicate Filter option & Live Parse Summary */}
                   <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700/80">
                     <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
                       <input
@@ -1365,7 +1962,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                         onChange={(e) => setSkipDuplicates(e.target.checked)}
                         className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
-                      <span>Přeskočit pracovníky, kteří už v kmeni existují</span>
+                      <span>Přeskočit pracovníky, kteří už ve stálém stavu existují</span>
                     </label>
 
                     {parsedBulkEntries.length > 0 && (
@@ -1378,7 +1975,6 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                     )}
                   </div>
 
-                  {/* Live preview list of parsed entries */}
                   {parsedBulkEntries.length > 0 && (
                     <div className="max-h-36 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                       {parsedBulkEntries.map((item, idx) => (
@@ -1389,14 +1985,13 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                             </span>
                             <span className="text-[10px] text-slate-400">
                               {item.teamLeader} • {item.defaultDepartmentId} •{" "}
-                              {item.defaultMachineType} •{" "}
-                              {item.shift === "all" ? "Vše" : `Směna ${item.shift}`}
+                              {item.defaultMachineType}
                             </span>
                           </div>
 
                           {item.isExisting ? (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">
-                              {skipDuplicates ? "Bude přeskočeno (již existuje)" : "Duplikát"}
+                              Již evidován
                             </span>
                           ) : (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
@@ -1408,7 +2003,6 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                     </div>
                   )}
 
-                  {/* Submit bulk */}
                   <div className="flex items-center justify-end gap-2 pt-2">
                     <button
                       type="button"
@@ -1425,13 +2019,13 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                       className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:pointer-events-none text-white shadow-xs transition-all active:scale-95 cursor-pointer"
                     >
                       <UserPlus className="w-4 h-4" />
-                      <span>Uložit {bulkToAddCount} pracovníků do kmene</span>
+                      <span>Uložit {bulkToAddCount} pracovníků do stálého stavu</span>
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* MODE 2: SINGLE MEMBER FORM */}
+              {/* Single Member Form */}
               {addMode === "single" && (
                 <form
                   onSubmit={handleCreateSingleMember}
@@ -1454,7 +2048,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
-                        Team Leader (Kmen):
+                        Team Leader (Tým):
                       </label>
                       <select
                         value={newTL}
@@ -1495,7 +2089,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                       <select
                         value={newMachine}
                         onChange={(e) => setNewMachine(e.target.value as MachineType)}
-                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono"
                       >
                         <option value="LL">LL (Nízkozdvih)</option>
                         <option value="RTR">RTR (Retrak)</option>
@@ -1528,7 +2122,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                       type="text"
                       value={newNotes}
                       onChange={(e) => setNewNotes(e.target.value)}
-                      placeholder="Např. Stálý kmen, zástupce mistra, specializace..."
+                      placeholder="Např. Stálý tým, zástupce mistra, specializace..."
                       className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -1546,7 +2140,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                       className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
                     >
                       <UserPlus className="w-4 h-4" />
-                      <span>Uložit do kmene</span>
+                      <span>Uložit do stálého stavu</span>
                     </button>
                   </div>
                 </form>
@@ -1559,7 +2153,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
         <div className="px-4 sm:px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/90 flex items-center justify-between text-xs text-slate-500">
           <div className="flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-            <span>AI na pozadí automaticky opravuje jména z OCR fotky podle tohoto kmene</span>
+            <span>AI asistent automaticky páruje OCR jména z fotografií tabule s tímto kmenem</span>
           </div>
 
           <button

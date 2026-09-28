@@ -16,6 +16,10 @@ import {
   ArrowUpRight,
   Scale,
   ShieldAlert,
+  X,
+  UserPlus,
+  ExternalLink,
+  ChevronRight,
 } from "lucide-react";
 import {
   Department,
@@ -27,6 +31,7 @@ import {
   RosterMember,
   ShiftCode,
 } from "../types";
+import { getDepartmentById } from "../data/departments";
 import { OperatorCard } from "./OperatorCard";
 import { resolveOperatorIdsFromDrop, getGlobalDragState } from "../utils/dragState";
 import { matchOperatorWithRoster, validateDepartmentHeadcount } from "../utils/rosterMatcher";
@@ -52,6 +57,14 @@ interface DepartmentColumnProps {
   onDropOperator: (operatorIds: string[], targetDeptId: DepartmentId) => void;
   onDeleteDepartment?: (deptId: DepartmentId) => void;
   onDeleteMultipleOperators?: (ids: string[]) => void;
+  onQuickAssignMissingOperator?: (
+    member: RosterMember,
+    action: "dept" | "absence",
+    reason?: AbsenceReason,
+  ) => void;
+  onMoveOperator?: (operatorId: string, targetDeptId: DepartmentId, reason?: AbsenceReason) => void;
+  onAddCurrentOperatorToRoster?: (operator: Operator) => void;
+  onOpenKmenModalWithDept?: (deptId: DepartmentId) => void;
 }
 
 // Vibrant department header color configurations
@@ -214,10 +227,16 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
   onDropOperator,
   onDeleteDepartment,
   onDeleteMultipleOperators,
+  onQuickAssignMissingOperator,
+  onMoveOperator,
+  onAddCurrentOperatorToRoster,
+  onOpenKmenModalWithDept,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [absenceFilter, setAbsenceFilter] = useState<"ALL" | AbsenceReason>("ALL");
+  const [isKmenMenuOpen, setIsKmenMenuOpen] = useState(false);
   const dragCounter = useRef(0);
+  const kmenMenuRef = useRef<HTMLDivElement>(null);
 
   // Subtle background validation check monitoring roster headcount vs active operators
   const headcountValidation = React.useMemo(() => {
@@ -228,6 +247,17 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
       activeShift,
     );
   }, [department.id, allOperators, operators, roster, activeShift]);
+
+  const handleQuickAssignAllMissingToThisDept = () => {
+    headcountValidation.missingMembers.forEach((item) => {
+      if (item.status === "missing_from_shift") {
+        onQuickAssignMissingOperator?.(item.member, "dept");
+      } else if (item.existingOperatorId && onMoveOperator) {
+        onMoveOperator(item.existingOperatorId, department.id);
+      }
+    });
+    setIsKmenMenuOpen(false);
+  };
 
   const getDeptIcon = (id: DepartmentId) => {
     if (department.isCustom) {
@@ -370,36 +400,44 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
                     Vícepráce
                   </span>
                 )}
-                {/* Subtle background validation indicator if headcount differs from roster kmen */}
-                {headcountValidation.expectedRosterCount > 0 && !isAbsence && (
-                  <div
-                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] font-bold tracking-tight transition-all cursor-help select-none ${
-                      headcountValidation.hasSignificantDiscrepancy
-                        ? headcountValidation.status === "deficit"
-                          ? "bg-rose-500/80 hover:bg-rose-500 text-white ring-1 ring-white/40 shadow-xs animate-pulse"
-                          : "bg-amber-400/90 hover:bg-amber-400 text-slate-950 ring-1 ring-white/40 shadow-xs font-black"
-                        : headcountValidation.hasDiscrepancy
-                          ? "bg-white/20 hover:bg-white/30 text-white/95 border border-white/20"
-                          : "bg-emerald-500/25 text-emerald-100 border border-emerald-400/30"
-                    }`}
-                    title={headcountValidation.tooltip}
-                  >
-                    {headcountValidation.status === "deficit" ? (
-                      <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
-                    ) : headcountValidation.status === "surplus" ? (
-                      <ArrowUpRight className="w-2.5 h-2.5 shrink-0" />
-                    ) : (
-                      <Scale className="w-2.5 h-2.5 text-emerald-200 shrink-0" />
-                    )}
-                    <span>
-                      {headcountValidation.diff > 0
-                        ? `+${headcountValidation.diff} kmen`
-                        : headcountValidation.diff < 0
-                          ? `${headcountValidation.diff} kmen`
-                          : "kmen OK"}
-                    </span>
-                  </div>
-                )}
+                {/* Headcount / Roster indicator */}
+                {!isAbsence &&
+                  (headcountValidation.loanedOperators.length > 0 ||
+                    headcountValidation.extraOperators.length > 0 ||
+                    (department.id === "vna" && headcountValidation.diff !== 0)) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsKmenMenuOpen((prev) => !prev);
+                      }}
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] font-bold tracking-tight transition-all cursor-pointer select-none active:scale-95 ${
+                        headcountValidation.extraOperators.length > 0
+                          ? "bg-purple-500/90 hover:bg-purple-500 text-white ring-1 ring-white/50 shadow-xs"
+                          : headcountValidation.loanedOperators.length > 0
+                            ? "bg-amber-400 hover:bg-amber-300 text-slate-950 ring-1 ring-white/50 shadow-xs font-black"
+                            : department.id === "vna" && headcountValidation.status === "deficit"
+                              ? "bg-rose-500/90 hover:bg-rose-500 text-white ring-1 ring-white/50 shadow-xs animate-pulse"
+                              : "bg-white/20 hover:bg-white/30 text-white/95 border border-white/20"
+                      }`}
+                      title="Kliknutím zobrazit kmenové složení a výpomoc"
+                    >
+                      {headcountValidation.extraOperators.length > 0 ? (
+                        <span>+{headcountValidation.extraOperators.length} externista</span>
+                      ) : headcountValidation.loanedOperators.length > 0 ? (
+                        <span>
+                          +{headcountValidation.loanedOperators.length}{" "}
+                          {department.id === "vna" ? "z Transportu" : "z VNA"}
+                        </span>
+                      ) : department.id === "vna" && headcountValidation.diff !== 0 ? (
+                        <span>
+                          {headcountValidation.diff > 0
+                            ? `+${headcountValidation.diff} VNA`
+                            : `${headcountValidation.diff} VNA`}
+                        </span>
+                      ) : null}
+                    </button>
+                  )}
               </div>
               {department.description && (
                 <p
@@ -485,6 +523,205 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
             )}
           </div>
         </div>
+
+        {/* Kmen Quick Management Popover */}
+        {isKmenMenuOpen && (
+          <div
+            ref={kmenMenuRef}
+            className="mt-3 p-3 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-2xl border border-slate-200 dark:border-slate-700 text-xs space-y-2.5 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+              <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white">
+                <Users className="w-3.5 h-3.5 text-blue-600" />
+                <span>
+                  {department.id === "vna"
+                    ? "Tým: VNA (2. Team Leader)"
+                    : `Oddělení: ${department.name} • Tým Transport`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsKmenMenuOpen(false)}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Headcount stats */}
+            <div className="grid grid-cols-2 gap-1.5 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg text-[11px]">
+              <div>
+                <span className="text-slate-500 block">
+                  {department.id === "vna" ? "Stálý stav VNA:" : "Stálý stav Transport celkem:"}
+                </span>
+                <strong className="text-slate-900 dark:text-white font-mono text-sm">
+                  {headcountValidation.expectedRosterCount} lidí
+                </strong>
+              </div>
+              <div>
+                <span className="text-slate-500 block">Nyní na oddělení:</span>
+                <strong className="text-slate-900 dark:text-white font-mono text-sm">
+                  {headcountValidation.actualActiveCount} lidí
+                </strong>
+              </div>
+            </div>
+
+            {/* VNA specific: Missing VNA members */}
+            {department.id === "vna" && headcountValidation.missingMembers.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[11px] text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3 text-amber-500" />
+                    Chybí ze stálého stavu VNA ({headcountValidation.missingMembers.length}):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleQuickAssignAllMissingToThisDept}
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-500 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    + Zařadit všechny sem
+                  </button>
+                </div>
+
+                <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5 divide-y divide-slate-100 dark:divide-slate-800/80">
+                  {headcountValidation.missingMembers.map((item) => (
+                    <div
+                      key={item.member.id}
+                      className="pt-1.5 first:pt-0 flex items-center justify-between gap-1 text-[11px]"
+                    >
+                      <div className="min-w-0">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 block truncate">
+                          {item.member.name}
+                        </span>
+                        <span className="text-[9px] text-slate-400">
+                          {item.status === "missing_from_shift"
+                            ? "Není na směně"
+                            : item.status === "in_absence"
+                              ? `V absenci (${item.absenceReason || "Dovolená"})`
+                              : `Na Transportu (${getDepartmentById(item.currentDeptId!).name})`}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (item.status === "missing_from_shift") {
+                            onQuickAssignMissingOperator?.(item.member, "dept");
+                          } else if (item.existingOperatorId && onMoveOperator) {
+                            onMoveOperator(item.existingOperatorId, department.id);
+                          }
+                          setIsKmenMenuOpen(false);
+                        }}
+                        className="px-2 py-0.5 rounded text-[10px] font-bold border transition-colors shrink-0 cursor-pointer shadow-2xs flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-500 hover:text-white"
+                        title="Zařadit/vrátit pracovníka na VNA"
+                      >
+                        {item.status === "on_other_department"
+                          ? "🏠 Vrátit na VNA"
+                          : item.status === "in_absence"
+                            ? "+ Z absence"
+                            : "+ Nasadit"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Loaned cross-team section */}
+            {headcountValidation.loanedOperators.length > 0 && (
+              <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 block">
+                  {department.id === "vna"
+                    ? `Výpomoc z Transportu (${headcountValidation.loanedOperators.length}):`
+                    : `Výpomoc z VNA (2. TL) (${headcountValidation.loanedOperators.length}):`}
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {headcountValidation.loanedOperators.map((op) => (
+                    <div
+                      key={op.id}
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 flex items-center gap-1 shadow-2xs"
+                    >
+                      <span className="font-semibold">{op.name}</span>
+                      {onMoveOperator && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const returnDept: DepartmentId =
+                              department.id === "vna" ? "hovc" : "vna";
+                            onMoveOperator(op.id, returnDept);
+                            setIsKmenMenuOpen(false);
+                          }}
+                          className="text-[9px] font-bold text-amber-800 dark:text-amber-300 hover:underline cursor-pointer ml-0.5"
+                          title={department.id === "vna" ? "Vrátit na Transport" : "Vrátit na VNA"}
+                        >
+                          {department.id === "vna" ? "→ Transport" : "→ VNA"}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Extra truly non-roster operators */}
+            {headcountValidation.extraOperators.length > 0 && (
+              <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 block">
+                  Mimo stálý stav (externisté / noví) ({headcountValidation.extraOperators.length}):
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {headcountValidation.extraOperators.map((op) => (
+                    <div
+                      key={op.id}
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-purple-50 dark:bg-purple-950/50 text-purple-900 dark:text-purple-200 border border-purple-200 dark:border-purple-800 flex items-center gap-1"
+                    >
+                      <span>{op.name}</span>
+                      {onAddCurrentOperatorToRoster && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onAddCurrentOperatorToRoster(op);
+                            setIsKmenMenuOpen(false);
+                          }}
+                          className="font-bold text-blue-600 hover:underline cursor-pointer text-[9px]"
+                        >
+                          + Do stálého týmu
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {department.id !== "vna" &&
+              headcountValidation.loanedOperators.length === 0 &&
+              headcountValidation.extraOperators.length === 0 && (
+                <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 text-[11px] flex items-center gap-1.5 font-semibold">
+                  <Scale className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Všichni operátoři na tomto oddělení patří pod stálý Tým Transport.</span>
+                </div>
+              )}
+
+            {/* Footer action */}
+            {onOpenKmenModalWithDept && (
+              <div className="pt-1 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsKmenMenuOpen(false);
+                    onOpenKmenModalWithDept(department.id);
+                  }}
+                  className="w-full py-1 px-2 rounded-lg text-center font-bold text-[11px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>Otevřít stálý stav pro {department.name}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Live Counters & Machine breakdown row */}
         <div className="mt-3 flex items-center justify-between text-xs pt-2.5 border-t border-white/20">
@@ -665,11 +902,13 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
                 key={operator.id}
                 operator={operator}
                 allOperators={allOperators.length > 0 ? allOperators : operators}
+                roster={roster}
                 isSelected={selectedOperatorId === operator.id}
                 isBulkSelected={bulkSelectedIds?.has(operator.id) ?? false}
                 isAnyBulkActive={(bulkSelectedIds?.size ?? 0) > 0}
                 bulkSelectedIds={bulkSelectedIds ? Array.from(bulkSelectedIds) : []}
                 isNonRoster={isNonRoster}
+                onAddCurrentOperatorToRoster={onAddCurrentOperatorToRoster}
                 onToggleBulkSelect={onToggleBulkSelect}
                 onSelect={onSelectOperator}
                 onOpenQuickMove={onOpenQuickMove}

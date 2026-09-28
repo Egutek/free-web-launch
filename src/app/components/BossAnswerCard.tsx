@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { Copy, Check, MessageSquare, Layers, ChevronDown, ChevronUp } from "lucide-react";
-import { Department, Operator } from "../types";
+import { Department, Operator, RosterMember, ShiftCode } from "../types";
 import { DEPARTMENTS } from "../data/departments";
+import {
+  isTransportDepartment,
+  isVnaRosterMember,
+  matchOperatorWithRoster,
+} from "../utils/rosterMatcher";
 
 interface BossAnswerCardProps {
   operators: Operator[];
   customDepartments?: Department[];
+  roster?: RosterMember[];
+  activeShift?: ShiftCode;
   onOpenReportModal: () => void;
   onQuickMoveModal?: () => void;
 }
@@ -13,6 +20,8 @@ interface BossAnswerCardProps {
 export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   operators,
   customDepartments = [],
+  roster = [],
+  activeShift = "A",
   onOpenReportModal,
 }) => {
   const [copied, setCopied] = useState(false);
@@ -47,9 +56,22 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   const breakOps = operators.filter(
     (op) => op.departmentId !== "unassigned" && op.status === "break",
   );
+
+  // Transport vs VNA segmentation
+  const transportActiveOps = activeOps.filter((op) => isTransportDepartment(op.departmentId));
+  const vnaActiveOps = activeOps.filter((op) => op.departmentId === "vna");
+
+  // Roster members for active shift
+  const shiftRoster = roster.filter(
+    (m) =>
+      (!m.shift || m.shift === "all" || m.shift === activeShift) && m.isActiveInRoster !== false,
+  );
+  const transportRosterCount = shiftRoster.filter((m) => !isVnaRosterMember(m)).length;
+  const vnaRosterCount = shiftRoster.filter((m) => isVnaRosterMember(m)).length;
+
   const activeLL = activeOps.filter((op) => op.machineType === "LL").length;
   const activeRTR = activeOps.filter((op) => op.machineType === "RTR").length;
-  const activeVNA = activeOps.filter((op) => op.departmentId === "vna").length;
+  const activeVNA = vnaActiveOps.length;
   const customDeptIds = new Set(customDepartments.map((d) => d.id));
   const activeExtraOps = activeOps.filter((op) => customDeptIds.has(op.departmentId));
 
@@ -66,7 +88,9 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
 
     const extraNote =
       activeExtraOps.length > 0 ? `, z toho ${activeExtraOps.length} na vícepracích` : "";
-    const text = `Ahoj, aktuální stav oddělení PICK: ${activeOps.length} lidí právě v provozu na hale (z ${operators.length} na směně${extraNote}, ${absenceOps.length} v absenci / doma, ${activeLL}× LL, ${activeRTR}× RTR):\n${combined.join(" | ")}.`;
+    const rosterInfo =
+      transportRosterCount > 0 ? ` (stálý stav Transport ${transportRosterCount})` : "";
+    const text = `Ahoj, aktuální stav oddělení PICK: Transport ${transportActiveOps.length} lidí v provozu${rosterInfo}, VNA ${vnaActiveOps.length} (celkem ${activeOps.length} z ${operators.length} na směně${extraNote}, ${absenceOps.length} v absenci / doma, ${activeLL}× LL, ${activeRTR}× RTR):\n${combined.join(" | ")}.`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
@@ -81,14 +105,26 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
       >
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400 bg-blue-500/20 px-2 py-0.5 rounded-md border border-blue-500/30">
-            PICK
+            TRANSPORT
           </span>
 
           <span className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <strong className="text-emerald-400 font-extrabold">{activeOps.length}</strong>
+            <strong className="text-emerald-400 font-extrabold">{transportActiveOps.length}</strong>
             <span className="text-slate-300">v provozu</span>
-            <span className="text-slate-500 text-xs font-normal">/ {operators.length} celkem</span>
+            {transportRosterCount > 0 && (
+              <span className="text-blue-300 font-semibold text-xs">
+                (stálý stav {transportRosterCount})
+              </span>
+            )}
+            <span className="text-slate-500 text-xs font-normal">
+              (celkem {operators.length} na směně)
+            </span>
+          </span>
+
+          <span className="text-xs font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-md">
+            VNA: {vnaActiveOps.length} v provozu
+            {vnaRosterCount > 0 ? ` (stálý stav ${vnaRosterCount})` : ""}
           </span>
 
           {absenceOps.length > 0 && (
@@ -103,9 +139,6 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
             </span>
             <span className="bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded text-[11px] font-bold">
               {activeRTR}× RTR
-            </span>
-            <span className="bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded text-[11px] font-bold">
-              {activeVNA}× VNA
             </span>
           </div>
         </div>
@@ -173,12 +206,17 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
             <div className="mt-1 flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-3 flex-wrap">
               <div>
                 <h3 className="text-lg sm:text-xl font-black text-white flex items-baseline gap-2">
-                  <span>V provozu na hale:</span>
+                  <span>Transport v provozu:</span>
                   <span className="text-emerald-400 text-xl sm:text-2xl font-extrabold animate-in fade-in duration-200">
-                    {activeOps.length} lidí
+                    {transportActiveOps.length} lidí
                   </span>
                   <span className="text-xs font-normal text-slate-400">
-                    / {operators.length} celkem
+                    {transportRosterCount > 0
+                      ? `(stálý stav Transport: ${transportRosterCount} • `
+                      : "("}
+                    VNA: {vnaActiveOps.length}
+                    {vnaRosterCount > 0 ? `/${vnaRosterCount}` : ""} • celkem {operators.length} na
+                    směně)
                   </span>
                 </h3>
 
@@ -231,7 +269,7 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
                     className="bg-amber-600/30 text-amber-200 border border-amber-500/40 px-2 py-0.5 rounded-md text-[11px] font-bold"
                     title="Operátoři na vícepracích / mimořádných úkolech"
                   >
-                    {activeExtraOps.length}× Vícepráce
+                    +{activeExtraOps.length} vícepráce
                   </span>
                 )}
               </div>

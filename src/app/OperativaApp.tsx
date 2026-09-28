@@ -238,6 +238,8 @@ export default function App() {
   const [isPhotoImportOpen, setIsPhotoImportOpen] = useState(false);
   const [omittedFromImport, setOmittedFromImport] = useState<FilteredOutRecord[]>([]);
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
+  const [kmenInitialDept, setKmenInitialDept] = useState<DepartmentId | "all">("all");
+  const [kmenInitialTab, setKmenInitialTab] = useState<"check" | "list" | "add">("check");
   const [isAddCustomDeptOpen, setIsAddCustomDeptOpen] = useState(false);
   const [deptToDeleteConfirm, setDeptToDeleteConfirm] = useState<Department | null>(null);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
@@ -1442,7 +1444,7 @@ export default function App() {
       setRoster(updated);
       saveRoster(updated);
       syncRosterMemberToCloud(newMember).catch((e) => console.warn("Cloud roster sync error:", e));
-      showToast(`Pracovník ${newMember.name} byl přidán do kmene.`);
+      showToast(`Pracovník ${newMember.name} byl přidán do stálého stavu.`);
     },
     [roster],
   );
@@ -1453,7 +1455,7 @@ export default function App() {
       setRoster(updated);
       saveRoster(updated);
       syncRosterMemberToCloud(member).catch((e) => console.warn("Cloud roster sync error:", e));
-      showToast(`Údaje kmenového pracovníka ${member.name} byly upraveny.`);
+      showToast(`Údaje pracovníka ${member.name} byly upraveny.`);
     },
     [roster],
   );
@@ -1467,7 +1469,7 @@ export default function App() {
       deleteRosterMemberFromCloud(memberId).catch((e) =>
         console.warn("Cloud roster delete error:", e),
       );
-      showToast(`Pracovník ${target?.name || ""} byl odebrán z kmene.`);
+      showToast(`Pracovník ${target?.name || ""} byl odebrán ze stálého stavu.`);
     },
     [roster],
   );
@@ -1476,7 +1478,7 @@ export default function App() {
     const defaultRoster = resetRoster();
     setRoster(defaultRoster);
     replaceRosterInCloud(defaultRoster).catch((e) => console.warn("Cloud roster reset error:", e));
-    showToast("Kmen byl obnoven na výchozích 65 operátorů ZF PICK.");
+    showToast("Stálý stav byl obnoven na výchozích 65 operátorů ZF PICK.");
   }, []);
 
   const handleQuickAssignMissingOperator = useCallback(
@@ -1537,7 +1539,7 @@ export default function App() {
       bulkSyncRosterToCloud(newMembers).catch((e) =>
         console.warn("Cloud roster bulk sync error:", e),
       );
-      showToast(`Hromadně přidáno ${newMembers.length} pracovníků do kmene.`);
+      showToast(`Hromadně přidáno ${newMembers.length} pracovníků do stálého stavu.`);
     },
     [roster],
   );
@@ -1552,7 +1554,7 @@ export default function App() {
       bulkDeleteRosterMembersFromCloud(memberIds).catch((e) =>
         console.warn("Cloud roster bulk delete error:", e),
       );
-      showToast(`Hromadně smazáno ${memberIds.length} pracovníků z kmene.`);
+      showToast(`Hromadně smazáno ${memberIds.length} pracovníků ze stálého stavu.`);
     },
     [roster],
   );
@@ -1567,7 +1569,7 @@ export default function App() {
       bulkSyncRosterToCloud(updatedMembers).catch((e) =>
         console.warn("Cloud roster bulk update error:", e),
       );
-      showToast(`Hromadně upraveno ${updatedMembers.length} pracovníků v kmeni.`);
+      showToast(`Hromadně upraveno ${updatedMembers.length} pracovníků ve stálém stavu.`);
     },
     [roster],
   );
@@ -1590,7 +1592,7 @@ export default function App() {
       setRoster(updated);
       saveRoster(updated);
       syncRosterMemberToCloud(newMember).catch((e) => console.warn("Cloud roster sync error:", e));
-      showToast(`${operator.name} byl přidán do kmene.`);
+      showToast(`${operator.name} byl přidán do stálého stavu.`);
     },
     [roster, activeShift],
   );
@@ -1616,7 +1618,7 @@ export default function App() {
       bulkSyncRosterToCloud(newMembers).catch((e) =>
         console.warn("Cloud roster bulk sync error:", e),
       );
-      showToast(`Všech ${newMembers.length} pracovníků navíc bylo zařazeno do kmene.`);
+      showToast(`Všech ${newMembers.length} pracovníků navíc bylo zařazeno do stálého stavu.`);
     },
     [roster, activeShift],
   );
@@ -1898,6 +1900,8 @@ export default function App() {
         <BossAnswerCard
           operators={shiftOperators}
           customDepartments={shiftCustomDepartments}
+          roster={roster}
+          activeShift={activeShift}
           onOpenReportModal={() => setIsReportModalOpen(true)}
         />
 
@@ -2346,6 +2350,14 @@ export default function App() {
                       dept.isCustom ? () => handleDeleteCustomDepartment(dept.id) : undefined
                     }
                     onDeleteMultipleOperators={handleBulkDeleteOperators}
+                    onQuickAssignMissingOperator={handleQuickAssignMissingOperator}
+                    onMoveOperator={handleMoveOperator}
+                    onAddCurrentOperatorToRoster={handleAddCurrentOperatorToRoster}
+                    onOpenKmenModalWithDept={(deptId) => {
+                      setKmenInitialDept(deptId);
+                      setKmenInitialTab("list");
+                      setIsKmenModalOpen(true);
+                    }}
                   />
                 );
               })}
@@ -2463,6 +2475,7 @@ export default function App() {
           operator={quickMoveOperator}
           operators={shiftOperators}
           customDepartments={shiftCustomDepartments}
+          roster={roster}
           onClose={() => setQuickMoveOperator(null)}
           onMove={(targetDeptId, reason) => {
             handleMoveOperator(quickMoveOperator.id, targetDeptId, reason);
@@ -2500,9 +2513,12 @@ export default function App() {
           defaultDeptId={addEditOperator.defaultDeptId}
           customDepartments={shiftCustomDepartments}
           activeShift={activeShift}
+          roster={roster}
+          currentOperators={operators}
           onClose={() => setAddEditOperator(null)}
           onSave={handleSaveOperator}
           onDelete={handleDeleteOperator}
+          onAddRosterMember={handleAddRosterMember}
         />
       )}
 
@@ -2565,6 +2581,8 @@ export default function App() {
           roster={roster}
           currentOperators={operators}
           activeShift={activeShift}
+          initialDepartmentId={kmenInitialDept}
+          initialTab={kmenInitialTab}
           onAddRosterMember={handleAddRosterMember}
           onUpdateRosterMember={handleUpdateRosterMember}
           onDeleteRosterMember={handleDeleteRosterMember}
@@ -2576,6 +2594,7 @@ export default function App() {
           onResetRosterToDefaults={handleResetRosterToDefaults}
           onQuickAssignMissingOperator={handleQuickAssignMissingOperator}
           onAddCurrentOperatorToRoster={handleAddCurrentOperatorToRoster}
+          onMoveOperator={handleMoveOperator}
         />
       )}
 

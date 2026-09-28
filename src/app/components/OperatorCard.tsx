@@ -1,6 +1,15 @@
-import React, { useState } from "react";
-import { ArrowRightLeft, Clock, Edit2, GripVertical, Users } from "lucide-react";
-import { Operator, OperatorStatus, DepartmentId, AbsenceReason, MachineType } from "../types";
+import React, { useState, useMemo } from "react";
+import { ArrowRightLeft, Clock, Edit2, GripVertical, Users, Home } from "lucide-react";
+import {
+  Operator,
+  OperatorStatus,
+  DepartmentId,
+  AbsenceReason,
+  MachineType,
+  RosterMember,
+} from "../types";
+import { getDepartmentById } from "../data/departments";
+import { matchOperatorWithRoster } from "../utils/rosterMatcher";
 import {
   startGlobalDrag,
   endGlobalDrag,
@@ -11,11 +20,13 @@ import {
 interface OperatorCardProps {
   operator: Operator;
   allOperators?: Operator[];
+  roster?: RosterMember[];
   isSelected?: boolean;
   isBulkSelected?: boolean;
   isAnyBulkActive?: boolean;
   bulkSelectedIds?: string[];
   isNonRoster?: boolean;
+  onAddCurrentOperatorToRoster?: (operator: Operator) => void;
   onSelect?: (operator: Operator) => void;
   onOpenQuickMove: (operator: Operator) => void;
   onEditOperator: (operator: Operator) => void;
@@ -29,11 +40,13 @@ interface OperatorCardProps {
 export const OperatorCard: React.FC<OperatorCardProps> = ({
   operator,
   allOperators = [],
+  roster = [],
   isSelected = false,
   isBulkSelected = false,
   isAnyBulkActive = false,
   bulkSelectedIds = [],
   isNonRoster = false,
+  onAddCurrentOperatorToRoster,
   onSelect,
   onOpenQuickMove,
   onEditOperator,
@@ -43,6 +56,32 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
   onDropOperator,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+
+  // Match with roster to detect home department
+  const matchedRoster = useMemo(() => {
+    if (!roster || roster.length === 0) return null;
+    return matchOperatorWithRoster(operator.name, roster).match;
+  }, [operator.name, roster]);
+
+  const isAbsence = operator.departmentId === "unassigned" || operator.status === "absence";
+
+  // Check true cross-team loan (VNA <-> Transport)
+  const isVnaMember = Boolean(
+    matchedRoster &&
+    (matchedRoster.teamLeader === "vna" || matchedRoster.defaultDepartmentId === "vna"),
+  );
+  const isLoanedAway = useMemo(() => {
+    if (!matchedRoster || isAbsence) return false;
+    if (isVnaMember && operator.departmentId !== "vna") {
+      // VNA worker helping on Transport
+      return true;
+    }
+    if (!isVnaMember && operator.departmentId === "vna") {
+      // Transport worker helping on VNA
+      return true;
+    }
+    return false;
+  }, [matchedRoster, isAbsence, isVnaMember, operator.departmentId]);
 
   // Time since last assignment formatted
   const formatTimeAgo = (dateStr: string) => {
@@ -57,7 +96,6 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
     }
   };
 
-  const isAbsence = operator.departmentId === "unassigned" || operator.status === "absence";
   const isMultiDragCandidate = isBulkSelected && bulkSelectedIds.length > 1;
 
   return (
@@ -174,15 +212,46 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
             {operator.name}
           </h4>
 
-          {/* Non-roster indicator (Subtle badge for guest/external/helpers) */}
-          {isNonRoster && !isAbsence && (
-            <span
-              className="inline-flex items-center px-1 py-0.2 rounded text-[9px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 shrink-0 select-none"
-              title="Pracovník mimo kmen (výpomoc / brigádník)"
-            >
-              Výpomoc
-            </span>
-          )}
+          {/* Team tag (Transport vs VNA vs Externista) */}
+          {!isAbsence &&
+            (isVnaMember ? (
+              <span
+                className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-extrabold shrink-0 select-none ${
+                  operator.departmentId !== "vna"
+                    ? "bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 border border-amber-300 dark:border-amber-700"
+                    : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                }`}
+                title={
+                  operator.departmentId !== "vna"
+                    ? "Stálý tým VNA (aktuálně vypomáhá na Transportu)"
+                    : "Stálý tým VNA (2. Team Leader)"
+                }
+              >
+                {operator.departmentId !== "vna" ? "VNA (výpomoc)" : "VNA"}
+              </span>
+            ) : matchedRoster ? (
+              <span
+                className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 select-none ${
+                  operator.departmentId === "vna"
+                    ? "bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 border border-amber-300 dark:border-amber-700"
+                    : "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800/80"
+                }`}
+                title={
+                  operator.departmentId === "vna"
+                    ? "Stálý tým Transport (aktuálně vypomáhá na VNA)"
+                    : "Stálý tým Transport (1. Team Leader)"
+                }
+              >
+                {operator.departmentId === "vna" ? "Transport (na VNA)" : "Transport"}
+              </span>
+            ) : isNonRoster ? (
+              <span
+                className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 shrink-0 select-none"
+                title="Pracovník mimo stálý stav (externista / brigádník)"
+              >
+                Externista
+              </span>
+            ) : null)}
 
           {/* Machine qualification tag: ONLY IF LL or RTR (never on VNA or Absence) - Click to toggle LL <-> RTR */}
           {operator.departmentId !== "vna" &&

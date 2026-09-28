@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { X, UserPlus, UserCheck, Trash2 } from "lucide-react";
-import { DEPARTMENTS } from "../data/departments";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { X, UserPlus, UserCheck, Trash2, Users, Sparkles, Check, ChevronDown } from "lucide-react";
+import { DEPARTMENTS, getDepartmentById } from "../data/departments";
 import {
   Department,
   DepartmentId,
@@ -9,17 +9,23 @@ import {
   OperatorStatus,
   ShiftCode,
   AbsenceReason,
+  RosterMember,
+  TeamLeaderRole,
 } from "../types";
+import { normalizeNameForMatching } from "../utils/rosterMatcher";
 
 interface AddEditOperatorModalProps {
   operator: Operator | null;
   defaultDeptId?: DepartmentId;
   customDepartments?: Department[];
   activeShift?: ShiftCode;
+  roster?: RosterMember[];
+  currentOperators?: Operator[];
   isOpen: boolean;
   onClose: () => void;
   onSave: (operatorData: Partial<Operator>) => void;
   onDelete?: (operatorId: string) => void;
+  onAddRosterMember?: (member: Omit<RosterMember, "id" | "createdAt">) => void;
 }
 
 export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
@@ -27,10 +33,13 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
   defaultDeptId = "hovc",
   customDepartments = [],
   activeShift = "A",
+  roster = [],
+  currentOperators = [],
   isOpen,
   onClose,
   onSave,
   onDelete,
+  onAddRosterMember,
 }) => {
   const [name, setName] = useState("");
   const [machineType, setMachineType] = useState<MachineType>("NONE");
@@ -41,8 +50,65 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
   const [notes, setNotes] = useState("");
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
+  // Also add to permanent roster state
+  const [addToRosterToo, setAddToRosterToo] = useState(false);
+  const [rosterTL, setRosterTL] = useState<TeamLeaderRole>("transport");
+
+  // Autocomplete suggestion state
+  const [isNameDropdownOpen, setIsNameDropdownOpen] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Active shift operators set for checking who is already active on shift
+  const activeShiftOperatorNames = useMemo(() => {
+    const names = new Set<string>();
+    currentOperators
+      .filter((o) => (o.shift || "A") === activeShift)
+      .forEach((o) => {
+        names.add(normalizeNameForMatching(o.name));
+      });
+    return names;
+  }, [currentOperators, activeShift]);
+
+  // Missing roster members for the selected department
+  const deptMissingRoster = useMemo(() => {
+    if (!roster || roster.length === 0) return [];
+    return roster.filter((m) => {
+      const matchDept = (m.defaultDepartmentId || "hovc") === departmentId;
+      const matchShift = !m.shift || m.shift === "all" || m.shift === activeShift;
+      const isAlreadyOnShift = activeShiftOperatorNames.has(normalizeNameForMatching(m.name));
+      return matchDept && matchShift && !isAlreadyOnShift;
+    });
+  }, [roster, departmentId, activeShift, activeShiftOperatorNames]);
+
+  // All missing roster members for autocomplete
+  const filteredRosterSuggestions = useMemo(() => {
+    if (!roster || roster.length === 0) return [];
+    const q = normalizeNameForMatching(name);
+    return roster
+      .filter((m) => {
+        const isShiftMatch = !m.shift || m.shift === "all" || m.shift === activeShift;
+        if (!isShiftMatch) return false;
+        if (!q) {
+          // If empty query, show members for current department who are missing
+          return (m.defaultDepartmentId || "hovc") === departmentId;
+        }
+        return normalizeNameForMatching(m.name).includes(q);
+      })
+      .slice(0, 6);
+  }, [roster, name, activeShift, departmentId]);
+
+  // Check if currently typed name matches any roster member
+  const matchedRosterMember = useMemo(() => {
+    if (!name.trim() || !roster) return null;
+    const norm = normalizeNameForMatching(name);
+    return roster.find((m) => normalizeNameForMatching(m.name) === norm) || null;
+  }, [name, roster]);
+
   useEffect(() => {
     setIsConfirmingDelete(false);
+    setIsNameDropdownOpen(false);
+    setAddToRosterToo(false);
+
     if (operator) {
       setName(operator.name);
       setMachineType(operator.machineType || "NONE");
@@ -69,6 +135,20 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
   }, [operator, defaultDeptId, activeShift, isOpen]);
 
   if (!isOpen) return null;
+
+  const handleSelectRosterMember = (member: RosterMember) => {
+    setName(member.name);
+    if (member.defaultDepartmentId && departmentId === "unassigned") {
+      setDepartmentId(member.defaultDepartmentId);
+    } else if (member.defaultDepartmentId) {
+      setDepartmentId(member.defaultDepartmentId);
+    }
+    setMachineType(member.defaultMachineType || "LL");
+    if (member.notes) {
+      setNotes((prev) => (prev ? `${prev} • ${member.notes}` : member.notes || ""));
+    }
+    setIsNameDropdownOpen(false);
+  };
 
   const handleDepartmentChange = (newDeptId: DepartmentId) => {
     setDepartmentId(newDeptId);
@@ -103,19 +183,35 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
+    const trimmedName = name.trim();
+
     onSave({
       id: operator ? operator.id : `op-${Date.now()}`,
-      name: name.trim(),
+      name: trimmedName,
       shift,
       machineType,
       departmentId,
-      isVnaOnly: false,
+      isVnaOnly: departmentId === "vna",
       status,
       absenceReason:
         status === "absence" || departmentId === "unassigned" ? absenceReason : undefined,
       notes: notes.trim(),
       lastMovedAt: operator ? operator.lastMovedAt : new Date().toISOString(),
     });
+
+    // If user requested to add to permanent roster as well
+    if (addToRosterToo && !matchedRosterMember && onAddRosterMember) {
+      onAddRosterMember({
+        name: trimmedName,
+        teamLeader: rosterTL,
+        defaultDepartmentId: departmentId === "unassigned" ? "hovc" : departmentId,
+        defaultMachineType: departmentId === "vna" ? "NONE" : machineType,
+        shift: shift,
+        isActiveInRoster: true,
+        notes: notes.trim() || undefined,
+      });
+    }
+
     onClose();
   };
 
@@ -153,20 +249,186 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
-          {/* Name only */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Jméno a příjmení *
-            </label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="např. Jan Novák"
-              className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-            />
+          {/* Quick Roster Selection Chips (when adding new operator) */}
+          {!operator && deptMissingRoster.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 space-y-1.5 animate-in fade-in">
+              <div className="flex items-center justify-between text-xs text-blue-900 dark:text-blue-200">
+                <span className="font-bold flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Doplnit z kmene ({deptMissingRoster.length} chybí):</span>
+                </span>
+                <span className="text-[10px] text-blue-600 dark:text-blue-400">
+                  1-klikem vyplní
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-0.5">
+                {deptMissingRoster.map((m) => (
+                  <button
+                    key={`chip-${m.id}`}
+                    type="button"
+                    onClick={() => handleSelectRosterMember(m)}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white text-slate-800 dark:text-slate-200 border border-blue-200 dark:border-blue-800/80 shadow-2xs transition-all cursor-pointer group active:scale-95"
+                    title={`Vybrat ${m.name} (${m.defaultMachineType || "LL"})`}
+                  >
+                    <span>{m.name}</span>
+                    <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:bg-blue-700 group-hover:text-white">
+                      {m.defaultMachineType || "LL"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Name input with smart autocomplete */}
+          <div className="relative">
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Jméno a příjmení *
+              </label>
+              {matchedRosterMember ? (
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded flex items-center gap-1 border border-emerald-200 dark:border-emerald-800/60">
+                  <Check className="w-3 h-3 text-emerald-600" />
+                  <span>
+                    Kmen: {matchedRosterMember.teamLeader === "transport" ? "Transport" : "VNA"}
+                  </span>
+                </span>
+              ) : !operator && name.trim().length >= 2 ? (
+                <span className="text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                  Nový mimo kmen (výpomoc)
+                </span>
+              ) : null}
+            </div>
+
+            <div className="relative">
+              <input
+                ref={nameInputRef}
+                type="text"
+                required
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setIsNameDropdownOpen(true);
+                }}
+                onFocus={() => {
+                  if (filteredRosterSuggestions.length > 0) setIsNameDropdownOpen(true);
+                }}
+                placeholder="např. Jan Novák (nebo vyberte z kmene)"
+                className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+              />
+
+              {!operator && roster.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsNameDropdownOpen((prev) => !prev)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  title="Rozbalit nabídku kmene"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Autocomplete Dropdown */}
+            {!operator && isNameDropdownOpen && filteredRosterSuggestions.length > 0 && (
+              <div
+                className="absolute z-30 left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden text-xs divide-y divide-slate-100 dark:divide-slate-700/80 animate-in fade-in"
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 text-[10px] font-bold text-slate-500 flex items-center justify-between">
+                  <span>Doporučení z kmene:</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsNameDropdownOpen(false)}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    Zavřít
+                  </button>
+                </div>
+                {filteredRosterSuggestions.map((m) => {
+                  const mDept = getDepartmentById(m.defaultDepartmentId || "hovc");
+                  const isOnShift = activeShiftOperatorNames.has(normalizeNameForMatching(m.name));
+
+                  return (
+                    <div
+                      key={`sug-${m.id}`}
+                      onClick={() => handleSelectRosterMember(m)}
+                      className={`px-3 py-2 flex items-center justify-between hover:bg-blue-50 dark:hover:bg-blue-950/50 cursor-pointer transition-colors ${
+                        isOnShift ? "opacity-60" : ""
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <span className="font-bold text-slate-900 dark:text-white block truncate">
+                          {m.name}
+                        </span>
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                          <span>{m.teamLeader === "transport" ? "Transport" : "VNA"}</span>
+                          <span>•</span>
+                          <span>{mDept.name}</span>
+                          {isOnShift && (
+                            <span className="text-amber-600 font-semibold">(již na směně)</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                          {m.defaultMachineType || "LL"}
+                        </span>
+                        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                          Vybrat →
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
+
+          {/* Option to also add to permanent roster if entering a new person */}
+          {!operator && !matchedRosterMember && name.trim().length >= 2 && onAddRosterMember && (
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-800 dark:text-slate-200 select-none">
+                <input
+                  type="checkbox"
+                  checked={addToRosterToo}
+                  onChange={(e) => setAddToRosterToo(e.target.checked)}
+                  className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                />
+                <span>Uložit také do trvalého kmene (rosteru)</span>
+              </label>
+
+              {addToRosterToo && (
+                <div className="pl-6 pt-1 flex items-center gap-2 text-xs">
+                  <span className="text-slate-500">Kmenový Team Leader:</span>
+                  <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 p-0.5 bg-white dark:bg-slate-900">
+                    <button
+                      type="button"
+                      onClick={() => setRosterTL("transport")}
+                      className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${
+                        rosterTL === "transport"
+                          ? "bg-blue-600 text-white shadow-2xs"
+                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                      }`}
+                    >
+                      Transport
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRosterTL("vna")}
+                      className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${
+                        rosterTL === "vna"
+                          ? "bg-emerald-600 text-white shadow-2xs"
+                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                      }`}
+                    >
+                      VNA
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Machine qualification: LL, RTR or NONE */}
           <div>
