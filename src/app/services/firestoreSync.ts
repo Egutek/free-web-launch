@@ -148,14 +148,16 @@ export async function bulkSyncOperatorsToCloud(
     }
     return;
   }
-  const batch = writeBatch(db);
-  for (const op of operators) {
-    const cleanOp: Record<string, unknown> = { ...op, shift: op.shift || "A" };
-    Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
-    batch.set(getDocRef("operators", op.id), cleanOp);
-  }
   try {
-    await batch.commit();
+    for (let start = 0; start < operators.length; start += 400) {
+      const batch = writeBatch(db);
+      for (const op of operators.slice(start, start + 400)) {
+        const cleanOp: Record<string, unknown> = { ...op, shift: op.shift || "A" };
+        Object.keys(cleanOp).forEach((key) => cleanOp[key] === undefined && delete cleanOp[key]);
+        batch.set(getDocRef("operators", op.id), cleanOp);
+      }
+      await batch.commit();
+    }
   } catch (error) {
     if (shouldQueueIfOffline) {
       for (const op of operators) {
@@ -469,18 +471,25 @@ export async function bulkSyncRosterToCloud(
     }
     return;
   }
-  const batch = writeBatch(db);
-  for (const m of members) {
-    const cleanMember: Record<string, unknown> = { ...m };
-    Object.keys(cleanMember).forEach(
-      (key) => cleanMember[key] === undefined && delete cleanMember[key],
-    );
-    batch.set(getDocRef("roster", m.id), cleanMember);
-  }
   try {
-    await batch.commit();
+    for (let start = 0; start < members.length; start += 400) {
+      const batch = writeBatch(db);
+      for (const m of members.slice(start, start + 400)) {
+        const cleanMember: Record<string, unknown> = { ...m };
+        Object.keys(cleanMember).forEach(
+          (key) => cleanMember[key] === undefined && delete cleanMember[key],
+        );
+        batch.set(getDocRef("roster", m.id), cleanMember);
+      }
+      await batch.commit();
+    }
   } catch (error) {
-    console.warn("Firestore bulk sync roster failed:", error);
+    if (shouldQueueIfOffline) {
+      for (const m of members) {
+        queueOfflineAction("sync_roster", m);
+      }
+    }
+    console.warn("Firestore bulk sync roster failed (queued offline):", error);
   }
 }
 
