@@ -302,6 +302,7 @@ export default function App() {
       },
       (err) => {
         setIsCloudSyncing(false);
+        setIsCloudConnected(false);
         console.warn("Firestore subscription error:", err);
       },
     );
@@ -319,6 +320,9 @@ export default function App() {
           console.warn("Initial cloud roster seed failed:", err),
         );
       }
+    }, (err) => {
+      setIsCloudConnected(false);
+      console.warn("Firestore roster subscription error:", err);
     });
     return () => unsub();
   }, []);
@@ -330,6 +334,9 @@ export default function App() {
         setHistory(cloudHistory);
         saveHistory(cloudHistory);
       }
+    }, (err) => {
+      setIsCloudConnected(false);
+      console.warn("Firestore history subscription error:", err);
     });
     return () => unsub();
   }, []);
@@ -339,6 +346,9 @@ export default function App() {
     const unsub = subscribeToCustomDepartments((cloudCustomDepts) => {
       setCustomDepartments(cloudCustomDepts);
       saveCustomDepartments(cloudCustomDepts);
+    }, (err) => {
+      setIsCloudConnected(false);
+      console.warn("Firestore custom department subscription error:", err);
     });
     return () => unsub();
   }, []);
