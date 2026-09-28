@@ -352,6 +352,14 @@ export default function App() {
     }
   }, [viewMode]);
 
+  // Keep the current view shareable and restorable via the URL.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", viewMode);
+    window.history.replaceState({}, "", url);
+  }, [viewMode]);
+
   // Flush persistence synchronously before window closes / unloads
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -364,12 +372,24 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
-  // Keyboard shortcut listener (Esc deselects everything)
+  // Keyboard shortcuts keep the board usable without reaching for the mouse.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT";
       if (e.key === "Escape") {
         setSelectedOperatorId(null);
         setBulkSelectedIds(new Set());
+        return;
+      }
+      if (isTyping || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === "1") setViewMode("board");
+      if (e.key === "2") setViewMode("table");
+      if (e.key === "3") setViewMode("widget");
+      if (e.key === "/") {
+        e.preventDefault();
+        document.querySelector<HTMLInputElement>('input[placeholder="Vyhledat člověka podle jména..."]')?.focus();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
