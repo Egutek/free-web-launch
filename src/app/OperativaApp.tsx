@@ -14,6 +14,7 @@ import {
   MoveHistoryRecord,
   Operator,
   OperatorStatus,
+  RosterMember,
   ShiftCode,
   UndoOperation,
 } from "./types";
@@ -27,6 +28,9 @@ import {
   resetToInitialOperators,
   loadActiveShift,
   saveActiveShift,
+  loadRoster,
+  saveRoster,
+  resetRoster,
 } from "./utils/storage";
 import { Header } from "./components/Header";
 import { BossAnswerCard } from "./components/BossAnswerCard";
@@ -42,8 +46,10 @@ import { ConfirmDialogModal } from "./components/ConfirmDialogModal";
 import { HistoryModal } from "./components/HistoryModal";
 import { PhotoImportModal } from "./components/PhotoImportModal";
 import { ShiftTemplatesModal } from "./components/ShiftTemplatesModal";
+import { KmenModal } from "./components/KmenModal";
 import { ShiftTemplate } from "./types";
 import { applyTemplateToOperators } from "./data/templates";
+import { computeRosterDiscrepancies, matchOperatorWithRoster } from "./utils/rosterMatcher";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -76,6 +82,11 @@ import {
   subscribeToCustomDepartments,
   syncCustomDepartmentToCloud,
   deleteCustomDepartmentFromCloud,
+  subscribeToRoster,
+  syncRosterMemberToCloud,
+  bulkSyncRosterToCloud,
+  deleteRosterMemberFromCloud,
+  bulkDeleteRosterMembersFromCloud,
 } from "./services/firestoreSync";
 
 const JUMP_THEMES: Record<
@@ -172,6 +183,8 @@ export default function App() {
   const [customDepartments, setCustomDepartments] = useState<Department[]>(() =>
     loadCustomDepartments(),
   );
+  const [roster, setRoster] = useState<RosterMember[]>(() => loadRoster());
+  const [isKmenModalOpen, setIsKmenModalOpen] = useState(false);
 
   const handleShiftChange = useCallback((shift: ShiftCode) => {
     setActiveShift(shift);
@@ -253,6 +266,8 @@ export default function App() {
   historyRef.current = history;
   const undoStackRef = useRef(undoStack);
   undoStackRef.current = undoStack;
+  const rosterRef = useRef(roster);
+  rosterRef.current = roster;
 
   // Persist undo stack on update
   useEffect(() => {
@@ -281,6 +296,21 @@ export default function App() {
         console.warn("Firestore subscription error:", err);
       },
     );
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore sync for Roster (Kmen) for everyone with the link
+  useEffect(() => {
+    const unsub = subscribeToRoster((cloudRoster) => {
+      if (cloudRoster.length > 0) {
+        setRoster(cloudRoster);
+        saveRoster(cloudRoster);
+      } else if (rosterRef.current.length > 0) {
+        bulkSyncRosterToCloud(rosterRef.current).catch((err) =>
+          console.warn("Initial cloud roster seed failed:", err),
+        );
+      }
+    });
     return () => unsub();
   }, []);
 
@@ -319,6 +349,7 @@ export default function App() {
       saveOperators(operatorsRef.current);
       saveHistory(historyRef.current);
       saveUndoStack(undoStackRef.current);
+      saveRoster(rosterRef.current);
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
@@ -1399,6 +1430,260 @@ export default function App() {
     showToast("Data obnovena na 65 operátorů oddělení PICK.");
   };
 
+  // ---------- Roster (Kmen) Management Handlers ----------
+  const handleAddRosterMember = useCallback(
+    (member: Omit<RosterMember, "id" | "createdAt">) => {
+      const newMember: RosterMember = {
+        ...member,
+        id: `roster-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        createdAt: new Date().toISOString(),
+      };
+      const updated = [...roster, newMember];
+      setRoster(updated);
+      saveRoster(updated);
+      syncRosterMemberToCloud(newMember).catch((e) => console.warn("Cloud roster sync error:", e));
+      showToast(`Pracovník ${newMember.name} byl přidán do kmene.`);
+    },
+    [roster],
+  );
+
+  const handleUpdateRosterMember = useCallback(
+    (member: RosterMember) => {
+      const updated = roster.map((m) => (m.id === member.id ? member : m));
+      setRoster(updated);
+      saveRoster(updated);
+      syncRosterMemberToCloud(member).catch((e) => console.warn("Cloud roster sync error:", e));
+      showToast(`Údaje kmenového pracovníka ${member.name} byly upraveny.`);
+    },
+    [roster],
+  );
+
+  const handleDeleteRosterMember = useCallback(
+    (memberId: string) => {
+      const target = roster.find((m) => m.id === memberId);
+      const updated = roster.filter((m) => m.id !== memberId);
+      setRoster(updated);
+      saveRoster(updated);
+      deleteRosterMemberFromCloud(memberId).catch((e) =>
+        console.warn("Cloud roster delete error:", e),
+      );
+      showToast(`Pracovník ${target?.name || ""} byl odebrán z kmene.`);
+    },
+    [roster],
+  );
+
+  const handleResetRosterToDefaults = useCallback(() => {
+    const defaultRoster = resetRoster();
+    setRoster(defaultRoster);
+    replaceRosterInCloud(defaultRoster).catch((e) => console.warn("Cloud roster reset error:", e));
+    showToast("Kmen byl obnoven na výchozích 65 operátorů ZF PICK.");
+  }, []);
+
+  const handleQuickAssignMissingOperator = useCallback(
+    (member: RosterMember, action: "dept" | "absence", reason?: AbsenceReason) => {
+      const targetDeptId: DepartmentId =
+        action === "dept" ? member.defaultDepartmentId || "hovc" : "unassigned";
+      const targetStatus: OperatorStatus = action === "dept" ? "active" : "absence";
+      const targetMachine: MachineType =
+        targetDeptId === "vna" || targetDeptId === "unassigned"
+          ? "NONE"
+          : member.defaultMachineType || "LL";
+
+      // Check if already in operators for this shift
+      const existingOp = operators.find(
+        (o) =>
+          (o.shift || "A") === activeShift &&
+          matchOperatorWithRoster(o.name, [member]).confidence >= 0.8,
+      );
+
+      if (existingOp) {
+        handleMoveOperator(existingOp.id, targetDeptId, reason);
+      } else {
+        const newOp: Operator = {
+          id: `op-kmen-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: member.name,
+          machineType: targetMachine,
+          departmentId: targetDeptId,
+          status: targetStatus,
+          shift: activeShift,
+          absenceReason: action === "absence" ? reason || "Absence" : undefined,
+          notes: member.notes,
+          lastMovedAt: new Date().toISOString(),
+        };
+        const updated = [newOp, ...operators];
+        setOperators(updated);
+        saveOperators(updated);
+        syncOperatorToCloud(newOp).catch((e) => console.warn("Cloud op create error:", e));
+        showToast(
+          `${member.name} byl zařazen na směnu (${action === "dept" ? getDepartmentById(targetDeptId).name : reason || "Absence"}).`,
+        );
+      }
+    },
+    [operators, activeShift, handleMoveOperator],
+  );
+
+  const handleBulkAddRosterMembers = useCallback(
+    (members: Omit<RosterMember, "id" | "createdAt">[]) => {
+      if (members.length === 0) return;
+      const now = new Date().toISOString();
+      const newMembers: RosterMember[] = members.map((m, idx) => ({
+        ...m,
+        id: `roster-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+        createdAt: now,
+      }));
+      const updated = [...roster, ...newMembers];
+      setRoster(updated);
+      saveRoster(updated);
+      bulkSyncRosterToCloud(newMembers).catch((e) =>
+        console.warn("Cloud roster bulk sync error:", e),
+      );
+      showToast(`Hromadně přidáno ${newMembers.length} pracovníků do kmene.`);
+    },
+    [roster],
+  );
+
+  const handleBulkDeleteRosterMembers = useCallback(
+    (memberIds: string[]) => {
+      if (memberIds.length === 0) return;
+      const idSet = new Set(memberIds);
+      const updated = roster.filter((m) => !idSet.has(m.id));
+      setRoster(updated);
+      saveRoster(updated);
+      bulkDeleteRosterMembersFromCloud(memberIds).catch((e) =>
+        console.warn("Cloud roster bulk delete error:", e),
+      );
+      showToast(`Hromadně smazáno ${memberIds.length} pracovníků z kmene.`);
+    },
+    [roster],
+  );
+
+  const handleBulkUpdateRosterMembers = useCallback(
+    (updatedMembers: RosterMember[]) => {
+      if (updatedMembers.length === 0) return;
+      const map = new Map(updatedMembers.map((m) => [m.id, m]));
+      const updated = roster.map((m) => map.get(m.id) || m);
+      setRoster(updated);
+      saveRoster(updated);
+      bulkSyncRosterToCloud(updatedMembers).catch((e) =>
+        console.warn("Cloud roster bulk update error:", e),
+      );
+      showToast(`Hromadně upraveno ${updatedMembers.length} pracovníků v kmeni.`);
+    },
+    [roster],
+  );
+
+  const handleAddCurrentOperatorToRoster = useCallback(
+    (operator: Operator) => {
+      const newMember: RosterMember = {
+        id: `roster-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        name: operator.name,
+        teamLeader: operator.departmentId === "vna" ? "vna" : "transport",
+        defaultDepartmentId:
+          operator.departmentId === "unassigned" ? "hovc" : operator.departmentId,
+        defaultMachineType: operator.machineType,
+        shift: operator.shift || activeShift,
+        isActiveInRoster: true,
+        notes: operator.notes,
+        createdAt: new Date().toISOString(),
+      };
+      const updated = [...roster, newMember];
+      setRoster(updated);
+      saveRoster(updated);
+      syncRosterMemberToCloud(newMember).catch((e) => console.warn("Cloud roster sync error:", e));
+      showToast(`${operator.name} byl přidán do kmene.`);
+    },
+    [roster, activeShift],
+  );
+
+  const handleAddAllExtraToRoster = useCallback(
+    (extraOps: Operator[]) => {
+      if (extraOps.length === 0) return;
+      const now = new Date().toISOString();
+      const newMembers: RosterMember[] = extraOps.map((op, idx) => ({
+        id: `roster-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+        name: op.name,
+        teamLeader: op.departmentId === "vna" ? "vna" : "transport",
+        defaultDepartmentId: op.departmentId === "unassigned" ? "hovc" : op.departmentId,
+        defaultMachineType: op.machineType,
+        shift: op.shift || activeShift,
+        isActiveInRoster: true,
+        notes: op.notes,
+        createdAt: now,
+      }));
+      const updated = [...roster, ...newMembers];
+      setRoster(updated);
+      saveRoster(updated);
+      bulkSyncRosterToCloud(newMembers).catch((e) =>
+        console.warn("Cloud roster bulk sync error:", e),
+      );
+      showToast(`Všech ${newMembers.length} pracovníků navíc bylo zařazeno do kmene.`);
+    },
+    [roster, activeShift],
+  );
+
+  const handleBulkAssignMissingToShift = useCallback(
+    (missingMembers: RosterMember[], action: "dept" | "absence", reason?: AbsenceReason) => {
+      if (missingMembers.length === 0) return;
+      const now = new Date().toISOString();
+      const opsToSync: Operator[] = [];
+      const updatedOps = [...operators];
+
+      for (const member of missingMembers) {
+        const targetDeptId: DepartmentId =
+          action === "dept" ? member.defaultDepartmentId || "hovc" : "unassigned";
+        const targetStatus: OperatorStatus = action === "dept" ? "active" : "absence";
+        const targetMachine: MachineType =
+          targetDeptId === "vna" || targetDeptId === "unassigned"
+            ? "NONE"
+            : member.defaultMachineType || "LL";
+
+        const existingOpIndex = updatedOps.findIndex(
+          (o) =>
+            (o.shift || "A") === activeShift &&
+            matchOperatorWithRoster(o.name, [member]).confidence >= 0.8,
+        );
+
+        if (existingOpIndex >= 0) {
+          const existing = updatedOps[existingOpIndex];
+          const updatedOp: Operator = {
+            ...existing,
+            departmentId: targetDeptId,
+            machineType: targetMachine,
+            status: targetStatus,
+            absenceReason: action === "absence" ? reason || "Absence" : undefined,
+            lastMovedAt: now,
+          };
+          updatedOps[existingOpIndex] = updatedOp;
+          opsToSync.push(updatedOp);
+        } else {
+          const newOp: Operator = {
+            id: `op-kmen-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            name: member.name,
+            machineType: targetMachine,
+            departmentId: targetDeptId,
+            status: targetStatus,
+            shift: activeShift,
+            absenceReason: action === "absence" ? reason || "Absence" : undefined,
+            notes: member.notes,
+            lastMovedAt: now,
+          };
+          updatedOps.unshift(newOp);
+          opsToSync.push(newOp);
+        }
+      }
+
+      setOperators(updatedOps);
+      saveOperators(updatedOps);
+      bulkSyncOperatorsToCloud(opsToSync).catch((e) =>
+        console.warn("Cloud bulk sync error for missing ops:", e),
+      );
+      showToast(
+        `Hromadně zařazeno ${missingMembers.length} pracovníků (${action === "dept" ? "na výchozí oddělení" : reason || "Absence"}).`,
+      );
+    },
+    [operators, activeShift],
+  );
+
   // Drag-and-drop auto-scroll: automatically scrolls horizontal columns when dragging near edge
   useEffect(() => {
     if (viewMode !== "board") return;
@@ -1551,6 +1836,11 @@ export default function App() {
   const isOperatorInAbsence = (o: Operator) =>
     o.departmentId === "unassigned" || o.status === "absence";
 
+  // Roster Discrepancy & Docházka Report for Active Shift
+  const rosterReport = useMemo(() => {
+    return computeRosterDiscrepancies(operators, roster, activeShift, "transport");
+  }, [operators, roster, activeShift]);
+
   const totalCount = shiftOperators.length;
   const activeCount = shiftOperators.filter(isOperatorInOperation).length;
   const absenceCount = shiftOperators.filter(isOperatorInAbsence).length;
@@ -1577,6 +1867,8 @@ export default function App() {
         rtrCount={rtrCount}
         vnaCount={vnaCount}
         absenceCount={absenceCount}
+        rosterCount={rosterReport.totalRosterCount}
+        missingRosterCount={rosterReport.missingCount}
         activeShift={activeShift}
         onShiftChange={handleShiftChange}
         searchQuery={searchQuery}
@@ -1592,6 +1884,7 @@ export default function App() {
         onOpenAddCustomDept={() => setIsAddCustomDeptOpen(true)}
         onOpenPhotoImport={() => setIsPhotoImportOpen(true)}
         onOpenTemplatesModal={() => setIsTemplatesModalOpen(true)}
+        onOpenKmenModal={() => setIsKmenModalOpen(true)}
         onOpenReportModal={() => setIsReportModalOpen(true)}
         onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
         onResetData={handleResetData}
@@ -2028,6 +2321,8 @@ export default function App() {
                     department={dept}
                     operators={deptOps}
                     allOperators={operators}
+                    roster={roster}
+                    activeShift={activeShift}
                     totalOperatorsCount={filteredOperators.length}
                     selectedOperatorId={selectedOperatorId}
                     bulkSelectedIds={bulkSelectedIds}
@@ -2257,6 +2552,30 @@ export default function App() {
           onClose={() => setIsPhotoImportOpen(false)}
           onImportOperators={handleImportOperators}
           currentCount={shiftOperators.length}
+          roster={roster}
+          activeShift={activeShift}
+        />
+      )}
+
+      {/* Kmen (Roster) & Docházka Management Modal */}
+      {isKmenModalOpen && (
+        <KmenModal
+          isOpen={isKmenModalOpen}
+          onClose={() => setIsKmenModalOpen(false)}
+          roster={roster}
+          currentOperators={operators}
+          activeShift={activeShift}
+          onAddRosterMember={handleAddRosterMember}
+          onUpdateRosterMember={handleUpdateRosterMember}
+          onDeleteRosterMember={handleDeleteRosterMember}
+          onBulkAddRosterMembers={handleBulkAddRosterMembers}
+          onBulkDeleteRosterMembers={handleBulkDeleteRosterMembers}
+          onBulkUpdateRosterMembers={handleBulkUpdateRosterMembers}
+          onAddAllExtraToRoster={handleAddAllExtraToRoster}
+          onBulkAssignMissingToShift={handleBulkAssignMissingToShift}
+          onResetRosterToDefaults={handleResetRosterToDefaults}
+          onQuickAssignMissingOperator={handleQuickAssignMissingOperator}
+          onAddCurrentOperatorToRoster={handleAddCurrentOperatorToRoster}
         />
       )}
 

@@ -14,7 +14,14 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db, auth } from "../firebase";
-import { Operator, MoveHistoryRecord, ShiftTemplate, Department, ShiftCode } from "../types";
+import {
+  Operator,
+  MoveHistoryRecord,
+  ShiftTemplate,
+  Department,
+  ShiftCode,
+  RosterMember,
+} from "../types";
 import { queueOfflineAction } from "./offlineQueue";
 
 export type Unsubscribe = () => void;
@@ -296,6 +303,43 @@ export async function deleteTemplateFromCloud(templateId: string): Promise<void>
   }
 }
 
+export async function migrateLocalTemplatesToCloud(localTemplates: ShiftTemplate[]): Promise<void> {
+  if (!localTemplates || localTemplates.length === 0) return;
+  try {
+    for (const t of localTemplates) {
+      await syncTemplateToCloud(t);
+    }
+  } catch (error) {
+    console.warn("Chyba při migraci šablon do cloudu:", error);
+  }
+}
+
+export async function restoreBuiltInTemplatesToCloud(): Promise<void> {
+  try {
+    const q = query(getCollectionRef("templates"));
+    const snapshot = await getDocs(q);
+    let batch = writeBatch(db);
+    let count = 0;
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data() as ShiftTemplate;
+      if (data.isBuiltIn && data.isDeleted) {
+        batch.delete(docSnap.ref);
+        count++;
+        if (count >= 400) {
+          await batch.commit();
+          batch = writeBatch(db);
+          count = 0;
+        }
+      }
+    }
+    if (count > 0) {
+      await batch.commit();
+    }
+  } catch (error) {
+    console.warn("Chyba při obnově výchozích šablon v cloudu:", error);
+  }
+}
+
 // ---------- Vlastní oddělení (Vícepráce) ----------
 export function subscribeToCustomDepartments(
   onUpdate: (depts: Department[]) => void,
@@ -363,5 +407,173 @@ export async function syncOcrInstructionsToCloud(instructions: string): Promise<
     });
   } catch (error) {
     console.warn("Chyba při ukládání OCR instrukcí do cloudu:", error);
+  }
+}
+
+// ---------- Kmenoví pracovníci (Roster) ----------
+export function subscribeToRoster(
+  onUpdate: (roster: RosterMember[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  const q = query(getCollectionRef("roster"), limit(1000));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const roster = snapshot.docs.map((doc) => doc.data() as RosterMember);
+      if (roster.length > 0) {
+        onUpdate(roster);
+      }
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, "roster");
+      if (onError) onError(error);
+    },
+  );
+}
+
+export async function syncRosterMemberToCloud(
+  member: RosterMember,
+  shouldQueueIfOffline = true,
+): Promise<void> {
+  const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+  if (isOffline) {
+    if (shouldQueueIfOffline) {
+      queueOfflineAction("sync_roster", member);
+    }
+    return;
+  }
+  try {
+    const cleanMember: Record<string, unknown> = { ...member };
+    Object.keys(cleanMember).forEach(
+      (key) => cleanMember[key] === undefined && delete cleanMember[key],
+    );
+    await setDoc(getDocRef("roster", member.id), cleanMember);
+  } catch (error) {
+    if (shouldQueueIfOffline) {
+      queueOfflineAction("sync_roster", member);
+    }
+    console.warn(`Firestore sync roster member ${member.name} failed (queued offline):`, error);
+  }
+}
+
+export async function bulkSyncRosterToCloud(
+  members: RosterMember[],
+  shouldQueueIfOffline = true,
+): Promise<void> {
+  const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+  if (isOffline) {
+    if (shouldQueueIfOffline) {
+      for (const m of members) {
+        queueOfflineAction("sync_roster", m);
+      }
+    }
+    return;
+  }
+  const batch = writeBatch(db);
+  for (const m of members) {
+    const cleanMember: Record<string, unknown> = { ...m };
+    Object.keys(cleanMember).forEach(
+      (key) => cleanMember[key] === undefined && delete cleanMember[key],
+    );
+    batch.set(getDocRef("roster", m.id), cleanMember);
+  }
+  try {
+    await batch.commit();
+  } catch (error) {
+    console.warn("Firestore bulk sync roster failed:", error);
+  }
+}
+
+export async function deleteRosterMemberFromCloud(
+  memberId: string,
+  shouldQueueIfOffline = true,
+): Promise<void> {
+  const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+  if (isOffline) {
+    if (shouldQueueIfOffline) {
+      queueOfflineAction("delete_roster", memberId);
+    }
+    return;
+  }
+  try {
+    await deleteDoc(getDocRef("roster", memberId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `roster/${memberId}`);
+  }
+}
+
+export async function bulkDeleteRosterMembersFromCloud(
+  memberIds: string[],
+  shouldQueueIfOffline = true,
+): Promise<void> {
+  if (memberIds.length === 0) return;
+  const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+  if (isOffline) {
+    if (shouldQueueIfOffline) {
+      for (const id of memberIds) {
+        queueOfflineAction("delete_roster", id);
+      }
+    }
+    return;
+  }
+  try {
+    let batch = writeBatch(db);
+    let count = 0;
+    for (const id of memberIds) {
+      batch.delete(getDocRef("roster", id));
+      count++;
+      if (count >= 400) {
+        await batch.commit();
+        batch = writeBatch(db);
+        count = 0;
+      }
+    }
+    if (count > 0) {
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `roster(bulkDelete:${memberIds.length})`);
+  }
+}
+
+export async function replaceRosterInCloud(members: RosterMember[]): Promise<void> {
+  try {
+    const querySnapshot = await getDocs(getCollectionRef("roster"));
+    const newMemberIds = new Set(members.map((m) => m.id));
+
+    let batch = writeBatch(db);
+    let count = 0;
+
+    for (const docSnap of querySnapshot.docs) {
+      if (!newMemberIds.has(docSnap.id)) {
+        batch.delete(docSnap.ref);
+        count++;
+        if (count >= 400) {
+          await batch.commit();
+          batch = writeBatch(db);
+          count = 0;
+        }
+      }
+    }
+
+    for (const m of members) {
+      const cleanMember: Record<string, unknown> = { ...m };
+      Object.keys(cleanMember).forEach(
+        (key) => cleanMember[key] === undefined && delete cleanMember[key],
+      );
+      batch.set(getDocRef("roster", m.id), cleanMember);
+      count++;
+      if (count >= 400) {
+        await batch.commit();
+        batch = writeBatch(db);
+        count = 0;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, "roster(replaceBatch)");
   }
 }

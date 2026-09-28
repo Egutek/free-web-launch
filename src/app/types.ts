@@ -11,6 +11,20 @@ export type ShiftCode = "A" | "B" | "C";
 
 export type AbsenceReason = "Absence" | "Dovolená" | "PN";
 
+export type TeamLeaderRole = "transport" | "vna" | "other";
+
+export interface RosterMember {
+  id: string;
+  name: string;
+  teamLeader: TeamLeaderRole; // 'transport' (já) | 'vna' (kolega) | 'other'
+  defaultDepartmentId?: DepartmentId;
+  defaultMachineType?: MachineType;
+  shift?: ShiftCode | "all";
+  isActiveInRoster?: boolean;
+  notes?: string;
+  createdAt?: string;
+}
+
 export interface Department {
   id: DepartmentId;
   name: string;
@@ -83,6 +97,7 @@ export interface ShiftTemplate {
   description?: string;
   createdAt: string;
   isBuiltIn?: boolean;
+  isDeleted?: boolean;
   operatorCount: number;
   activeCount: number;
   shift?: ShiftCode | "all";

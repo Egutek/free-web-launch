@@ -4,12 +4,48 @@ import {
   INITIAL_OPERATORS_SHIFT_B,
   INITIAL_OPERATORS_SHIFT_C,
 } from "../data/initialOperators";
-import { MoveHistoryRecord, Operator, ShiftCode, UndoOperation } from "../types";
+import { INITIAL_ROSTER_MEMBERS } from "../data/initialRoster";
+import { MoveHistoryRecord, Operator, RosterMember, ShiftCode, UndoOperation } from "../types";
 
 const OPERATORS_KEY = "zf_ostrov_pick_operators_real_v3";
 const HISTORY_KEY = "zf_ostrov_pick_history_real_v3";
 const UNDO_KEY = "zf_ostrov_pick_undo_stack_v1";
 const ACTIVE_SHIFT_KEY = "zf_ostrov_active_shift_v1";
+const ROSTER_KEY = "zf_ostrov_roster_members_v1";
+
+export const loadRoster = (): RosterMember[] => {
+  try {
+    const saved = localStorage.getItem(ROSTER_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load roster from localStorage", e);
+  }
+  return INITIAL_ROSTER_MEMBERS;
+};
+
+export const saveRoster = (roster: RosterMember[]): void => {
+  try {
+    if (Array.isArray(roster) && roster.length > 0) {
+      localStorage.setItem(ROSTER_KEY, JSON.stringify(roster));
+    }
+  } catch (e) {
+    console.error("Failed to save roster to localStorage", e);
+  }
+};
+
+export const resetRoster = (): RosterMember[] => {
+  try {
+    localStorage.removeItem(ROSTER_KEY);
+  } catch (e) {
+    console.error("Failed to reset roster storage", e);
+  }
+  return INITIAL_ROSTER_MEMBERS;
+};
 
 export const loadActiveShift = (): ShiftCode => {
   try {

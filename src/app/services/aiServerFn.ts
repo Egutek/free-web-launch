@@ -471,10 +471,19 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
       mimeType?: string;
       textInput?: string;
       customInstructions?: string;
+      rosterNames?: string[];
+      activeShift?: string;
     }) => d,
   )
   .handler(async ({ data }) => {
-    const { imageBase64, mimeType = "image/jpeg", textInput, customInstructions } = data;
+    const {
+      imageBase64,
+      mimeType = "image/jpeg",
+      textInput,
+      customInstructions,
+      rosterNames,
+      activeShift,
+    } = data;
 
     if (!imageBase64 && !textInput) {
       throw new Error("Nebyly poskytnuty žádné obrazové ani textové údaje.");
@@ -497,6 +506,16 @@ export const extractOperatorsFn = createServerFn({ method: "POST" })
     };
 
     let promptText = EXTRACTION_PROMPT;
+
+    if (rosterNames && rosterNames.length > 0) {
+      promptText += `\n\n======================================================
+OFICIÁLNÍ KMEN ZAMĚSTNANCŮ SMĚNY ${activeShift || "A"} (TICHÁ AUTOMATICKÁ KOREKCE):
+Při čtení jmen z fotografie bílé tabule nebo textu porovnej každé rozpoznané jméno s tímto oficiálním kmenem.
+Pokud je jméno zapsáno zkratkou (např. "D. Svoboda", "Baiov B.", "Novák D."), má drobný překlep z fixu nebo je prohozené jméno a příjmení, AUTOMATICKY A V TICHOSTI JEJ OPRAV na přesné oficiální jméno z tohoto kmene:
+${rosterNames.join(", ")}
+======================================================\n`;
+    }
+
     if (customInstructions && customInstructions.trim()) {
       promptText += `\n\n======================================================
 DODATEČNÉ VLASTNÍ INSTRUKCE A POKYNY OD DISPEČERA (NEJVYŠŠÍ PRIORITA):

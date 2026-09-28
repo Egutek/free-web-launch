@@ -31,7 +31,14 @@ import {
   Brain,
   RotateCcw,
 } from "lucide-react";
-import { DepartmentId, MachineType, Operator, AbsenceReason } from "../types";
+import {
+  DepartmentId,
+  MachineType,
+  Operator,
+  AbsenceReason,
+  RosterMember,
+  ShiftCode,
+} from "../types";
 import { DEPARTMENTS, getDepartmentById } from "../data/departments";
 import {
   extractOperatorsFn,
@@ -39,6 +46,7 @@ import {
   isTopAbsenceOrAbsent,
   isCategoryHeader,
   FilteredOutRecord,
+  ExtractedOperator,
 } from "../services/aiServerFn";
 import {
   ImageAdjustments,
@@ -50,6 +58,7 @@ import {
   applyImageAdjustments,
 } from "../utils/imagePreprocessing";
 import { subscribeToOcrInstructions, syncOcrInstructionsToCloud } from "../services/firestoreSync";
+import { reconcileExtractedOperatorsWithRoster } from "../utils/rosterMatcher";
 
 export const DEFAULT_CUSTOM_OCR_INSTRUCTIONS = `1. Všechny osoby vlevo nahoře pod absencí (pod nápisy Absence, Dovolená, D, PN, Nemoc, NV, OČR nebo zkratkami oddělení např. HOVC - Novák D, Svoboda PN) VŽDY načti a zařaď do nabídky absencí.
 2. Operátoři přiřazení na HOVS mají mít po nahrání výchozí stroj LL (pokud není výslovně napsáno RTR).
@@ -66,6 +75,8 @@ interface PhotoImportModalProps {
     omittedCandidates?: FilteredOutRecord[],
   ) => void;
   currentCount: number;
+  roster?: RosterMember[];
+  activeShift?: ShiftCode;
 }
 
 interface DraftOperator {
@@ -82,6 +93,8 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   onClose,
   onImportOperators,
   currentCount,
+  roster = [],
+  activeShift = "A",
 }) => {
   const [activeTab, setActiveTab] = useState<"photo" | "text">("photo");
   const [rawSourceImage, setRawSourceImage] = useState<string | null>(null);
@@ -280,13 +293,18 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
     setErrorMessage(null);
 
     try {
+      const rosterNames = roster.length > 0 ? roster.map((r) => r.name) : undefined;
       const payload: {
         imageBase64?: string;
         mimeType?: string;
         textInput?: string;
         customInstructions?: string;
+        rosterNames?: string[];
+        activeShift?: string;
       } = {
         customInstructions: customInstructions.trim() || undefined,
+        rosterNames,
+        activeShift,
       };
       if (activeTab === "photo") {
         if (!rawSourceImage && !selectedImage) {
@@ -393,7 +411,13 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         );
       }
 
-      const drafts: DraftOperator[] = validOps.map((op, index: number) => {
+      // Perform silent AI & fuzzy roster reconciliation on background
+      const { operators: reconciledValidOps } =
+        roster.length > 0
+          ? reconcileExtractedOperatorsWithRoster(validOps, roster)
+          : { operators: validOps, reconciledCount: 0 };
+
+      const drafts: DraftOperator[] = reconciledValidOps.map((op, index: number) => {
         const deptId = (op.departmentId as DepartmentId) || "hovc";
         const rawMachine = String(op.machineType ?? "").toUpperCase();
         const combined = `${String(op.name || "")} ${String(op.notes || "")}`.toUpperCase();

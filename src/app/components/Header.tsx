@@ -32,6 +32,8 @@ interface HeaderProps {
   rtrCount?: number;
   vnaCount?: number;
   absenceCount?: number;
+  rosterCount?: number;
+  missingRosterCount?: number;
   activeShift?: ShiftCode;
   onShiftChange?: (shift: ShiftCode) => void;
   searchQuery: string;
@@ -47,6 +49,7 @@ interface HeaderProps {
   onOpenAddCustomDept?: () => void;
   onOpenPhotoImport: () => void;
   onOpenTemplatesModal?: () => void;
+  onOpenKmenModal?: () => void;
   onOpenReportModal?: () => void;
   onOpenHistoryModal: () => void;
   onResetData: () => void;
@@ -58,6 +61,8 @@ export const Header: React.FC<HeaderProps> = ({
   totalCount = 65,
   activeCount = 0,
   absenceCount = 0,
+  rosterCount = 0,
+  missingRosterCount = 0,
   activeShift = "A",
   onShiftChange,
   searchQuery,
@@ -73,6 +78,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAddCustomDept,
   onOpenPhotoImport,
   onOpenTemplatesModal,
+  onOpenKmenModal,
   onOpenHistoryModal,
   onResetData,
   isCloudConnected = false,
@@ -292,6 +298,39 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
               )}
             </div>
+
+            {onOpenKmenModal && (
+              <button
+                id="header-open-kmen-btn"
+                onClick={onOpenKmenModal}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-2xs active:scale-95 cursor-pointer ${
+                  missingRosterCount > 0
+                    ? "bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700 hover:bg-amber-100"
+                    : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
+                }`}
+                title={
+                  missingRosterCount > 0
+                    ? `Kmen: ${rosterCount} lidí • ⚠️ ${missingRosterCount} chybí v evidenci směny ani v absenci. Klikněte pro kontrolu docházky.`
+                    : `Kmen: ${rosterCount} lidí • Všichni evidováni. Klikněte pro správu kmene.`
+                }
+              >
+                <Users
+                  className={`w-3.5 h-3.5 ${missingRosterCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}`}
+                />
+                <span>Kmen</span>
+                {rosterCount > 0 && (
+                  <span className="font-mono text-[11px] opacity-80">({rosterCount})</span>
+                )}
+                {missingRosterCount > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-500 text-white shadow-2xs"
+                    title={`${missingRosterCount} lidí z kmene neevidováno`}
+                  >
+                    ! {missingRosterCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             <button
               id="header-open-templates-btn"

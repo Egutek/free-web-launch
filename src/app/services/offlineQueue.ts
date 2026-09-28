@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-export type OfflineActionType = "sync_operator" | "delete_operator" | "sync_history";
+export type OfflineActionType =
+  "sync_operator" | "delete_operator" | "sync_history" | "sync_roster" | "delete_roster";
 
 export interface OfflineAction {
   id: string;

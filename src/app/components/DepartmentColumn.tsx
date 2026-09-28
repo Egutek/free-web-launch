@@ -12,6 +12,10 @@ import {
   Users,
   CheckSquare,
   Trash2,
+  AlertTriangle,
+  ArrowUpRight,
+  Scale,
+  ShieldAlert,
 } from "lucide-react";
 import {
   Department,
@@ -20,14 +24,19 @@ import {
   OperatorStatus,
   AbsenceReason,
   MachineType,
+  RosterMember,
+  ShiftCode,
 } from "../types";
 import { OperatorCard } from "./OperatorCard";
 import { resolveOperatorIdsFromDrop, getGlobalDragState } from "../utils/dragState";
+import { matchOperatorWithRoster, validateDepartmentHeadcount } from "../utils/rosterMatcher";
 
 interface DepartmentColumnProps {
   department: Department;
   operators: Operator[];
   allOperators?: Operator[];
+  roster?: RosterMember[];
+  activeShift?: ShiftCode;
   totalOperatorsCount: number;
   selectedOperatorId?: string | null;
   bulkSelectedIds?: Set<string>;
@@ -188,6 +197,8 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
   department,
   operators,
   allOperators = [],
+  roster = [],
+  activeShift = "A",
   totalOperatorsCount,
   selectedOperatorId = null,
   bulkSelectedIds,
@@ -207,6 +218,16 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [absenceFilter, setAbsenceFilter] = useState<"ALL" | AbsenceReason>("ALL");
   const dragCounter = useRef(0);
+
+  // Subtle background validation check monitoring roster headcount vs active operators
+  const headcountValidation = React.useMemo(() => {
+    return validateDepartmentHeadcount(
+      department.id,
+      allOperators.length > 0 ? allOperators : operators,
+      roster,
+      activeShift,
+    );
+  }, [department.id, allOperators, operators, roster, activeShift]);
 
   const getDeptIcon = (id: DepartmentId) => {
     if (department.isCustom) {
@@ -349,6 +370,36 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
                     Vícepráce
                   </span>
                 )}
+                {/* Subtle background validation indicator if headcount differs from roster kmen */}
+                {headcountValidation.expectedRosterCount > 0 && !isAbsence && (
+                  <div
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] font-bold tracking-tight transition-all cursor-help select-none ${
+                      headcountValidation.hasSignificantDiscrepancy
+                        ? headcountValidation.status === "deficit"
+                          ? "bg-rose-500/80 hover:bg-rose-500 text-white ring-1 ring-white/40 shadow-xs animate-pulse"
+                          : "bg-amber-400/90 hover:bg-amber-400 text-slate-950 ring-1 ring-white/40 shadow-xs font-black"
+                        : headcountValidation.hasDiscrepancy
+                          ? "bg-white/20 hover:bg-white/30 text-white/95 border border-white/20"
+                          : "bg-emerald-500/25 text-emerald-100 border border-emerald-400/30"
+                    }`}
+                    title={headcountValidation.tooltip}
+                  >
+                    {headcountValidation.status === "deficit" ? (
+                      <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                    ) : headcountValidation.status === "surplus" ? (
+                      <ArrowUpRight className="w-2.5 h-2.5 shrink-0" />
+                    ) : (
+                      <Scale className="w-2.5 h-2.5 text-emerald-200 shrink-0" />
+                    )}
+                    <span>
+                      {headcountValidation.diff > 0
+                        ? `+${headcountValidation.diff} kmen`
+                        : headcountValidation.diff < 0
+                          ? `${headcountValidation.diff} kmen`
+                          : "kmen OK"}
+                    </span>
+                  </div>
+                )}
               </div>
               {department.description && (
                 <p
@@ -438,9 +489,34 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
         {/* Live Counters & Machine breakdown row */}
         <div className="mt-3 flex items-center justify-between text-xs pt-2.5 border-t border-white/20">
           <div className="flex flex-col">
-            <div className="flex items-center gap-1.5 text-white font-black">
-              <Users className="w-3.5 h-3.5 opacity-80" />
-              <span>{operators.length} lidí</span>
+            <div className="flex items-center gap-1.5 text-white font-black flex-wrap">
+              <span className="flex items-center gap-1">
+                <Users className="w-3.5 h-3.5 opacity-80" />
+                <span>{operators.length} lidí</span>
+              </span>
+              {headcountValidation.expectedRosterCount > 0 && !isAbsence && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-md font-semibold cursor-help backdrop-blur-xs transition-colors ${
+                    headcountValidation.hasSignificantDiscrepancy
+                      ? headcountValidation.status === "deficit"
+                        ? "bg-rose-950/60 text-rose-200 border border-rose-400/50 font-bold"
+                        : "bg-amber-950/60 text-amber-200 border border-amber-400/50 font-bold"
+                      : "bg-white/15 text-white/90"
+                  }`}
+                  title={headcountValidation.tooltip}
+                >
+                  kmen: {headcountValidation.expectedRosterCount}
+                  {headcountValidation.diff !== 0 && (
+                    <strong className="ml-1 font-mono font-bold">
+                      (
+                      {headcountValidation.diff > 0
+                        ? `+${headcountValidation.diff}`
+                        : headcountValidation.diff}
+                      )
+                    </strong>
+                  )}
+                </span>
+              )}
             </div>
             {/* Menší text pod tím: v provozu nebo rozdělení absence */}
             {isAbsence ? (
@@ -578,25 +654,33 @@ export const DepartmentColumn: React.FC<DepartmentColumnProps> = ({
             </button>
           </div>
         ) : (
-          displayedOperators.map((operator) => (
-            <OperatorCard
-              key={operator.id}
-              operator={operator}
-              allOperators={allOperators.length > 0 ? allOperators : operators}
-              isSelected={selectedOperatorId === operator.id}
-              isBulkSelected={bulkSelectedIds?.has(operator.id) ?? false}
-              isAnyBulkActive={(bulkSelectedIds?.size ?? 0) > 0}
-              bulkSelectedIds={bulkSelectedIds ? Array.from(bulkSelectedIds) : []}
-              onToggleBulkSelect={onToggleBulkSelect}
-              onSelect={onSelectOperator}
-              onOpenQuickMove={onOpenQuickMove}
-              onEditOperator={onEditOperator}
-              onChangeStatus={onChangeStatus}
-              onChangeAbsenceReason={onChangeAbsenceReason}
-              onChangeMachineType={onChangeMachineType}
-              onDropOperator={onDropOperator}
-            />
-          ))
+          displayedOperators.map((operator) => {
+            const isNonRoster =
+              roster.length > 0
+                ? matchOperatorWithRoster(operator.name, roster).confidence < 0.8
+                : false;
+
+            return (
+              <OperatorCard
+                key={operator.id}
+                operator={operator}
+                allOperators={allOperators.length > 0 ? allOperators : operators}
+                isSelected={selectedOperatorId === operator.id}
+                isBulkSelected={bulkSelectedIds?.has(operator.id) ?? false}
+                isAnyBulkActive={(bulkSelectedIds?.size ?? 0) > 0}
+                bulkSelectedIds={bulkSelectedIds ? Array.from(bulkSelectedIds) : []}
+                isNonRoster={isNonRoster}
+                onToggleBulkSelect={onToggleBulkSelect}
+                onSelect={onSelectOperator}
+                onOpenQuickMove={onOpenQuickMove}
+                onEditOperator={onEditOperator}
+                onChangeStatus={onChangeStatus}
+                onChangeAbsenceReason={onChangeAbsenceReason}
+                onChangeMachineType={onChangeMachineType}
+                onDropOperator={onDropOperator}
+              />
+            );
+          })
         )}
       </div>
 

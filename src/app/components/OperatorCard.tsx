@@ -15,6 +15,7 @@ interface OperatorCardProps {
   isBulkSelected?: boolean;
   isAnyBulkActive?: boolean;
   bulkSelectedIds?: string[];
+  isNonRoster?: boolean;
   onSelect?: (operator: Operator) => void;
   onOpenQuickMove: (operator: Operator) => void;
   onEditOperator: (operator: Operator) => void;
@@ -32,6 +33,7 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
   isBulkSelected = false,
   isAnyBulkActive = false,
   bulkSelectedIds = [],
+  isNonRoster = false,
   onSelect,
   onOpenQuickMove,
   onEditOperator,
@@ -171,6 +173,16 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
           >
             {operator.name}
           </h4>
+
+          {/* Non-roster indicator (Subtle badge for guest/external/helpers) */}
+          {isNonRoster && !isAbsence && (
+            <span
+              className="inline-flex items-center px-1 py-0.2 rounded text-[9px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 shrink-0 select-none"
+              title="Pracovník mimo kmen (výpomoc / brigádník)"
+            >
+              Výpomoc
+            </span>
+          )}
 
           {/* Machine qualification tag: ONLY IF LL or RTR (never on VNA or Absence) - Click to toggle LL <-> RTR */}
           {operator.departmentId !== "vna" &&

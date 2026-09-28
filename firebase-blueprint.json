@@ -17,6 +17,22 @@
       },
       "required": ["name", "machineType", "departmentId", "status", "lastMovedAt"]
     },
+    "RosterMember": {
+      "title": "RosterMember",
+      "description": "Official company roster member for Team Leaders",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "teamLeader": { "type": "string", "enum": ["transport", "vna", "other"] },
+        "defaultDepartmentId": { "type": "string", "maxLength": 50 },
+        "defaultMachineType": { "type": "string", "enum": ["LL", "RTR", "NONE"] },
+        "shift": { "type": "string", "enum": ["A", "B", "C", "all"] },
+        "isActiveInRoster": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["name", "teamLeader"]
+    },
     "HistoryRecord": {
       "title": "HistoryRecord",
       "description": "Operator move history",
@@ -83,6 +99,10 @@
     "operators/{operatorId}": {
       "schema": { "$ref": "#/entities/Operator" },
       "description": "All operators"
+    },
+    "roster/{rosterId}": {
+      "schema": { "$ref": "#/entities/RosterMember" },
+      "description": "Official company roster members"
     },
     "history/{historyId}": {
       "schema": { "$ref": "#/entities/HistoryRecord" },

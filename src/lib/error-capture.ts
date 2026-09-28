@@ -4,7 +4,18 @@
 let lastCapturedError: { error: unknown; at: number } | undefined;
 const TTL_MS = 5_000;
 
+function isIgnoredTransientError(error: unknown): boolean {
+  if (!error) return false;
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    msg.includes("Could not reach Cloud Firestore backend") ||
+    msg.includes("[code=unavailable]") ||
+    msg.includes("the client is offline")
+  );
+}
+
 function record(error: unknown) {
+  if (isIgnoredTransientError(error)) return;
   lastCapturedError = { error, at: Date.now() };
 }
 

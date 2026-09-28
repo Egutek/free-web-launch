@@ -50,6 +50,32 @@ service cloud.firestore {
         allow delete: if isSignedIn() && workspaceId == 'zf_ostrov' && isValidId(operatorId);
       }
 
+      // Roster (Kmen)
+      function isValidRosterMember(data) {
+        return data.keys().hasAll(['name', 'teamLeader'])
+            && data.name is string && data.name.size() <= 100
+            && data.teamLeader in ['transport', 'vna', 'other']
+            && (!data.keys().hasAny(['defaultDepartmentId']) || (data.defaultDepartmentId is string && data.defaultDepartmentId.size() <= 50))
+            && (!data.keys().hasAny(['defaultMachineType']) || data.defaultMachineType in ['LL', 'RTR', 'NONE'])
+            && (!data.keys().hasAny(['shift']) || data.shift in ['A', 'B', 'C', 'all'])
+            && (!data.keys().hasAny(['isActiveInRoster']) || data.isActiveInRoster is bool)
+            && (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 500))
+            && (!data.keys().hasAny(['createdAt']) || (data.createdAt is string && data.createdAt.size() <= 50));
+      }
+
+      match /roster/{rosterId} {
+        allow read: if isSignedIn() && workspaceId == 'zf_ostrov';
+        allow create: if isSignedIn()
+            && workspaceId == 'zf_ostrov'
+            && isValidId(rosterId)
+            && isValidRosterMember(incoming());
+        allow update: if isSignedIn()
+            && workspaceId == 'zf_ostrov'
+            && isValidId(rosterId)
+            && isValidRosterMember(incoming());
+        allow delete: if isSignedIn() && workspaceId == 'zf_ostrov' && isValidId(rosterId);
+      }
+
       // History
       function isValidHistoryRecord(data) {
         return data.keys().hasAll(['operatorId', 'operatorName', 'machineType', 'fromDept', 'toDept', 'timestamp'])

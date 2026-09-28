@@ -5,8 +5,8 @@ export const DEPARTMENTS: Department[] = [
     id: "vna",
     name: "VNA",
     code: "VNA",
-    fullName: "Very Narrow Aisle (Úzké uličky)",
-    description: "Specializovaní operátoři pro úzké uličky (Very Narrow Aisle)",
+    fullName: "Very Narrow Aisle (Úzké uličky) • 2. Team Leader",
+    description: "Specializovaní operátoři pro úzké uličky (Správa: 2. Team Leader - přehled)",
     color: "emerald",
     badgeBg:
       "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800",
@@ -14,6 +14,7 @@ export const DEPARTMENTS: Department[] = [
     borderColor: "border-emerald-500",
     iconName: "GitCommitVertical",
     targetCount: 7,
+    isSecondTl: true,
   },
   {
     id: "hovs",

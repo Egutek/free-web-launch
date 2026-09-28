@@ -2,11 +2,13 @@
  * Offline Synchronizační Služba pro mobilní obchůzku haly ZF Ostrov
  * Zajišťuje bezpečné uložení a automatické odeslání změn při výpadku signálu v uličkách mezi regály.
  */
-import { Operator, MoveHistoryRecord } from "../types";
+import { Operator, MoveHistoryRecord, RosterMember } from "../types";
 import {
   syncOperatorToCloud,
   deleteOperatorFromCloud,
   syncHistoryRecordToCloud,
+  syncRosterMemberToCloud,
+  deleteRosterMemberFromCloud,
 } from "./firestoreSync";
 import {
   OfflineAction,
@@ -47,6 +49,12 @@ export async function flushOfflineQueue(
         syncedCount++;
       } else if (item.type === "sync_history") {
         await syncHistoryRecordToCloud(item.data as MoveHistoryRecord, false);
+        syncedCount++;
+      } else if (item.type === "sync_roster") {
+        await syncRosterMemberToCloud(item.data as RosterMember, false);
+        syncedCount++;
+      } else if (item.type === "delete_roster") {
+        await deleteRosterMemberFromCloud(item.data as string, false);
         syncedCount++;
       }
     } catch (err) {
