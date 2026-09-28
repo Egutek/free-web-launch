@@ -423,8 +423,11 @@ export const Header: React.FC<HeaderProps> = ({
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Vyhledat člověka podle jména..."
-              className="w-full pl-9 pr-3 py-1.5 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-9 pr-10 py-1.5 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             />
+            <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-black text-slate-400 shadow-sm sm:inline-block dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500">
+              /
+            </kbd>
           </div>
 
           {/* Controls Right: Shift Switcher (A, B, C), Auto-scroll toggle and View switcher */}
