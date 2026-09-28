@@ -38,6 +38,7 @@ import {
   AbsenceReason,
   RosterMember,
   ShiftCode,
+  TeamLeaderRole,
 } from "../types";
 import { DEPARTMENTS, getDepartmentById } from "../data/departments";
 import {
@@ -77,6 +78,7 @@ interface PhotoImportModalProps {
   currentCount: number;
   roster?: RosterMember[];
   activeShift?: ShiftCode;
+  onAddToRoster?: (members: Omit<RosterMember, "id" | "createdAt">[]) => void;
 }
 
 interface DraftOperator {
@@ -86,6 +88,7 @@ interface DraftOperator {
   departmentId: DepartmentId;
   notes?: string;
   absenceReason?: AbsenceReason;
+  teamLeader?: TeamLeaderRole;
 }
 
 export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
@@ -95,6 +98,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
   currentCount,
   roster = [],
   activeShift = "A",
+  onAddToRoster,
 }) => {
   const [activeTab, setActiveTab] = useState<"photo" | "text">("photo");
   const [rawSourceImage, setRawSourceImage] = useState<string | null>(null);
@@ -401,6 +405,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
             name: f.name,
             machineType: "LL",
             departmentId: "hovc",
+            teamLeader: "transport",
             notes: `Detekováno v sekci ${f.detail} (zkontrolujte)`,
           }));
           setExtractedList(fallbackDrafts);
@@ -459,6 +464,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
           departmentId: deptId,
           notes: op.notes || "Extrahováno ze snímku ZF",
           absenceReason: isAbsence ? detectedReason : undefined,
+          teamLeader: deptId === "vna" ? "vna" : "transport",
         };
       });
 
@@ -567,6 +573,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         departmentId: deptId,
         notes: item.detail,
         absenceReason: deptId === "unassigned" ? "Absence" : undefined,
+        teamLeader: deptId === "vna" ? "vna" : "transport",
       },
     ]);
     setFilteredOutList((prev) => prev.filter((f) => f.name !== item.name));
@@ -595,6 +602,7 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
         departmentId: "unassigned",
         notes: item.detail,
         absenceReason: reason,
+        teamLeader: "transport",
       };
     });
     setExtractedList((prev) => [...prev, ...newDrafts]);
@@ -632,6 +640,33 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
 
     onImportOperators(finalOps, replaceAll, filteredOutList);
     onClose();
+  };
+
+  const handleAddExtractedToRoster = () => {
+    if (!onAddToRoster) return;
+    onAddToRoster(
+      extractedList
+        .filter((draft) =>
+          (selectedDraftIds.size === 0 || selectedDraftIds.has(draft.tempId)) &&
+          draft.name.trim() &&
+          draft.departmentId !== "unassigned",
+        )
+        .map((draft) => ({
+          name: draft.name.trim(),
+          teamLeader: draft.teamLeader || (draft.departmentId === "vna" ? "vna" : "transport"),
+          defaultDepartmentId:
+            draft.teamLeader === "vna" || draft.departmentId === "vna" ? "vna" : draft.departmentId,
+          defaultMachineType:
+            draft.teamLeader === "vna" || draft.departmentId === "vna"
+              ? "NONE"
+              : draft.machineType === "NONE"
+                ? "LL"
+                : draft.machineType,
+          shift: activeShift,
+          isActiveInRoster: true,
+          notes: draft.notes,
+        })),
+    );
   };
 
   return (
@@ -1715,6 +1750,15 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                     >
                       Nastavit všem RTR
                     </button>
+                    {onAddToRoster && (
+                      <button
+                        type="button"
+                        onClick={handleAddExtractedToRoster}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 border border-emerald-300 cursor-pointer"
+                      >
+                        Uložit vybrané do kmene
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setSelectedDraftIds(new Set())}
@@ -1869,6 +1913,18 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
                           </div>
                         )}
                       </div>
+
+                      <select
+                        value={item.teamLeader || (item.departmentId === "vna" ? "vna" : "transport")}
+                        onChange={(e) =>
+                          updateDraft(item.tempId, { teamLeader: e.target.value as TeamLeaderRole })
+                        }
+                        className="shrink-0 w-24 text-[11px] font-semibold px-1.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                        title="Kmenové zařazení"
+                      >
+                        <option value="transport">Transport</option>
+                        <option value="vna">VNA</option>
+                      </select>
 
                       {/* Department Dropdown */}
                       <div className="shrink-0 w-28 sm:w-36">

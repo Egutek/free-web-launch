@@ -1549,8 +1549,19 @@ export default function App() {
   const handleBulkAddRosterMembers = useCallback(
     (members: Omit<RosterMember, "id" | "createdAt">[]) => {
       if (members.length === 0) return;
+      const existingNames = new Set(roster.map((m) => m.name.trim().toLocaleLowerCase()));
+      const uniqueMembers = members.filter((m) => {
+        const key = m.name.trim().toLocaleLowerCase();
+        if (!key || existingNames.has(key)) return false;
+        existingNames.add(key);
+        return true;
+      });
+      if (uniqueMembers.length === 0) {
+        showToast("Všichni vybraní lidé už jsou ve stálém stavu.");
+        return;
+      }
       const now = new Date().toISOString();
-      const newMembers: RosterMember[] = members.map((m, idx) => ({
+      const newMembers: RosterMember[] = uniqueMembers.map((m, idx) => ({
         ...m,
         id: `roster-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
         createdAt: now,
@@ -2593,6 +2604,7 @@ export default function App() {
           currentCount={shiftOperators.length}
           roster={roster}
           activeShift={activeShift}
+          onAddToRoster={handleBulkAddRosterMembers}
         />
       )}
 
