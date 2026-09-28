@@ -395,12 +395,12 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
                   onChange={(e) => setAddToRosterToo(e.target.checked)}
                   className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
                 />
-                <span>Uložit také do trvalého kmene (rosteru)</span>
+                <span>Uložit také do stálého stavu operátorů</span>
               </label>
 
               {addToRosterToo && (
                 <div className="pl-6 pt-1 flex items-center gap-2 text-xs">
-                  <span className="text-slate-500">Kmenový Team Leader:</span>
+                  <span className="text-slate-500">Výchozí tým (Team Leader):</span>
                   <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 p-0.5 bg-white dark:bg-slate-900">
                     <button
                       type="button"

@@ -1009,7 +1009,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                           ? "bg-amber-600 text-white shadow-2xs"
                           : "text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40"
                       }`}
-                      title="Kmenoví pracovníci, kteří na směně pracují na jiném oddělení než je jejich výchozí"
+                      title="Stálí pracovníci, kteří na směně pracují na jiném oddělení než je jejich výchozí"
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                       <span>Zapůjčení ({presenceCounts.loaned})</span>
@@ -1022,9 +1022,9 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                       type="button"
                       onClick={handleReturnAllLoanedToDefaultDept}
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 cursor-pointer shadow-2xs active:scale-95 transition-all ml-1"
-                      title="Přesunout všechny zapůjčené kmenové pracovníky zpět na jejich úsek (Transport / VNA)"
+                      title="Přesunout všechny zapůjčené pracovníky zpět na jejich úsek (Transport / VNA)"
                     >
-                      <span>🔄 Vrátit na kmenový úsek ({presenceCounts.loaned})</span>
+                      <span>🔄 Vrátit na výchozí tým ({presenceCounts.loaned})</span>
                     </button>
                   )}
 
@@ -1033,7 +1033,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                       type="button"
                       onClick={handleDeployAllMissingToShift}
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold bg-blue-100 hover:bg-blue-200 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-700 cursor-pointer shadow-2xs active:scale-95 transition-all ml-1"
-                      title="Zařadit všechny dosud neevidované kmenové pracovníky na jejich výchozí pracoviště"
+                      title="Zařadit všechny dosud neevidované stálé pracovníky na jejich výchozí pracoviště"
                     >
                       <span>⚡ Zařadit ({presenceCounts.missing})</span>
                     </button>
@@ -1708,7 +1708,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                             : `Výpomoc mezi týmy (${report.loanedWorkers.length})`}
                       </h3>
                       <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80 hidden sm:inline">
-                        — Kmenoví zaměstnanci ZF dočasně vypomáhající na druhém úseku
+                        — Stálí zaměstnanci ZF dočasně vypomáhající na druhém úseku
                       </span>
                     </div>
 
@@ -1724,7 +1724,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                         title="Přesunout všechny zapůjčené pracovníky zpět na jejich úsek (Transport / VNA)"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Přesunout všechny na kmenový úsek</span>
+                        <span>Přesunout všechny na výchozí úsek</span>
                       </button>
                     )}
                   </div>

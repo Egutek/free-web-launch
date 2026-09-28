@@ -1,12 +1,34 @@
-import React, { useState, useEffect } from "react";
-import { Copy, Check, MessageSquare, Layers, ChevronDown, ChevronUp } from "lucide-react";
+import React, { useState } from "react";
+import {
+  Copy,
+  Check,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  Truck,
+  Forklift,
+  Users,
+  Activity,
+  UserX,
+  Sparkles,
+  Bot,
+  Layers,
+  ArrowRight,
+  ShieldCheck,
+  CheckCircle2,
+} from "lucide-react";
 import { Department, Operator, RosterMember, ShiftCode } from "../types";
-import { DEPARTMENTS } from "../data/departments";
+import { DEPARTMENTS, getDepartmentById } from "../data/departments";
 import {
   isTransportDepartment,
   isVnaRosterMember,
   matchOperatorWithRoster,
 } from "../utils/rosterMatcher";
+import {
+  findLearnedProfile,
+  loadLearnedProfiles,
+  loadAILearningEvents,
+} from "../services/operatorLearningEngine";
 
 interface BossAnswerCardProps {
   operators: Operator[];
@@ -15,6 +37,8 @@ interface BossAnswerCardProps {
   activeShift?: ShiftCode;
   onOpenReportModal: () => void;
   onQuickMoveModal?: () => void;
+  onOpenKmenModal?: () => void;
+  onAutoAssignAISuggestions?: () => void;
 }
 
 export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
@@ -23,15 +47,18 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   roster = [],
   activeShift = "A",
   onOpenReportModal,
+  onOpenKmenModal,
+  onAutoAssignAISuggestions,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [showAIDetails, setShowAIDetails] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
       const stored = localStorage.getItem("zf_boss_card_collapsed");
       if (stored !== null) return stored === "true";
-      return true;
+      return false; // Default expanded for great overview
     } catch {
-      return true;
+      return false;
     }
   });
 
@@ -47,6 +74,7 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
     });
   };
 
+  // 1. Filtrací rozdělit operátory dle reálných stavů
   const activeOps = operators.filter(
     (op) => op.departmentId !== "unassigned" && op.status === "active",
   );
@@ -57,11 +85,11 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
     (op) => op.departmentId !== "unassigned" && op.status === "break",
   );
 
-  // Transport vs VNA segmentation
+  // 2. Transport vs VNA v živém provozu
   const transportActiveOps = activeOps.filter((op) => isTransportDepartment(op.departmentId));
   const vnaActiveOps = activeOps.filter((op) => op.departmentId === "vna");
 
-  // Roster members for active shift
+  // 3. Stálý stav (roster) pro aktivní směnu
   const shiftRoster = roster.filter(
     (m) =>
       (!m.shift || m.shift === "all" || m.shift === activeShift) && m.isActiveInRoster !== false,
@@ -69,12 +97,66 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   const transportRosterCount = shiftRoster.filter((m) => !isVnaRosterMember(m)).length;
   const vnaRosterCount = shiftRoster.filter((m) => isVnaRosterMember(m)).length;
 
+  // 4. Výpomoci mezi týmy
+  const vnaLoanedToTransport = transportActiveOps.filter((op) => {
+    const m = matchOperatorWithRoster(op.name, roster).match;
+    return m && isVnaRosterMember(m);
+  }).length;
+
+  const transportLoanedToVna = vnaActiveOps.filter((op) => {
+    const m = matchOperatorWithRoster(op.name, roster).match;
+    return m && !isVnaRosterMember(m);
+  }).length;
+
+  // 5. Inteligentní rozdělení absencí s pomocí AI znalostní báze
+  // "kdo je na PN tak rovnou ho přiřadila pod transport protože tam jezdí"
+  const transportAbsenceOps = absenceOps.filter((op) => {
+    const profile = findLearnedProfile(op.name);
+    if (profile) {
+      return profile.primaryTeam === "transport";
+    }
+    const m = matchOperatorWithRoster(op.name, roster).match;
+    return !m || !isVnaRosterMember(m);
+  });
+
+  const vnaAbsenceOps = absenceOps.filter((op) => {
+    const profile = findLearnedProfile(op.name);
+    if (profile) {
+      return profile.primaryTeam === "vna";
+    }
+    const m = matchOperatorWithRoster(op.name, roster).match;
+    return m && isVnaRosterMember(m);
+  });
+
+  const transportPnOps = transportAbsenceOps.filter((op) => op.absenceReason === "PN");
+  const transportVacationOps = transportAbsenceOps.filter((op) => op.absenceReason === "Dovolená");
+  const unassignedWaitingOps = operators.filter(
+    (op) => op.departmentId === "unassigned" && !op.absenceReason,
+  );
+
+  // 6. Stroje a pracoviště Transportu
   const activeLL = activeOps.filter((op) => op.machineType === "LL").length;
   const activeRTR = activeOps.filter((op) => op.machineType === "RTR").length;
   const activeVNA = vnaActiveOps.length;
+
+  const hovsOps = transportActiveOps.filter(
+    (op) => op.departmentId === "hovs" || op.departmentId === "hovc",
+  );
+  const putawayOps = transportActiveOps.filter((op) => op.departmentId === "putaway");
+  const outboundOps = transportActiveOps.filter(
+    (op) => op.departmentId === "obwf" || op.departmentId === "obwi",
+  );
+  const vasOps = transportActiveOps.filter((op) => op.departmentId === "vas");
+
   const customDeptIds = new Set(customDepartments.map((d) => d.id));
   const activeExtraOps = activeOps.filter((op) => customDeptIds.has(op.departmentId));
 
+  // 7. AI learning data stats
+  const learnedMap = loadLearnedProfiles();
+  const recentAIEvents = loadAILearningEvents();
+  const learnedProfilesCount = learnedMap.size;
+
+  // 8. Rychlé kopírování pro vedení
   const copyPickSummary = () => {
     const lines = DEPARTMENTS.filter((d) => d.id !== "unassigned").map((d) => {
       const opsInDept = operators.filter((o) => o.departmentId === d.id && o.status !== "absence");
@@ -90,64 +172,87 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
       activeExtraOps.length > 0 ? `, z toho ${activeExtraOps.length} na vícepracích` : "";
     const rosterInfo =
       transportRosterCount > 0 ? ` (stálý stav Transport ${transportRosterCount})` : "";
-    const text = `Ahoj, aktuální stav oddělení PICK: Transport ${transportActiveOps.length} lidí v provozu${rosterInfo}, VNA ${vnaActiveOps.length} (celkem ${activeOps.length} z ${operators.length} na směně${extraNote}, ${absenceOps.length} v absenci / doma, ${activeLL}× LL, ${activeRTR}× RTR):\n${combined.join(" | ")}.`;
+    const text = `Ahoj, aktuální stav oddělení PICK (Směna ${activeShift}):\nTransport: ${transportActiveOps.length} lidí v provozu${rosterInfo}, VNA: ${vnaActiveOps.length} v provozu (celkem ${activeOps.length} z ${operators.length} na směně${extraNote}, ${absenceOps.length} v absenci / doma [z toho ${transportPnOps.length}× PN], ${activeLL}× LL, ${activeRTR}× RTR):\n${combined.join(" | ")}.`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
 
-  // COLLAPSED COMPACT VIEW (Takes minimal vertical space)
+  // ==========================================
+  // 1. COLLAPSED BAR VIEW
+  // ==========================================
   if (isCollapsed) {
     return (
       <div
         id="boss-pick-card-collapsed"
-        className="bg-slate-900 border border-blue-500/30 rounded-xl px-3 py-1.5 sm:py-2 text-white shadow-xs flex items-center justify-between gap-2 flex-wrap transition-all"
+        className="bg-slate-900 border border-slate-700/80 rounded-2xl p-2.5 sm:px-4 sm:py-2.5 text-white shadow-md flex items-center justify-between gap-2.5 flex-wrap transition-all"
       >
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400 bg-blue-500/20 px-2 py-0.5 rounded-md border border-blue-500/30">
-            TRANSPORT
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-300 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
+            Směna {activeShift}
           </span>
 
-          <span className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <strong className="text-emerald-400 font-extrabold">{transportActiveOps.length}</strong>
-            <span className="text-slate-300">v provozu</span>
+          {/* Transport Pill */}
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-950/80 border border-blue-600/50 text-xs text-blue-200">
+            <Truck className="w-3.5 h-3.5 text-blue-400" />
+            <span className="font-semibold text-slate-300">Transport:</span>
+            <strong className="text-white font-extrabold text-sm">
+              {transportActiveOps.length}
+            </strong>
             {transportRosterCount > 0 && (
-              <span className="text-blue-300 font-semibold text-xs">
-                (stálý stav {transportRosterCount})
+              <span className="text-blue-400/80 font-mono text-[11px]">
+                /{transportRosterCount}
               </span>
             )}
-            <span className="text-slate-500 text-xs font-normal">
-              (celkem {operators.length} na směně)
-            </span>
-          </span>
+            <span className="text-slate-400 text-[11px]">v provozu</span>
+          </div>
 
-          <span className="text-xs font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-md">
-            VNA: {vnaActiveOps.length} v provozu
-            {vnaRosterCount > 0 ? ` (stálý stav ${vnaRosterCount})` : ""}
-          </span>
+          {/* VNA Pill */}
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-950/80 border border-emerald-600/50 text-xs text-emerald-200">
+            <Forklift className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="font-semibold text-slate-300">VNA:</span>
+            <strong className="text-white font-extrabold text-sm">{vnaActiveOps.length}</strong>
+            {vnaRosterCount > 0 && (
+              <span className="text-emerald-400/80 font-mono text-[11px]">/{vnaRosterCount}</span>
+            )}
+            <span className="text-slate-400 text-[11px]">v provozu</span>
+          </div>
 
+          {/* Absence Pill with PN detail */}
           {absenceOps.length > 0 && (
-            <span className="text-[11px] font-semibold text-rose-300 bg-rose-950/60 border border-rose-800/50 px-2 py-0.5 rounded-md">
-              {absenceOps.length} absence
-            </span>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-950/70 border border-rose-700/60 text-xs text-rose-300">
+              <UserX className="w-3.5 h-3.5 text-rose-400" />
+              <span>
+                Absence: <strong className="text-white font-bold">{absenceOps.length}</strong>
+                {transportPnOps.length > 0 && (
+                  <span className="text-rose-400 text-[11px] ml-1">
+                    ({transportPnOps.length} PN)
+                  </span>
+                )}
+              </span>
+            </div>
           )}
 
-          <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-300 font-semibold">
-            <span className="bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded text-[11px] font-bold">
-              {activeLL}× LL
-            </span>
-            <span className="bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded text-[11px] font-bold">
-              {activeRTR}× RTR
-            </span>
+          {/* AI background learning badge */}
+          <div
+            onClick={() => {
+              setIsCollapsed(false);
+              setShowAIDetails(true);
+            }}
+            className="hidden xl:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-indigo-950/70 border border-indigo-700/60 text-[11px] text-indigo-300 cursor-pointer hover:bg-indigo-900/60 transition-colors"
+            title="AI na pozadí sleduje pohyby a automaticky rozpoznává tým a PN."
+          >
+            <Bot className="w-3 h-3 text-indigo-400" />
+            <span>AI učení: {learnedProfilesCount} profilů</span>
           </div>
         </div>
 
+        {/* Action Controls */}
         <div className="flex items-center gap-1.5 shrink-0 ml-auto">
           <button
             id="copy-pick-answer-collapsed-btn"
             onClick={copyPickSummary}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/30 transition-colors"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer"
             title="Zkopírovat stav pro WhatsApp / SMS"
           >
             {copied ? (
@@ -155,13 +260,13 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
             ) : (
               <Copy className="w-3.5 h-3.5" />
             )}
-            <span className="hidden sm:inline">{copied ? "Zkopírováno" : "Zkopírovat"}</span>
+            <span className="hidden sm:inline">{copied ? "Zkopírováno" : "Kopírovat"}</span>
           </button>
 
           <button
             id="open-report-collapsed-btn"
             onClick={onOpenReportModal}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer"
           >
             <MessageSquare className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Report</span>
@@ -170,10 +275,10 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
           <button
             id="expand-boss-card-btn"
             onClick={toggleCollapse}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700 transition-colors cursor-pointer"
-            title="Rozbalit detailní přehled"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700 transition-colors cursor-pointer"
+            title="Rozbalit přehledný dashboard"
           >
-            <span className="hidden sm:inline">Rozbalit</span>
+            <span>Přehled</span>
             <ChevronDown className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -181,137 +286,401 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
     );
   }
 
-  // EXPANDED VIEW (Made compact, clean, with collapse button)
+  // ==========================================
+  // 2. EXPANDED STRUCTURED DASHBOARD
+  // ==========================================
   return (
     <div
       id="boss-pick-card"
-      className="bg-gradient-to-r from-blue-950 via-slate-900 to-slate-900 border border-blue-500/30 rounded-2xl p-3.5 sm:p-4 text-white shadow-md relative overflow-hidden transition-all"
+      className="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 text-white shadow-xl relative overflow-hidden transition-all space-y-3.5"
     >
-      {/* Background soft glow */}
-      <div className="absolute top-0 right-0 -mt-10 -mr-10 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 relative z-10">
-        <div className="flex items-start sm:items-center gap-3">
-          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center shrink-0 text-blue-400">
-            <Layers className="w-5 h-5 sm:w-6 sm:h-6" />
+      {/* 1. TOP HEADER BAR */}
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center font-black text-sm shadow-md">
+            ZF
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400 bg-blue-500/15 px-2 py-0.5 rounded-full border border-blue-500/30">
-                Oddělení PICK • ZF Ostrov
+              <h3 className="font-extrabold text-sm sm:text-base text-white">
+                Oddělení PICK • Stav směny {activeShift}
+              </h3>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-800/80">
+                Živý provoz
               </span>
-              <span className="text-xs text-slate-400">Přehled pro směnové vedení</span>
             </div>
-
-            <div className="mt-1 flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-3 flex-wrap">
-              <div>
-                <h3 className="text-lg sm:text-xl font-black text-white flex items-baseline gap-2">
-                  <span>Transport v provozu:</span>
-                  <span className="text-emerald-400 text-xl sm:text-2xl font-extrabold animate-in fade-in duration-200">
-                    {transportActiveOps.length} lidí
-                  </span>
-                  <span className="text-xs font-normal text-slate-400">
-                    {transportRosterCount > 0
-                      ? `(stálý stav Transport: ${transportRosterCount} • `
-                      : "("}
-                    VNA: {vnaActiveOps.length}
-                    {vnaRosterCount > 0 ? `/${vnaRosterCount}` : ""} • celkem {operators.length} na
-                    směně)
-                  </span>
-                </h3>
-
-                {/* Sub-counters showing real-time deductions */}
-                <div className="flex items-center gap-2 mt-0.5 text-xs flex-wrap">
-                  {absenceOps.length > 0 ? (
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-rose-500/25 text-rose-300 border border-rose-500/40 font-bold text-xs">
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-400 inline-block animate-pulse" />
-                      <span>
-                        Absence:{" "}
-                        <strong className="text-white font-extrabold">{absenceOps.length}</strong>
-                      </span>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 font-semibold text-[11px]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      <span>0 absencí</span>
-                    </span>
-                  )}
-                  {breakOps.length > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold text-[11px]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                      <span>{breakOps.length} pauza</span>
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5 text-xs font-bold self-start sm:self-center mt-1 sm:mt-0">
-                <span
-                  className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-md text-[11px]"
-                  title="Aktivní řidiči LL na hale"
-                >
-                  {activeLL}× LL
-                </span>
-                <span
-                  className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-md text-[11px]"
-                  title="Aktivní řidiči RTR na hale"
-                >
-                  {activeRTR}× RTR
-                </span>
-                <span
-                  className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md text-[11px]"
-                  title="Aktivní VNA operátoři"
-                >
-                  {activeVNA}× VNA
-                </span>
-                {activeExtraOps.length > 0 && (
-                  <span
-                    className="bg-amber-600/30 text-amber-200 border border-amber-500/40 px-2 py-0.5 rounded-md text-[11px] font-bold"
-                    title="Operátoři na vícepracích / mimořádných úkolech"
-                  >
-                    +{activeExtraOps.length} vícepráce
-                  </span>
-                )}
-              </div>
-            </div>
+            <p className="text-[11px] text-slate-400">
+              Přehledné rozdělení operátorů, docházky a automatické AI zařazení absencí
+            </p>
           </div>
         </div>
 
-        {/* Action buttons + Collapse toggle */}
-        <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+        {/* Action buttons */}
+        <div className="flex items-center gap-2">
+          {/* AI Info pill */}
+          <button
+            type="button"
+            onClick={() => setShowAIDetails((prev) => !prev)}
+            className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+              showAIDetails
+                ? "bg-indigo-600 text-white border-indigo-500 shadow-xs"
+                : "bg-indigo-950/60 hover:bg-indigo-900/60 text-indigo-300 border-indigo-800/60"
+            }`}
+            title="Klikněte pro zobrazení, co se AI na pozadí naučila a jak rozpoznává lidi na PN."
+          >
+            <Bot className="w-3.5 h-3.5 text-indigo-400" />
+            <span>AI učení ({learnedProfilesCount})</span>
+          </button>
+
           <button
             id="copy-pick-answer-btn"
             onClick={copyPickSummary}
-            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/40 transition-colors shadow-2xs"
-            title="Zkopíruje rychlý přehled pro WhatsApp nebo SMS"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer shadow-2xs"
+            title="Zkopírovat textovou zprávu pro šéfa"
           >
             {copied ? (
               <Check className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
               <Copy className="w-3.5 h-3.5" />
             )}
-            <span>{copied ? "Zkopírováno!" : "Zkopírovat pro šéfa"}</span>
+            <span className="hidden sm:inline">
+              {copied ? "Zkopírováno!" : "Kopírovat pro šéfa"}
+            </span>
           </button>
 
           <button
             id="open-full-boss-report-btn"
             onClick={onOpenReportModal}
-            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-colors shadow-sm"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all cursor-pointer shadow-sm"
           >
             <MessageSquare className="w-3.5 h-3.5" />
-            <span>Celý report PICK</span>
+            <span className="hidden sm:inline">Celý report</span>
           </button>
 
           <button
             id="collapse-boss-card-btn"
             onClick={toggleCollapse}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
-            title="Zasunout přehled pro více místa"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Sbalit přehled"
           >
-            <span className="hidden sm:inline">Zasunout</span>
-            <ChevronUp className="w-3.5 h-3.5" />
+            <ChevronUp className="w-4 h-4" />
           </button>
         </div>
+      </div>
+
+      {/* 2. MAIN 3 KPI COLUMNS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 sm:gap-3">
+        {/* Card 1: TRANSPORT TÝM (1. Team Leader) */}
+        <div className="bg-slate-950/80 border border-blue-900/50 hover:border-blue-700/60 rounded-xl p-3.5 space-y-2.5 transition-all">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-blue-400">
+              <Truck className="w-4 h-4 text-blue-500" />
+              <span>TÝM TRANSPORT</span>
+            </div>
+            <span className="text-[10px] font-semibold text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+              1. Team Leader
+            </span>
+          </div>
+
+          <div className="flex items-baseline justify-between pt-0.5">
+            <div>
+              <div className="text-2xl sm:text-3xl font-black text-white flex items-baseline gap-1">
+                <span>{transportActiveOps.length}</span>
+                <span className="text-xs font-normal text-slate-400">v provozu</span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Stálý stav:{" "}
+                <strong className="text-blue-300 font-bold">{transportRosterCount || 57}</strong>{" "}
+                lidí
+              </span>
+            </div>
+            <span className="text-xs font-bold px-2 py-1 rounded-lg bg-blue-950 text-blue-300 border border-blue-800/80">
+              {Math.round((transportActiveOps.length / (transportRosterCount || 57)) * 100)}%
+              nasazeno
+            </span>
+          </div>
+
+          {/* Breakdown items */}
+          <div className="pt-2 border-t border-slate-800/80 space-y-1.5 text-xs">
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="text-slate-400">Na pracovištích Transportu:</span>
+              <strong className="text-white font-mono">
+                {transportActiveOps.length - vnaLoanedToTransport}
+              </strong>
+            </div>
+
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="text-slate-400 flex items-center gap-1">
+                <span>V absenci / PN:</span>
+                {transportPnOps.length > 0 && (
+                  <span className="text-[10px] text-rose-400 font-bold">
+                    ({transportPnOps.length} PN)
+                  </span>
+                )}
+              </span>
+              <strong
+                className={
+                  transportAbsenceOps.length > 0
+                    ? "text-rose-400 font-mono font-bold"
+                    : "text-slate-400 font-mono"
+                }
+              >
+                {transportAbsenceOps.length}
+              </strong>
+            </div>
+
+            {vnaLoanedToTransport > 0 && (
+              <div className="flex items-center justify-between text-amber-300">
+                <span className="text-amber-400/90">Výpomoc z VNA týmu:</span>
+                <strong className="font-mono">+{vnaLoanedToTransport}</strong>
+              </div>
+            )}
+            {transportLoanedToVna > 0 && (
+              <div className="flex items-center justify-between text-blue-300">
+                <span className="text-blue-400/90">Zapůjčeno na VNA:</span>
+                <strong className="font-mono">{transportLoanedToVna}</strong>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Card 2: VNA TÝM (2. Team Leader) */}
+        <div className="bg-slate-950/80 border border-emerald-900/50 hover:border-emerald-700/60 rounded-xl p-3.5 space-y-2.5 transition-all">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+              <Forklift className="w-4 h-4 text-emerald-500" />
+              <span>TÝM VNA</span>
+            </div>
+            <span className="text-[10px] font-semibold text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+              2. Team Leader
+            </span>
+          </div>
+
+          <div className="flex items-baseline justify-between pt-0.5">
+            <div>
+              <div className="text-2xl sm:text-3xl font-black text-white flex items-baseline gap-1">
+                <span>{vnaActiveOps.length}</span>
+                <span className="text-xs font-normal text-slate-400">v provozu</span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Stálý stav:{" "}
+                <strong className="text-emerald-300 font-bold">{vnaRosterCount || 8}</strong> lidí
+              </span>
+            </div>
+            <span className="text-xs font-bold px-2 py-1 rounded-lg bg-emerald-950 text-emerald-300 border border-emerald-800/80">
+              {Math.round((vnaActiveOps.length / (vnaRosterCount || 8)) * 100)}% nasazeno
+            </span>
+          </div>
+
+          {/* Breakdown items */}
+          <div className="pt-2 border-t border-slate-800/80 space-y-1.5 text-xs">
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="text-slate-400">V uličkách VNA:</span>
+              <strong className="text-white font-mono">{vnaActiveOps.length}</strong>
+            </div>
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="text-slate-400">V absenci / doma:</span>
+              <strong
+                className={
+                  vnaAbsenceOps.length > 0
+                    ? "text-rose-400 font-mono font-bold"
+                    : "text-slate-400 font-mono"
+                }
+              >
+                {vnaAbsenceOps.length}
+              </strong>
+            </div>
+            {vnaLoanedToTransport > 0 && (
+              <div className="flex items-center justify-between text-amber-300">
+                <span className="text-amber-400/90">Vypomáhá na Transportu:</span>
+                <strong className="font-mono">{vnaLoanedToTransport}</strong>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Card 3: STROJE & CELKOVÉ OBSAZENÍ HALY */}
+        <div className="bg-slate-950/80 border border-slate-800 hover:border-slate-700 rounded-xl p-3.5 space-y-2.5 transition-all">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
+              <Activity className="w-4 h-4 text-slate-400" />
+              <span>STROJE & CELKEM HALA</span>
+            </div>
+            <span className="text-[10px] font-semibold text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+              Celkem {operators.length} lidí
+            </span>
+          </div>
+
+          <div className="flex items-baseline justify-between pt-0.5">
+            <div>
+              <div className="text-2xl sm:text-3xl font-black text-emerald-400 flex items-baseline gap-1">
+                <span>{activeOps.length}</span>
+                <span className="text-xs font-normal text-slate-400">aktivně na hale</span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                {absenceOps.length} v absenci • {breakOps.length} na pauze
+              </span>
+            </div>
+          </div>
+
+          {/* Machine qualification badges */}
+          <div className="pt-2 border-t border-slate-800/80 flex items-center gap-1.5 flex-wrap">
+            <span className="px-2 py-1 rounded-lg bg-amber-950/80 border border-amber-600/50 text-amber-300 text-xs font-bold font-mono">
+              {activeLL}× LL
+            </span>
+            <span className="px-2 py-1 rounded-lg bg-blue-950/80 border border-blue-600/50 text-blue-300 text-xs font-bold font-mono">
+              {activeRTR}× RTR
+            </span>
+            <span className="px-2 py-1 rounded-lg bg-emerald-950/80 border border-emerald-600/50 text-emerald-300 text-xs font-bold font-mono">
+              {activeVNA}× VNA
+            </span>
+            {activeExtraOps.length > 0 && (
+              <span className="px-2 py-1 rounded-lg bg-purple-950/80 border border-purple-600/50 text-purple-300 text-xs font-bold">
+                +{activeExtraOps.length} vícepráce
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. ORGANIZED SUB-SECTION: TRANSPORT WORKPLACES BREAKDOWN */}
+      <div className="bg-slate-950/50 border border-slate-800/90 rounded-xl p-3 space-y-2">
+        <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+          <div className="flex items-center gap-2">
+            <Layers className="w-3.5 h-3.5 text-blue-400" />
+            <span>Rozpad pracovišť Transportu (1. TL):</span>
+          </div>
+          <span className="text-[11px] text-slate-400">
+            Celkem na Transportu:{" "}
+            <strong className="text-white">{transportActiveOps.length}</strong> lidí
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          {/* HOVS */}
+          <div className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+            <span className="text-slate-300 font-medium">HOVS / HOVC</span>
+            <div className="flex items-center gap-1.5">
+              <strong className="text-white font-extrabold text-sm">{hovsOps.length}</strong>
+              <span className="text-[10px] text-slate-500 font-mono">
+                ({hovsOps.filter((o) => o.machineType === "LL").length} LL)
+              </span>
+            </div>
+          </div>
+
+          {/* Putaway */}
+          <div className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+            <span className="text-slate-300 font-medium">Putaway</span>
+            <div className="flex items-center gap-1.5">
+              <strong className="text-white font-extrabold text-sm">{putawayOps.length}</strong>
+              <span className="text-[10px] text-slate-500 font-mono">
+                ({putawayOps.filter((o) => o.machineType === "LL").length} LL)
+              </span>
+            </div>
+          </div>
+
+          {/* Outbound */}
+          <div className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+            <span className="text-slate-300 font-medium">Outbound</span>
+            <div className="flex items-center gap-1.5">
+              <strong className="text-white font-extrabold text-sm">{outboundOps.length}</strong>
+              <span className="text-[10px] text-slate-500 font-mono">
+                ({outboundOps.filter((o) => o.machineType === "RTR").length} RTR)
+              </span>
+            </div>
+          </div>
+
+          {/* VAS */}
+          <div className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+            <span className="text-slate-300 font-medium">VAS</span>
+            <strong className="text-white font-extrabold text-sm">{vasOps.length}</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. AI BACKGROUND LEARNING PANEL (Collapsible or alert banner) */}
+      <div className="bg-gradient-to-r from-indigo-950/60 to-slate-950/80 border border-indigo-800/50 rounded-xl p-3 text-xs text-indigo-200 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 font-bold text-indigo-100">
+            <Bot className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span>AI inteligence na pozadí:</span>
+            <span className="font-normal text-indigo-300">
+              Sleduje dlouhodobé pohyby řidičů a automaticky ví, kdo kam jezdí.
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {unassignedWaitingOps.length > 0 && onAutoAssignAISuggestions && (
+              <button
+                type="button"
+                onClick={onAutoAssignAISuggestions}
+                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-all shadow-2xs active:scale-95"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>⚡ AI rozřazení ({unassignedWaitingOps.length} nezařazených)</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowAIDetails((prev) => !prev)}
+              className="text-[11px] text-indigo-400 hover:text-indigo-200 underline cursor-pointer"
+            >
+              {showAIDetails ? "Skrýt detaily AI" : "Zobrazit detaily AI"}
+            </button>
+          </div>
+        </div>
+
+        {/* AI Key Rule Highlight */}
+        <div className="text-[11px] text-indigo-300/90 flex items-center gap-1.5 flex-wrap">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          <span>
+            {transportPnOps.length > 0 ? (
+              <span>
+                <strong>{transportPnOps.length} operátorů na PN</strong> bylo na základě historie
+                směn automaticky započteno pod <strong>Tým Transport</strong>.
+              </span>
+            ) : (
+              <span>
+                Všichni řidiči na PN / absenci jsou podle své jízdní historie automaticky
+                přiřazováni pod svůj tým (Transport vs VNA).
+              </span>
+            )}
+          </span>
+        </div>
+
+        {/* Detailed Drawer when clicked */}
+        {showAIDetails && (
+          <div className="pt-2 border-t border-indigo-900/60 space-y-2 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+              <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 space-y-1">
+                <span className="font-bold text-white block">Jak AI model funguje:</span>
+                <p className="text-slate-300">
+                  Model průběžně analyzuje každé přesunutí na webu, frekvenci strojů (LL / RTR) a
+                  směny. Pokud operátor jezdí převážně HOVS, Putaway, Outbound nebo VAS, AI si jej
+                  pamatuje jako <strong>Transport</strong>. Při PN jej proto systém nikdy neztratí
+                  ani nepřiřadí jinam.
+                </p>
+              </div>
+
+              <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 space-y-1">
+                <span className="font-bold text-white block">Stav naučených dat:</span>
+                <div className="text-slate-300 space-y-0.5">
+                  <div>
+                    Celkem sledovaných operátorů v AI paměti:{" "}
+                    <strong className="text-white">{learnedProfilesCount}</strong>
+                  </div>
+                  <div>
+                    Poslední zaznamenaná AI událost:{" "}
+                    <span className="text-indigo-300">
+                      {recentAIEvents[0]?.details || "Průběžné sledování aktivní"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

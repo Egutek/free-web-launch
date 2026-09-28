@@ -103,3 +103,36 @@ export interface ShiftTemplate {
   shift?: ShiftCode | "all";
   assignments: ShiftTemplateAssignment[];
 }
+
+export interface OperatorLearnedProfile {
+  name: string;
+  normalizedName: string;
+  totalObservations: number;
+  primaryTeam: TeamLeaderRole; // 'transport' | 'vna'
+  primaryDepartmentId: DepartmentId;
+  frequentMachineType: MachineType;
+  departmentFrequency: Record<string, number>;
+  machineFrequency: Record<string, number>;
+  absenceFrequency: Record<string, number>;
+  shiftFrequency: Record<string, number>;
+  lastObservedAt: string;
+  confidence: number; // 0.0 to 1.0
+  learnedRuleDescription: string;
+}
+
+export interface AILearningEvent {
+  id: string;
+  timestamp: string;
+  operatorName: string;
+  eventType:
+    | "move"
+    | "absence_pn"
+    | "absence_vacation"
+    | "machine_change"
+    | "ocr_match"
+    | "auto_assigned"
+    | "team_learned";
+  details: string;
+  appliedTeam: TeamLeaderRole;
+  departmentId?: DepartmentId;
+}

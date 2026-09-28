@@ -62,7 +62,7 @@ export const ResetShiftModal: React.FC<ResetShiftModalProps> = ({
             </div>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
               Příprava pro novou směnu. Všichni vaši stálí operátoři se přesunou do{" "}
-              <strong>kmenového přehledu</strong> bez přiřazeného oddělení k novému rozdělení.
+              <strong>přehledu k rozřazení</strong> bez přiřazeného oddělení k novému rozdělení.
             </p>
           </div>
         </div>
@@ -74,9 +74,9 @@ export const ResetShiftModal: React.FC<ResetShiftModalProps> = ({
             <span>Stálý stav operátorů zůstane 100% zachován:</span>
           </div>
           <p className="text-blue-800 dark:text-blue-300">
-            Kmenový počet (<strong>{totalPermanentCount} operátorů</strong>) se nezmění. Žádný
-            člověk nebude z firmy smazán. Po resetu jim postupně přidělíte pozice – jakmile operátor
-            dostane oddělení nebo absenci, z rozřazovací tabulky sám zmizí.
+            Stálý evidenční stav (<strong>{totalPermanentCount} operátorů</strong>) se nezmění.
+            Žádný člověk nebude z firmy smazán. Po resetu jim postupně přidělíte pozice – jakmile
+            operátor dostane oddělení nebo absenci, z rozřazovací tabulky sám zmizí.
           </p>
         </div>
 

@@ -76,7 +76,7 @@ export const KmenRosterModal: React.FC<KmenRosterModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Směna {activeShift} • Stálý kmenový stav
+                Směna {activeShift} • Stálý evidenční stav operátorů
               </p>
             </div>
           </div>
