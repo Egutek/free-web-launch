@@ -172,6 +172,15 @@ export const OperatorCard: React.FC<OperatorCardProps> = ({
             {operator.name}
           </h4>
 
+          {operator.isPermanent && (
+            <span
+              className="inline-flex items-center rounded px-1 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 shrink-0"
+              title={`Kapacitní stav: ${operator.primaryDepartmentId === "vna" ? "VNA" : "Transport"}`}
+            >
+              {operator.primaryDepartmentId === "vna" ? "VNA" : "Transport"}
+            </span>
+          )}
+
           {/* Machine qualification tag: ONLY IF LL or RTR (never on VNA or Absence) - Click to toggle LL <-> RTR */}
           {operator.departmentId !== "vna" &&
             !isAbsence &&

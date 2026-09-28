@@ -15,7 +15,6 @@ import {
   Users,
   Download,
   Wifi,
-  Sparkles,
   ChevronDown,
   ChevronUp,
   LayoutGrid,
@@ -265,9 +264,6 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
-              Stále aktuální přehled směny pro plochu mobilu i PC.
-            </p>
           </div>
         </div>
 
@@ -723,11 +719,6 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
           </div>
         )}
 
-        {/* Quick Hint Strip */}
-        <div className="mt-3 text-center text-[10px] text-slate-500 flex items-center justify-center gap-1">
-          <Sparkles className="w-3 h-3 text-blue-400" />
-          <span>Kliknutím na jakékoliv oddělení rozbalíte jména operátorů</span>
-        </div>
       </div>
 
       {/* INSTALL INSTRUCTIONS MODAL */}
@@ -748,9 +739,6 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
               </div>
               <div>
                 <h3 className="text-base font-black">Jak přidat Widget na plochu</h3>
-                <p className="text-xs text-slate-400">
-                  Budete mít online přehled stále po ruce přímo z plochy mobilu.
-                </p>
               </div>
             </div>
 
@@ -769,9 +757,6 @@ ${customDepartments.length > 0 ? customDepartments.map((d) => `🛠️ ${d.name}
                 <p className="text-slate-300 pl-7">
                   2. Zvolte <strong>„Přidat na plochu“</strong> nebo{" "}
                   <strong>„Instalovat aplikaci“</strong>.
-                </p>
-                <p className="text-emerald-300 pl-7 text-[11px] font-medium">
-                  ✓ Na ploše mobilu se vám vytvoří ikona ZF Widget se živým online přehledem.
                 </p>
               </div>
 

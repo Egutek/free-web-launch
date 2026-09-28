@@ -39,6 +39,9 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
   const [status, setStatus] = useState<OperatorStatus>("active");
   const [absenceReason, setAbsenceReason] = useState<AbsenceReason>("Absence");
   const [notes, setNotes] = useState("");
+  const [isPermanent, setIsPermanent] = useState(false);
+  const [primaryDepartmentId, setPrimaryDepartmentId] = useState<"transport" | "vna">("transport");
+  const [isLoaned, setIsLoaned] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   useEffect(() => {
@@ -51,6 +54,9 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
       setStatus(operator.status);
       setAbsenceReason(operator.absenceReason || "Absence");
       setNotes(operator.notes || "");
+      setIsPermanent(operator.isPermanent === true);
+      setPrimaryDepartmentId(operator.primaryDepartmentId || (operator.departmentId === "vna" ? "vna" : "transport"));
+      setIsLoaned(operator.isLoaned === true);
     } else {
       setName("");
       const initialMachine =
@@ -65,6 +71,9 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
       setStatus(defaultDeptId === "unassigned" ? "absence" : "active");
       setAbsenceReason("Absence");
       setNotes("");
+      setIsPermanent(false);
+      setPrimaryDepartmentId(defaultDeptId === "vna" ? "vna" : "transport");
+      setIsLoaned(false);
     }
   }, [operator, defaultDeptId, activeShift, isOpen]);
 
@@ -114,6 +123,9 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
       absenceReason:
         status === "absence" || departmentId === "unassigned" ? absenceReason : undefined,
       notes: notes.trim(),
+      isPermanent,
+      primaryDepartmentId: isPermanent ? primaryDepartmentId : undefined,
+      isLoaned: isPermanent ? isLoaned : undefined,
       lastMovedAt: operator ? operator.lastMovedAt : new Date().toISOString(),
     });
     onClose();
@@ -330,6 +342,25 @@ export const AddEditOperatorModal: React.FC<AddEditOperatorModalProps> = ({
               </div>
             </div>
           )}
+
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-2">
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <input type="checkbox" checked={isPermanent} onChange={(e) => setIsPermanent(e.target.checked)} />
+              Kapacitní stav
+            </label>
+            {isPermanent && (
+              <>
+                <select value={primaryDepartmentId} onChange={(e) => setPrimaryDepartmentId(e.target.value as "transport" | "vna")} className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800">
+                  <option value="transport">Primární oddělení: Transport</option>
+                  <option value="vna">Primární oddělení: VNA</option>
+                </select>
+                <label className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                  <input type="checkbox" checked={isLoaned} onChange={(e) => setIsLoaned(e.target.checked)} />
+                  Dočasně zapůjčený mimo primární tým
+                </label>
+              </>
+            )}
+          </div>
 
           {/* Notes */}
           <div>

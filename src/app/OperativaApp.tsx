@@ -81,6 +81,12 @@ import {
   deleteCustomDepartmentFromCloud,
 } from "./services/firestoreSync";
 
+const isOperatorLoaned = (operator: Operator, targetDeptId: DepartmentId) =>
+  operator.isPermanent === true &&
+  (operator.primaryDepartmentId === "vna"
+    ? targetDeptId !== "vna" && targetDeptId !== "unassigned"
+    : targetDeptId === "vna");
+
 const JUMP_THEMES: Record<
   DepartmentId,
   {
@@ -667,6 +673,7 @@ export default function App() {
               ? absenceReason || o.absenceReason || "Absence"
               : undefined,
           isVnaOnly: false,
+          isLoaned: isOperatorLoaned(o, targetDeptId),
           lastMovedAt: now,
         };
       }
@@ -849,6 +856,7 @@ export default function App() {
               ? absenceReason || op.absenceReason || "Absence"
               : undefined,
           isVnaOnly: false,
+          isLoaned: isOperatorLoaned(op, targetDeptId),
           lastMovedAt: new Date().toISOString(),
         };
       }
@@ -1174,6 +1182,8 @@ export default function App() {
       machineType: finalMachineType,
       status: finalStatus,
       departmentId: finalDeptId,
+      workforceUnconfirmed: false,
+      isLoaned: opData.isPermanent ? opData.isLoaned : false,
     };
 
     const isNew = !operators.some((o) => o.id === sanitizedOpData.id);
@@ -1218,6 +1228,7 @@ export default function App() {
 
     // Ensure all new operators are assigned to the current active shift and have correct machine types
     const shiftedOps = newOps.map((op) => {
+      const existing = operators.find((item) => item.name.trim().toLowerCase() === op.name.trim().toLowerCase());
       const deptId = op.departmentId || "hovc";
       let machine = op.machineType;
       if (deptId === "vna" || deptId === "unassigned") {
@@ -1232,6 +1243,16 @@ export default function App() {
       }
       return {
         ...op,
+        id: existing?.id || op.id,
+        isPermanent: existing?.isPermanent,
+        primaryDepartmentId: existing?.primaryDepartmentId,
+        workforceUnconfirmed: existing ? false : undefined,
+        isLoaned: existing?.isPermanent
+          ? existing.primaryDepartmentId === "vna"
+            ? deptId !== "vna" && deptId !== "unassigned"
+            : deptId === "vna"
+          : undefined,
+        notes: op.notes || existing?.notes,
         machineType: machine,
         shift: activeShift,
       };
@@ -1244,7 +1265,19 @@ export default function App() {
 
     let updated: Operator[];
     if (replaceAll) {
-      updated = [...shiftedOps, ...otherShiftsOps];
+      const importedIds = new Set(shiftedOps.map((op) => op.id));
+      const unconfirmedPermanent = operators
+        .filter((op) => (op.shift || "A") === activeShift && op.isPermanent && !importedIds.has(op.id))
+        .map((op) => ({
+          ...op,
+          departmentId: "unassigned" as DepartmentId,
+          status: "absence" as OperatorStatus,
+          machineType: "NONE" as const,
+          absenceReason: undefined,
+          workforceUnconfirmed: true,
+          lastMovedAt: new Date().toISOString(),
+        }));
+      updated = [...shiftedOps, ...unconfirmedPermanent, ...otherShiftsOps];
     } else {
       const existingNames = new Set(operators.map((o) => o.name.toLowerCase().trim()));
       const uniqueNew = shiftedOps.filter((o) => !existingNames.has(o.name.toLowerCase().trim()));
@@ -1359,7 +1392,14 @@ export default function App() {
     saveOperators(updated);
 
     targetIds.forEach((id) => {
-      deleteOperatorFromCloud(id).catch((e) => console.warn("Cloud operator delete error:", e));
+      deleteOperatorFromCloud(id).catch((e) => {
+        console.warn("Cloud operator delete error:", e);
+        setOperators((current) => {
+          const restored = [...current, ...toDelete.filter((op) => op.id === id)];
+          saveOperators(restored);
+          return restored;
+        });
+      });
     });
 
     setBulkSelectedIds((prev) => {
@@ -1381,9 +1421,16 @@ export default function App() {
     const updated = operators.filter((o) => o.id !== operatorId);
     setOperators(updated);
     saveOperators(updated);
-    deleteOperatorFromCloud(operatorId).catch((e) =>
-      console.warn("Cloud operator delete error:", e),
-    );
+    deleteOperatorFromCloud(operatorId).catch((e) => {
+      console.warn("Cloud operator delete error:", e);
+      if (op) {
+        setOperators((current) => {
+          const restored = current.some((item) => item.id === op.id) ? current : [...current, op];
+          saveOperators(restored);
+          return restored;
+        });
+      }
+    });
     if (op) {
       showToast(`Operátor ${op.name} byl odebrán.`);
     }
@@ -1689,6 +1736,9 @@ export default function App() {
         {/* PICK Overview & Quick Report for Boss (Collapsible & Compact) */}
         <BossAnswerCard
           operators={shiftOperators}
+          allOperators={operators}
+          activeShift={activeShift}
+          onEditOperator={(operator) => setAddEditOperator({ operator, defaultDeptId: operator.departmentId })}
           customDepartments={shiftCustomDepartments}
           onOpenReportModal={() => setIsReportModalOpen(true)}
         />

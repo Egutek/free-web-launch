@@ -1,24 +1,32 @@
 import React, { useState, useEffect } from "react";
 import { Copy, Check, MessageSquare, Layers, ChevronDown, ChevronUp } from "lucide-react";
-import { Department, Operator } from "../types";
+import { Department, Operator, ShiftCode } from "../types";
 import { DEPARTMENTS } from "../data/departments";
 
 interface BossAnswerCardProps {
   operators: Operator[];
+  allOperators?: Operator[];
+  activeShift?: ShiftCode;
   customDepartments?: Department[];
   onOpenReportModal: () => void;
   onQuickMoveModal?: () => void;
+  onEditOperator?: (operator: Operator) => void;
 }
 
 export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   operators,
+  allOperators = operators,
+  activeShift = "A",
   customDepartments = [],
   onOpenReportModal,
+  onEditOperator,
 }) => {
+  const getPrimaryTeam = (operator: Operator): "transport" | "vna" =>
+    operator.primaryDepartmentId || (operator.departmentId === "vna" ? "vna" : "transport");
   const [copied, setCopied] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem("zf_boss_card_collapsed") === "true";
+      return localStorage.getItem("zf_boss_card_collapsed") !== "false";
     } catch {
       return false;
     }
@@ -50,6 +58,15 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   const activeVNA = activeOps.filter((op) => op.departmentId === "vna").length;
   const customDeptIds = new Set(customDepartments.map((d) => d.id));
   const activeExtraOps = activeOps.filter((op) => customDeptIds.has(op.departmentId));
+  const permanent = allOperators.filter((op) => op.isPermanent === true && (op.shift || "A") === activeShift);
+  const workforce = (["transport", "vna"] as const).map((team) => {
+    const expected = permanent.filter((op) => getPrimaryTeam(op) === team);
+    const present = expected.filter((op) => op.status !== "absence" && op.departmentId !== "unassigned");
+    const absent = expected.filter((op) => !op.workforceUnconfirmed && (op.status === "absence" || op.departmentId === "unassigned"));
+    const unconfirmed = expected.filter((op) => op.workforceUnconfirmed);
+    const borrowed = present.filter((op) => op.isLoaned);
+    return { team, expected: expected.length, present: present.length, absent: absent.length, unconfirmed: unconfirmed.length, borrowed: borrowed.length, deficit: expected.length - present.length - absent.length };
+  });
 
   const copyPickSummary = () => {
     const lines = DEPARTMENTS.filter((d) => d.id !== "unassigned").map((d) => {
@@ -93,6 +110,16 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
             <span className="text-[11px] font-semibold text-rose-300 bg-rose-950/60 border border-rose-800/50 px-2 py-0.5 rounded-md">
               {absenceOps.length} absence
             </span>
+          )}
+
+          {permanent.length > 0 && (
+            <div className="hidden sm:flex items-center gap-1 text-[10px] font-bold">
+              {workforce.map(({ team, present, expected, deficit }) => (
+                <span key={team} className={`px-1.5 py-0.5 rounded border ${deficit ? "border-amber-500/40 text-amber-300 bg-amber-500/10" : "border-emerald-500/30 text-emerald-300 bg-emerald-500/10"}`}>
+                  {team === "transport" ? "Transport" : "VNA"} kap. {expected} · hala {present}
+                </span>
+              ))}
+            </div>
           )}
 
           <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-300 font-semibold">
@@ -165,7 +192,6 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400 bg-blue-500/15 px-2 py-0.5 rounded-full border border-blue-500/30">
                 Oddělení PICK • ZF Ostrov
               </span>
-              <span className="text-xs text-slate-400">Přehled pro směnové vedení</span>
             </div>
 
             <div className="mt-1 flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-3 flex-wrap">
@@ -234,6 +260,38 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
                 )}
               </div>
             </div>
+            {permanent.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                {workforce.map(({ team, expected, present, absent, unconfirmed, borrowed, deficit }) => (
+                  <span key={team} className={`rounded-md border px-2 py-0.5 ${deficit > 1 ? "border-rose-500/40 bg-rose-500/15 text-rose-200" : deficit ? "border-amber-500/40 bg-amber-500/15 text-amber-200" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"}`}>
+                    {team === "transport" ? "Transport" : "VNA"}: Kapaciťák {expected} · hala {present}
+                    {absent > 0 && <span className="ml-1 text-[10px] opacity-70">({absent} abs.)</span>}
+                    {unconfirmed > 0 && <span className="ml-1 text-[10px] text-amber-200">({unconfirmed} ověřit)</span>}
+                    {borrowed > 0 && <span className="ml-1 text-[10px] opacity-70">({borrowed} mimo)</span>}
+                  </span>
+                ))}
+              </div>
+            )}
+            {permanent.length > 0 && (
+              <details className="mt-1.5 text-[11px]">
+                <summary className="cursor-pointer text-slate-400 hover:text-slate-200 select-none">
+                  Kapaciťák ({permanent.length})
+                </summary>
+                <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-slate-300">
+                  {permanent.map((op) => {
+                    const absent = !op.workforceUnconfirmed && (op.status === "absence" || op.departmentId === "unassigned");
+                    const team = getPrimaryTeam(op) === "vna" ? "VNA" : "Transport";
+                    const state = op.workforceUnconfirmed ? "ověřit" : absent ? op.absenceReason || "absence" : op.isLoaned ? "zapůjčený" : op.departmentId === "vna" ? "na VNA" : "na hale";
+                    return (
+                      <button key={op.id} type="button" onClick={() => onEditOperator?.(op)} className="flex items-center justify-between gap-2 rounded bg-slate-950/20 px-1.5 py-0.5 text-left hover:bg-slate-800/60 transition-colors">
+                        <span className="truncate">{op.name}</span>
+                        <span className={`shrink-0 text-[10px] ${absent ? "text-slate-500" : "text-emerald-300"}`}>{team} · {state}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </details>
+            )}
           </div>
         </div>
 

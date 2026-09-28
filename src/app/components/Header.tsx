@@ -114,9 +114,6 @@ export const Header: React.FC<HeaderProps> = ({
                 <h1 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
                   ZF Ostrov • Oddělení PICK
                 </h1>
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-700">
-                  Aftermarket Hub
-                </span>
                 {hasCloudWriteError ? (
                   <span
                     className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-red-700 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200"
@@ -148,9 +145,6 @@ export const Header: React.FC<HeaderProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 hidden sm:block">
-                Operační řízení směn a přesuny operátorů
-              </p>
             </div>
           </div>
 

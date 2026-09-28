@@ -47,9 +47,6 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
               <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
                 Historie přesunů na směně
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Přehled všech operativních přesunů mezi odděleními
-              </p>
             </div>
           </div>
           <button

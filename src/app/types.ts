@@ -38,6 +38,10 @@ export interface Operator {
   shift?: ShiftCode; // 'A' | 'B' | 'C'
   absenceReason?: AbsenceReason; // 'Absence' | 'Dovolená' | 'PN'
   notes?: string;
+  isPermanent?: boolean;
+  primaryDepartmentId?: "transport" | "vna";
+  workforceUnconfirmed?: boolean;
+  isLoaned?: boolean;
   lastMovedAt: string; // ISO string
   /** Monotonically increasing cloud revision used to protect concurrent edits. */
   revision?: number;

@@ -1,6 +1,6 @@
 globalThis.__nitro_main__ = import.meta.url;
 import { i as HTTPError, n as defineLazyEventHandler, t as H3Core } from "./_libs/h3+rou3+srvx.mjs";
-import { r as NodeResponse } from "./_libs/h3-v2+rou3+srvx.mjs";
+import { t as NodeResponse } from "./_libs/srvx.mjs";
 //#region #nitro-vite-setup
 function lazyService(loader) {
 	let promise, mod;
@@ -13,7 +13,7 @@ function lazyService(loader) {
 var services = { ["ssr"]: lazyService(() => import("./_ssr/ssr.mjs")) };
 globalThis.__nitro_vite_envs__ = services;
 //#endregion
-//#region node_modules/nitro/dist/runtime/internal/route-rules.mjs
+//#region node_modules/.pnpm/nitro@3.0.260603-beta_jiti@_4e8a1fca5d0d86dec003a9c68b506e9e/node_modules/nitro/dist/runtime/internal/route-rules.mjs
 var headers = ((m) => function headersRouteRule(event) {
 	for (const [key, value] of Object.entries(m.options || {})) event.res.headers.set(key, value);
 });
@@ -39,11 +39,11 @@ var findRouteRules = /* @__PURE__ */ (() => {
 		return r;
 	};
 })();
-var _lazy_0jRgqU = defineLazyEventHandler(() => import("./_chunks/ssr-renderer.mjs"));
+var _lazy_18nh7f = defineLazyEventHandler(() => import("./_chunks/ssr-renderer.mjs"));
 var findRoute = /* @__PURE__ */ (() => {
 	const data = {
 		route: "/**",
-		handler: _lazy_0jRgqU
+		handler: _lazy_18nh7f
 	};
 	return ((_m, p) => {
 		return {
@@ -54,7 +54,7 @@ var findRoute = /* @__PURE__ */ (() => {
 })();
 [].filter(Boolean);
 //#endregion
-//#region node_modules/nitro/dist/runtime/internal/error/prod.mjs
+//#region node_modules/.pnpm/nitro@3.0.260603-beta_jiti@_4e8a1fca5d0d86dec003a9c68b506e9e/node_modules/nitro/dist/runtime/internal/error/prod.mjs
 var errorHandler = (error, event) => {
 	const res = defaultHandler(error, event);
 	return new NodeResponse(typeof res.body === "string" ? res.body : JSON.stringify(res.body, null, 2), res);
@@ -143,7 +143,7 @@ function createH3App(config) {
 	return h3App;
 }
 //#endregion
-//#region node_modules/nitro/dist/runtime/internal/app.mjs
+//#region node_modules/.pnpm/nitro@3.0.260603-beta_jiti@_4e8a1fca5d0d86dec003a9c68b506e9e/node_modules/nitro/dist/runtime/internal/app.mjs
 var APP_ID = "default";
 function useNitroApp() {
 	let instance = useNitroApp._instance;
@@ -191,9 +191,9 @@ function getRouteRules(method, pathname) {
 	};
 }
 //#endregion
-//#region node_modules/nitro/dist/presets/netlify/runtime/netlify.mjs
+//#region node_modules/.pnpm/nitro@3.0.260603-beta_jiti@_4e8a1fca5d0d86dec003a9c68b506e9e/node_modules/nitro/dist/presets/netlify/runtime/netlify.mjs
 var nitroApp = useNitroApp();
-var ONE_YEAR_IN_SECONDS = 31536e3;
+var ONE_YEAR_IN_SECONDS = 365 * 24 * 60 * 60;
 var handler = async (req) => {
 	req.runtime ??= { name: "netlify" };
 	req.ip ??= req.headers.get("x-nf-client-connection-ip") || void 0;
