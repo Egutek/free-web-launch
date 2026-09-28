@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   AILearningEvent,
   AbsenceReason,
@@ -36,10 +36,61 @@ export function useOperatorLearning(
     setEvents(loadAILearningEvents());
   }, []);
 
-  // Automatické průběžné učení z aktuálního stavu směny
+  // Lehké učení na pozadí: při běžné změně zpracuje jen operátory,
+  // jejichž stav se skutečně změnil. Tím se zabrání opakovanému přepočtu celé směny
+  // při každém Firestore snapshotu nebo renderu.
+  const previousOperatorStateRef = useRef<Map<string, string>>(new Map());
+  const initializedShiftRef = useRef<Set<ShiftCode>>(new Set());
+
   useEffect(() => {
-    if (operators.length > 0) {
-      recordBatchActivity(operators, activeShift, roster);
+    const shiftOperators = operators.filter((op) => (op.shift || "A") === activeShift);
+    if (shiftOperators.length === 0) return;
+
+    const nextState = new Map<string, string>();
+    const changedOperators: Operator[] = [];
+
+    for (const op of shiftOperators) {
+      const signature = [
+        op.name,
+        op.departmentId,
+        op.machineType,
+        op.status,
+        op.shift || activeShift,
+        op.absenceReason || "",
+        op.isVnaOnly ? "1" : "0",
+      ].join("|");
+
+      nextState.set(op.id, signature);
+
+      const previousSignature = previousOperatorStateRef.current.get(op.id);
+      if (previousSignature && previousSignature !== signature) {
+        changedOperators.push(op);
+      }
+    }
+
+    if (!initializedShiftRef.current.has(activeShift)) {
+      recordBatchActivity(shiftOperators, activeShift, roster);
+      initializedShiftRef.current.add(activeShift);
+    } else {
+      for (const op of changedOperators) {
+        recordOperatorActivity(
+          {
+            name: op.name,
+            departmentId: op.departmentId,
+            machineType: op.machineType,
+            status: op.status,
+            shift: op.shift || activeShift,
+            absenceReason: op.absenceReason,
+            isVnaOnly: op.isVnaOnly,
+          },
+          op.departmentId === "unassigned" || op.status === "absence" ? "absence" : "status",
+          "Průběžná změna stavu směny",
+        );
+      }
+    }
+
+    previousOperatorStateRef.current = nextState;
+    if (changedOperators.length > 0 || !initializedShiftRef.current.has(activeShift)) {
       refreshLearningData();
     }
   }, [operators, activeShift, roster, refreshLearningData]);
