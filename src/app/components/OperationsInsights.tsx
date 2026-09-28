@@ -8,6 +8,9 @@ import {
   ClipboardList,
   Clock3,
   Copy,
+  Download,
+  Search,
+  X,
   ExternalLink,
   History,
   LayoutDashboard,
@@ -73,6 +76,8 @@ export function OperationsInsights({
 }: OperationsInsightsProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [attentionFilter, setAttentionFilter] = useState<"all" | "absence" | "break">("all");
+  const [attentionSearch, setAttentionSearch] = useState("");
 
   const metrics = useMemo(() => {
     const active = operators.filter(
@@ -91,19 +96,23 @@ export function OperationsInsights({
   const attentionOperators = useMemo(
     () =>
       [...operators]
-        .filter(
-          (operator) =>
-            operator.departmentId === "unassigned" ||
-            operator.status === "absence" ||
-            operator.status === "break",
-        )
+        .filter((operator) => {
+          const isAbsence = operator.departmentId === "unassigned" || operator.status === "absence";
+          const isBreak = operator.status === "break" && operator.departmentId !== "unassigned";
+          const matchesFilter =
+            attentionFilter === "all" || (attentionFilter === "absence" ? isAbsence : isBreak);
+          const matchesSearch = operator.name.toLocaleLowerCase("cs-CZ").includes(
+            attentionSearch.trim().toLocaleLowerCase("cs-CZ"),
+          );
+          return (isAbsence || isBreak) && matchesFilter && matchesSearch;
+        })
         .sort((a, b) => {
           const priority = (operator: Operator) =>
             operator.departmentId === "unassigned" || operator.status === "absence" ? 0 : 1;
           return priority(a) - priority(b) || a.name.localeCompare(b.name, "cs");
         })
-        .slice(0, 5),
-    [operators],
+        .slice(0, 8),
+    [attentionFilter, attentionSearch, operators],
   );
 
   const coverage = useMemo(
@@ -134,6 +143,28 @@ export function OperationsInsights({
   const getDepartmentName = (departmentId: Department["id"]) =>
     departments.find((department) => department.id === departmentId)?.name ??
     (departmentId === "unassigned" ? "Absence" : departmentId);
+
+  const exportCsv = () => {
+    const header = ["Jméno", "Oddělení", "Stav", "Typ stroje", "Směna", "Poslední změna"];
+    const rows = operators.map((operator) => [
+      operator.name,
+      getDepartmentName(operator.departmentId),
+      statusLabels[operator.status],
+      operator.machineType,
+      operator.shift ?? activeShift,
+      operator.lastMovedAt,
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(";"))
+      .join("\n");
+    const blob = new Blob(["\\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `zf-operativa-smena-${activeShift}-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
 
   const copySummary = async () => {
     const summary = [
@@ -205,6 +236,15 @@ export function OperationsInsights({
           >
             {copied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? "Zkopírováno" : "Kopírovat stav"}
+          </button>
+          <button
+            type="button"
+            onClick={exportCsv}
+            className="hidden items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700 sm:inline-flex dark:border-slate-700 dark:text-slate-300 dark:hover:border-blue-700 dark:hover:text-blue-300"
+            title="Stáhnout aktuální obsazení jako CSV"
+          >
+            <Download className="h-3.5 w-3.5" />
+            CSV
           </button>
           <button
             type="button"
@@ -282,6 +322,42 @@ export function OperationsInsights({
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                 {attentionOperators.length}
               </span>
+            </div>
+            <div className="mb-2 flex items-center gap-1.5">
+              {(["all", "absence", "break"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setAttentionFilter(filter)}
+                  className={`rounded-full px-2 py-1 text-[10px] font-black transition ${
+                    attentionFilter === filter
+                      ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                      : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400"
+                  }`}
+                >
+                  {filter === "all" ? "Vše" : filter === "absence" ? "Absence" : "Pauzy"}
+                </button>
+              ))}
+              <div className="relative ml-auto">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={attentionSearch}
+                  onChange={(event) => setAttentionSearch(event.target.value)}
+                  placeholder="Jméno"
+                  aria-label="Filtrovat pozornost podle jména"
+                  className="w-20 rounded-full border border-slate-200 bg-transparent py-1 pl-6 pr-5 text-[10px] font-bold outline-none focus:border-blue-400 dark:border-slate-700"
+                />
+                {attentionSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setAttentionSearch("")}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                    aria-label="Vymazat filtr jména"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="space-y-1.5">
               {attentionOperators.length === 0 ? (
