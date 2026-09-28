@@ -750,138 +750,137 @@ export default function App() {
   };
 
   // Move operator handler with strict VNA rule & undo tracking
-  const handleMoveOperator = (
-    operatorId: string,
-    targetDeptId: DepartmentId,
-    absenceReason?: AbsenceReason,
-  ) => {
-    setSelectedOperatorId(null);
-    // Robust find: by id or full name
-    const targetOp =
-      operators.find((o) => o.id === operatorId) ||
-      operators.find((o) => o.name.toLowerCase() === operatorId.trim().toLowerCase());
-    if (!targetOp) return;
+  const handleMoveOperator = useCallback(
+    (operatorId: string, targetDeptId: DepartmentId, absenceReason?: AbsenceReason) => {
+      setSelectedOperatorId(null);
+      // Robust find: by id or full name
+      const targetOp =
+        operators.find((o) => o.id === operatorId) ||
+        operators.find((o) => o.name.toLowerCase() === operatorId.trim().toLowerCase());
+      if (!targetOp) return;
 
-    const resolvedId = targetOp.id;
+      const resolvedId = targetOp.id;
 
-    // Auto-update status when moving to/from Absence department
-    const newStatus: OperatorStatus =
-      targetDeptId === "unassigned"
-        ? "absence"
-        : targetOp.departmentId === "unassigned" || targetOp.status === "absence"
-          ? "active"
-          : targetOp.status;
+      // Auto-update status when moving to/from Absence department
+      const newStatus: OperatorStatus =
+        targetDeptId === "unassigned"
+          ? "absence"
+          : targetOp.departmentId === "unassigned" || targetOp.status === "absence"
+            ? "active"
+            : targetOp.status;
 
-    if (
-      targetOp.departmentId === targetDeptId &&
-      targetOp.status === newStatus &&
-      targetOp.absenceReason === absenceReason
-    )
-      return;
+      if (
+        targetOp.departmentId === targetDeptId &&
+        targetOp.status === newStatus &&
+        targetOp.absenceReason === absenceReason
+      )
+        return;
 
-    const previousDeptId = targetOp.departmentId;
-    const fromDept = getDepartmentById(previousDeptId, customDepartments);
-    const toDept = getDepartmentById(targetDeptId, customDepartments);
+      const previousDeptId = targetOp.departmentId;
+      const fromDept = getDepartmentById(previousDeptId, customDepartments);
+      const toDept = getDepartmentById(targetDeptId, customDepartments);
 
-    let finalMachineType = targetOp.machineType;
-    if (targetDeptId === "vna" || targetDeptId === "unassigned") {
-      // Automatic removal of LL/RTR when moving to VNA or Absence
-      finalMachineType = "NONE";
-    } else if (
-      targetOp.departmentId === "vna" ||
-      targetOp.departmentId === "unassigned" ||
-      finalMachineType === "NONE"
-    ) {
-      if (targetDeptId === "hovs") {
-        finalMachineType = "LL";
-      } else if (targetDeptId === "hovc" || targetDeptId === "obwi") {
-        finalMachineType = "RTR";
-      } else {
-        finalMachineType = "LL";
+      let finalMachineType = targetOp.machineType;
+      if (targetDeptId === "vna" || targetDeptId === "unassigned") {
+        // Automatic removal of LL/RTR when moving to VNA or Absence
+        finalMachineType = "NONE";
+      } else if (
+        targetOp.departmentId === "vna" ||
+        targetOp.departmentId === "unassigned" ||
+        finalMachineType === "NONE"
+      ) {
+        if (targetDeptId === "hovs") {
+          finalMachineType = "LL";
+        } else if (targetDeptId === "hovc" || targetDeptId === "obwi") {
+          finalMachineType = "RTR";
+        } else {
+          finalMachineType = "LL";
+        }
       }
-    }
 
-    // Update operator
-    const updatedOperators = operators.map((op) => {
-      if (op.id === resolvedId) {
-        return {
-          ...op,
+      // Update operator
+      const updatedOperators = operators.map((op) => {
+        if (op.id === resolvedId) {
+          return {
+            ...op,
+            departmentId: targetDeptId,
+            machineType: finalMachineType,
+            status: newStatus,
+            absenceReason:
+              targetDeptId === "unassigned"
+                ? absenceReason || op.absenceReason || "Absence"
+                : undefined,
+            isVnaOnly: false,
+            lastMovedAt: new Date().toISOString(),
+          };
+        }
+        return op;
+      });
+
+      setOperators(updatedOperators);
+      saveOperators(updatedOperators);
+
+      // Push into undo stack (capped at last 5 operations)
+      const undoOp: UndoOperation = {
+        id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        operatorId: resolvedId,
+        operatorName: targetOp.name,
+        machineType: targetOp.machineType,
+        fromDept: previousDeptId,
+        toDept: targetDeptId,
+        fromStatus: targetOp.status,
+        toStatus: newStatus,
+        timestamp: new Date().toISOString(),
+      };
+      setUndoStack((prev) => [undoOp, ...prev.slice(0, 4)]);
+
+      // Append to history
+      const historyItem: MoveHistoryRecord = {
+        id: `hist-${Date.now()}`,
+        operatorId: resolvedId,
+        operatorName: targetOp.name,
+        machineType: targetOp.machineType,
+        fromDept: previousDeptId,
+        toDept: targetDeptId,
+        timestamp: new Date().toISOString(),
+        reason: `Přesun z ${fromDept.name} do ${toDept.name}${absenceReason ? ` (Důvod: ${absenceReason})` : ""}`,
+      };
+      setHistory((prev) => [historyItem, ...prev]);
+
+      // Cloud synchronization for everyone with the link
+      const movedOp = updatedOperators.find((o) => o.id === resolvedId);
+      if (movedOp) {
+        syncOperatorToCloud(movedOp).catch((e) => console.warn("Cloud sync error:", e));
+      }
+      syncHistoryRecordToCloud(historyItem).catch((e) =>
+        console.warn("Cloud history sync error:", e),
+      );
+
+      // Toast feedback with direct undo (no auto-scroll away from current view)
+      const msg = `Operátor ${targetOp.name} přesunut z ${fromDept.name} ➔ ${toDept.name}`;
+      showToast(msg, false, () => {
+        handleUndoSingle();
+      });
+
+      // Background AI learning: record move and reinforce pattern
+      trackOperatorChange(
+        {
+          name: targetOp.name,
           departmentId: targetDeptId,
           machineType: finalMachineType,
           status: newStatus,
+          shift: targetOp.shift || activeShift,
           absenceReason:
             targetDeptId === "unassigned"
-              ? absenceReason || op.absenceReason || "Absence"
+              ? absenceReason || targetOp.absenceReason || "Absence"
               : undefined,
-          isVnaOnly: false,
-          lastMovedAt: new Date().toISOString(),
-        };
-      }
-      return op;
-    });
-
-    setOperators(updatedOperators);
-    saveOperators(updatedOperators);
-
-    // Push into undo stack (capped at last 5 operations)
-    const undoOp: UndoOperation = {
-      id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      operatorId: resolvedId,
-      operatorName: targetOp.name,
-      machineType: targetOp.machineType,
-      fromDept: previousDeptId,
-      toDept: targetDeptId,
-      fromStatus: targetOp.status,
-      toStatus: newStatus,
-      timestamp: new Date().toISOString(),
-    };
-    setUndoStack((prev) => [undoOp, ...prev.slice(0, 4)]);
-
-    // Append to history
-    const historyItem: MoveHistoryRecord = {
-      id: `hist-${Date.now()}`,
-      operatorId: resolvedId,
-      operatorName: targetOp.name,
-      machineType: targetOp.machineType,
-      fromDept: previousDeptId,
-      toDept: targetDeptId,
-      timestamp: new Date().toISOString(),
-      reason: `Přesun z ${fromDept.name} do ${toDept.name}${absenceReason ? ` (Důvod: ${absenceReason})` : ""}`,
-    };
-    setHistory((prev) => [historyItem, ...prev]);
-
-    // Cloud synchronization for everyone with the link
-    const movedOp = updatedOperators.find((o) => o.id === resolvedId);
-    if (movedOp) {
-      syncOperatorToCloud(movedOp).catch((e) => console.warn("Cloud sync error:", e));
-    }
-    syncHistoryRecordToCloud(historyItem).catch((e) =>
-      console.warn("Cloud history sync error:", e),
-    );
-
-    // Toast feedback with direct undo (no auto-scroll away from current view)
-    const msg = `Operátor ${targetOp.name} přesunut z ${fromDept.name} ➔ ${toDept.name}`;
-    showToast(msg, false, () => {
-      handleUndoSingle();
-    });
-
-    // Background AI learning: record move and reinforce pattern
-    trackOperatorChange(
-      {
-        name: targetOp.name,
-        departmentId: targetDeptId,
-        machineType: finalMachineType,
-        status: newStatus,
-        shift: targetOp.shift || activeShift,
-        absenceReason:
-          targetDeptId === "unassigned"
-            ? absenceReason || targetOp.absenceReason || "Absence"
-            : undefined,
-      },
-      targetDeptId === "unassigned" ? "absence" : "move",
-      `Přesun z ${fromDept.name} do ${toDept.name}`,
-    );
-  };
+        },
+        targetDeptId === "unassigned" ? "absence" : "move",
+        `Přesun z ${fromDept.name} do ${toDept.name}`,
+      );
+    },
+    [operators, customDepartments, activeShift, trackOperatorChange, handleUndoSingle],
+  );
 
   // Jump bar drag-and-drop quick-move handlers
   const handleJumpPillDragOver = (e: React.DragEvent, deptId: DepartmentId) => {
