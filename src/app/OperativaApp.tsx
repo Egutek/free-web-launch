@@ -40,6 +40,7 @@ import { TableView } from "./components/TableView";
 import { WidgetView } from "./components/WidgetView";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { OperationsInsights } from "./components/OperationsInsights";
+import { DistributionAssistant } from "./components/DistributionAssistant";
 import { QuickMoveModal } from "./components/QuickMoveModal";
 import { BossReportModal } from "./components/BossReportModal";
 import { AddEditOperatorModal } from "./components/AddEditOperatorModal";
@@ -1986,6 +1987,18 @@ export default function App() {
             window.setTimeout(() => scrollToDepartment(departmentId), 50);
           }}
           onEditOperator={(operator) => setAddEditOperator({ operator })}
+        />
+
+        <DistributionAssistant
+          operators={shiftOperators}
+          departments={allDepartments}
+          onMoveOperator={(operatorId, targetDepartmentId) =>
+            handleMoveOperator(operatorId, targetDepartmentId)
+          }
+          onFocusDepartment={(departmentId) => {
+            setViewMode("board");
+            window.setTimeout(() => scrollToDepartment(departmentId), 50);
+          }}
         />
 
         {/* View Mode 1: Department Columns (Board) */}
