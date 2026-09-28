@@ -1,5 +1,5 @@
 // ZF Operativa Service Worker for Mobile Widget\n// Bump CACHE_NAME whenever the deployed app shell changes to avoid stale bundles.
-const CACHE_NAME = "zf-operativa-v2";
+const CACHE_NAME = "zf-operativa-v3";
 const STATIC_ASSETS = [
   "/",
   "/manifest.json",
@@ -37,10 +37,14 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // Let Firestore & API requests bypass the static cache for live real-time data
+  const requestUrl = new URL(event.request.url);
+
+  // Only cache this app's own shell. Firestore, APIs, third-party assets and
+  // mutations must always stay outside the static cache.
   if (
-    event.request.url.includes("firestore.googleapis.com") ||
-    event.request.url.includes("/api/") ||
+    requestUrl.origin !== self.location.origin ||
+    requestUrl.pathname.startsWith("/api/") ||
+    requestUrl.hostname.includes("firestore.googleapis.com") ||
     event.request.method !== "GET"
   ) {
     return;
