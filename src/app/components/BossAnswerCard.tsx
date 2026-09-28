@@ -38,7 +38,6 @@ interface BossAnswerCardProps {
   onOpenReportModal: () => void;
   onQuickMoveModal?: () => void;
   onOpenKmenModal?: () => void;
-  onAutoAssignAISuggestions?: () => void;
 }
 
 export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
@@ -48,7 +47,6 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   activeShift = "A",
   onOpenReportModal,
   onOpenKmenModal,
-  onAutoAssignAISuggestions,
 }) => {
   const [copied, setCopied] = useState(false);
   const [showAIDetails, setShowAIDetails] = useState(false);
@@ -610,15 +608,10 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {unassignedWaitingOps.length > 0 && onAutoAssignAISuggestions && (
-              <button
-                type="button"
-                onClick={onAutoAssignAISuggestions}
-                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-all shadow-2xs active:scale-95"
-              >
-                <Sparkles className="w-3 h-3" />
-                <span>⚡ AI rozřazení ({unassignedWaitingOps.length} nezařazených)</span>
-              </button>
+            {unassignedWaitingOps.length > 0 && (
+              <span className="px-2.5 py-1 rounded-lg bg-indigo-950/70 text-indigo-300 font-semibold text-[11px] border border-indigo-800/60">
+                AI návrhy: {unassignedWaitingOps.length} nezařazených • rozhoduje Team Lead
+              </span>
             )}
 
             <button
