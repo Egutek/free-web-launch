@@ -1,12 +1,7 @@
-<!-- LOVABLE:BEGIN -->
+# Pokyny pro práci na projektu
 
-> [!IMPORTANT]
-> This project is connected to [Lovable](https://lovable.dev). Avoid rewriting
-> published git history — force pushing, or rebasing/amending/squashing commits
-> that are already pushed — as it rewrites history on Lovable's side and the
-> user will likely lose their project history.
->
-> Commits you push to the connected branch sync back to Lovable and show up in
-> the editor, so keep the branch in a working state.
-
-<!-- LOVABLE:END -->
+- Zachovej hlavní pracovní tok tabule a živou synchronizaci přes Firebase/Firestore.
+- Před změnou datového modelu ověř odpovídající pravidla ve `firestore.rules`.
+- Neumisťuj tajné klíče do klientského kódu ani do repozitáře.
+- Po změnách spusť `npm run lint` a `npm run build`, pokud jsou v prostředí dostupné závislosti.
+- Změny dělej v samostatné větvi a před sloučením ověř hlavní scénáře na mobilu i desktopu.
