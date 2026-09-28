@@ -1,26 +1,31 @@
 # ZF Operativa Ostrov
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/109dc72d-db81-4248-a2ef-43227ebd75bc/deploy-status)](https://app.netlify.com/projects/zfoperatives/deploys)
+Online tabule pro operativní řízení směn ve skladu ZF Ostrov.
 
-Tento projekt je online.
+Aplikace umožňuje živé rozdělení operátorů mezi oddělení, přesuny během směny, šablony a historii. Data se synchronizují přes Firebase/Firestore a rozhraní je připravené i pro použití na mobilu jako PWA.
 
-This project was built with [Lovable](https://lovable.dev).
+## Vývoj
 
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/b51e83a8-cb40-42eb-9be1-7ab154852578).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Požadavky: Node.js 20+ a npm.
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+git clone https://github.com/Egutek/free-web-launch.git
+cd free-web-launch
+npm install
 npm run dev
 ```
+
+Užitečné příkazy:
+
+- `npm run build` — produkční build
+- `npm run lint` — kontrola ESLint
+- `npm run preview` — lokální náhled buildu
+
+Firebase konfigurace je v `firebase-applet-config.json`. Veřejné webové API klíče Firebase nejsou náhradou za bezpečnostní pravidla; přístup k datům musí zůstat řízen pravidly Firestore v `firestore.rules`.
+
+## Struktura
+
+- `src/app/OperativaApp.tsx` — hlavní tabule a pracovní logika
+- `src/app/services/` — práce s Firebase a synchronizací
+- `src/routes/` — TanStack Start routy a metadata
+- `public/sw.js` — PWA cache s automatickou invalidací po vydání nové verze
