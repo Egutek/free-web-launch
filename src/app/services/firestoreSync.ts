@@ -31,6 +31,53 @@ function reportWriteError(error: Error) {
 }
 
 const WORKSPACE_ID = "zf_ostrov";
+const PENDING_OPERATOR_WRITES_KEY = "zf_ostrov_pending_operator_writes_v1";
+
+function readPendingOperatorWrites(): Operator[] {
+  try {
+    const raw = localStorage.getItem(PENDING_OPERATOR_WRITES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingOperatorWrites(operators: Operator[]): void {
+  try {
+    localStorage.setItem(PENDING_OPERATOR_WRITES_KEY, JSON.stringify(operators));
+  } catch (error) {
+    console.warn("Frontu neodeslaných změn se nepodařilo uložit:", error);
+  }
+}
+
+function queuePendingOperatorWrite(operator: Operator): void {
+  const pending = readPendingOperatorWrites().filter((item) => item.id !== operator.id);
+  writePendingOperatorWrites([...pending, operator]);
+}
+
+function removePendingOperatorWrite(operatorId: string): void {
+  writePendingOperatorWrites(readPendingOperatorWrites().filter((item) => item.id !== operatorId));
+}
+
+export function hasPendingOperatorWrites(): boolean {
+  return readPendingOperatorWrites().length > 0;
+}
+
+export function getPendingOperatorIds(): Set<string> {
+  return new Set(readPendingOperatorWrites().map((operator) => operator.id));
+}
+
+export async function flushPendingOperatorWrites(): Promise<void> {
+  for (const operator of readPendingOperatorWrites()) {
+    try {
+      await syncOperatorToCloud(operator);
+      removePendingOperatorWrite(operator.id);
+    } catch {
+      break;
+    }
+  }
+}
 
 const getCollectionRef = (subPath: string) =>
   collection(db, `workspaces/${WORKSPACE_ID}/${subPath}`);
@@ -136,6 +183,7 @@ export async function syncOperatorToCloud(operator: Operator): Promise<void> {
       transaction.set(operatorRef, cleanOp);
     });
   } catch (error) {
+    queuePendingOperatorWrite(operator);
     handleFirestoreError(error, OperationType.WRITE, `operators/${operator.id}`);
   }
 }

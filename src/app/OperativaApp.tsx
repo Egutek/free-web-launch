@@ -69,6 +69,9 @@ import {
 import {
   subscribeToOperators,
   subscribeToCloudWriteErrors,
+  hasPendingOperatorWrites,
+  getPendingOperatorIds,
+  flushPendingOperatorWrites,
   syncOperatorToCloud,
   bulkSyncOperatorsToCloud,
   replaceOperatorsInCloud,
@@ -272,6 +275,12 @@ export default function App() {
   // Login-free Firebase authentication + real-time cloud sync.
   useEffect(() => subscribeToCloudWriteErrors(() => setHasCloudWriteError(true)), []);
 
+  useEffect(() => {
+    const flush = () => void flushPendingOperatorWrites();
+    window.addEventListener("online", flush);
+    return () => window.removeEventListener("online", flush);
+  }, []);
+
   // Anonymous auth runs before Firestore listeners so rules can safely require
   // request.auth without introducing a visible login screen.
   useEffect(() => {
@@ -292,7 +301,12 @@ export default function App() {
               // Do not let an older snapshot arriving over the network overwrite
               // a newer local edit that is still being synchronized.
               const localById = new Map(operatorsRef.current.map((op) => [op.id, op]));
-              const mergedOps = cloudOps.map((cloudOp) => {
+              const cloudIds = new Set(cloudOps.map((op) => op.id));
+              const pendingIds = getPendingOperatorIds();
+              const pendingLocalOps = operatorsRef.current.filter(
+                (op) => !cloudIds.has(op.id) && pendingIds.has(op.id),
+              );
+              const mergedOps = [...cloudOps, ...pendingLocalOps].map((cloudOp) => {
                 const localOp = localById.get(cloudOp.id);
                 if (localOp) {
                   if (
@@ -313,13 +327,17 @@ export default function App() {
               });
               setOperators(mergedOps);
               saveOperators(mergedOps);
+              if (!fromCache) void flushPendingOperatorWrites();
             } else if (!fromCache) {
               // Never silently migrate browser-local operators into a newly
               // configured database. Import must be an explicit user action.
               // An empty server collection is not an invitation to restore
               // potentially stale records from this browser.
-              setOperators([]);
-              saveOperators([]);
+              if (!hasPendingOperatorWrites()) {
+                setOperators([]);
+                saveOperators([]);
+              }
+              void flushPendingOperatorWrites();
             }
           },
           (err) => {

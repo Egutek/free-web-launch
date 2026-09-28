@@ -230,6 +230,7 @@ export function parseTextFallback(textInput: string): {
 } {
   const operators: ExtractedOperator[] = [];
   const filteredOut: FilteredOutRecord[] = [];
+  const seenNames = new Set<string>();
 
   const lines = textInput
     .split(/\r?\n/)
@@ -319,6 +320,9 @@ export function parseTextFallback(textInput: string): {
     }
 
     if (name.length > 1) {
+      const key = name.toLowerCase();
+      if (seenNames.has(key)) continue;
+      seenNames.add(key);
       operators.push({
         name: name.slice(0, 50),
         machineType,
@@ -457,6 +461,9 @@ export function normalize(
         machineType = rawMachine === "RTR" ? "RTR" : rawMachine === "NONE" ? "NONE" : "LL";
       }
 
+      const key = name.toLowerCase();
+      if (seenNames.has(key)) continue;
+      seenNames.add(key);
       operators.push({
         name,
         machineType,

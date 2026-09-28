@@ -285,7 +285,11 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
                     return (
                       <button key={op.id} type="button" onClick={() => onEditOperator?.(op)} className="flex items-center justify-between gap-2 rounded bg-slate-950/20 px-1.5 py-0.5 text-left hover:bg-slate-800/60 transition-colors">
                         <span className="flex min-w-0 items-center gap-1 truncate">
-                          {op.workforceUnconfirmed && <AlertTriangle className="h-3 w-3 shrink-0 text-amber-300" title="MOŽNÁ CHYBA – zkontrolovat přiřazení" />}
+                          {op.workforceUnconfirmed && (
+                            <span title="MOŽNÁ CHYBA – zkontrolovat přiřazení">
+                              <AlertTriangle className="h-3 w-3 shrink-0 text-amber-300" aria-label="MOŽNÁ CHYBA" />
+                            </span>
+                          )}
                           <span className="truncate">{op.name}</span>
                         </span>
                         <span className={`shrink-0 text-[10px] ${absent ? "text-slate-500" : "text-emerald-300"}`}>{team} · {state}</span>
