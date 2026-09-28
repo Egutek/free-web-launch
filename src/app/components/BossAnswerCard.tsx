@@ -16,6 +16,7 @@ import {
   ArrowRight,
   ShieldCheck,
   CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { Department, Operator, RosterMember, ShiftCode } from "../types";
 import { DEPARTMENTS, getDepartmentById } from "../data/departments";
@@ -244,8 +245,8 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-950/50 border border-amber-700/50 text-[11px] text-amber-300"
               title={missingRosterMembers.map((m) => m.name).join(", ")}
             >
-              <Users className="w-3.5 h-3.5" />
-              <span>Možná chybí: {missingRosterMembers.length}</span>
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-300" />
+              <span>MOŽNÁ CHYBA: {missingRosterMembers.length}</span>
             </div>
           )}
 
@@ -644,8 +645,12 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
 
         {missingRosterMembers.length > 0 && (
           <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-2.5 py-2 text-[11px] text-amber-200">
-            <span className="font-semibold">Možná chybí: </span>
-            {missingRosterMembers.slice(0, 3).map((m) => m.name).join(", ")}
+            <span className="font-semibold">MOŽNÁ CHYBA: </span>
+            {missingRosterMembers.slice(0, 3).map((m) => (
+              <span key={m.id} className="inline-flex items-center gap-0.5 mr-1">
+                <span className="text-amber-300" title="MOŽNÁ CHYBA">!</span>{m.name}
+              </span>
+            ))}
             {missingRosterMembers.length > 3 ? ` +${missingRosterMembers.length - 3}` : ""}
             <span className="text-amber-400/80"> • není na směně ani v evidované absenci</span>
           </div>

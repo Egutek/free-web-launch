@@ -412,10 +412,11 @@ export const PhotoImportModal: React.FC<PhotoImportModalProps> = ({
       }
 
       // Perform silent AI & fuzzy roster reconciliation on background
-      const { operators: reconciledValidOps } =
+      const reconciledResult =
         roster.length > 0
           ? reconcileExtractedOperatorsWithRoster(validOps, roster)
           : { operators: validOps, reconciledCount: 0 };
+      const reconciledValidOps = reconciledResult.operators;
 
       const drafts: DraftOperator[] = reconciledValidOps.map((op, index: number) => {
         const deptId = (op.departmentId as DepartmentId) || "hovc";

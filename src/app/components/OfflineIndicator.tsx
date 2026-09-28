@@ -15,6 +15,7 @@ export const OfflineIndicator: React.FC = () => {
       return () => clearTimeout(timer);
     }
     setPrevOnline(isOnline);
+    return undefined;
   }, [isOnline, prevOnline]);
 
   if (showSyncedToast) {

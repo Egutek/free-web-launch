@@ -8,8 +8,9 @@ export type MachineType = "LL" | "RTR" | "NONE";
 export type OperatorStatus = "active" | "break" | "absence";
 
 export type ShiftCode = "A" | "B" | "C";
+export type ShiftType = ShiftCode;
 
-export type AbsenceReason = "Absence" | "Dovolená" | "PN";
+export type AbsenceReason = string;
 
 export type TeamLeaderRole = "transport" | "vna" | "other";
 
@@ -37,6 +38,7 @@ export interface Department {
   borderColor: string;
   iconName: string;
   targetCount: number;
+  isSecondTl?: boolean;
   isCustom?: boolean;
   shift?: ShiftCode;
   createdAt?: string;
@@ -52,6 +54,7 @@ export interface Operator {
   shift?: ShiftCode; // 'A' | 'B' | 'C'
   absenceReason?: AbsenceReason; // 'Absence' | 'Dovolená' | 'PN'
   notes?: string;
+  isPermanent?: boolean;
   lastMovedAt: string; // ISO string
 }
 

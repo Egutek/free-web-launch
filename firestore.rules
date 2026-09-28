@@ -32,8 +32,9 @@ service cloud.firestore {
             && data.status in ['active', 'break', 'absence']
             && data.lastMovedAt is string && data.lastMovedAt.size() <= 50
             && (!data.keys().hasAny(['isVnaOnly']) || data.isVnaOnly is bool)
+            && (!data.keys().hasAny(['isPermanent']) || data.isPermanent is bool)
             && (!data.keys().hasAny(['shift']) || data.shift in ['A', 'B', 'C'])
-            && (!data.keys().hasAny(['absenceReason']) || data.absenceReason in ['Absence', 'Dovolená', 'PN'])
+            && (!data.keys().hasAny(['absenceReason']) || data.absenceReason in ['Absence', 'Lékař', 'Nemoc / PN', 'Dovolená', 'Neomluveno', 'Školení', 'Jiné', 'PN'])
             && (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 500));
       }
 

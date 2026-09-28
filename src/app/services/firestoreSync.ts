@@ -137,6 +137,28 @@ export async function deleteOperatorFromCloud(
   }
 }
 
+export async function bulkDeleteOperatorsFromCloud(
+  operatorIds: string[],
+  shouldQueueIfOffline = true,
+): Promise<void> {
+  if (operatorIds.length === 0) return;
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    if (shouldQueueIfOffline) operatorIds.forEach((id) => queueOfflineAction("delete_operator", id));
+    return;
+  }
+  try {
+    for (let start = 0; start < operatorIds.length; start += 400) {
+      const batch = writeBatch(db);
+      operatorIds.slice(start, start + 400).forEach((id) => batch.delete(getDocRef("operators", id)));
+      await batch.commit();
+    }
+  } catch (error) {
+    if (shouldQueueIfOffline) operatorIds.forEach((id) => queueOfflineAction("delete_operator", id));
+    if (!shouldQueueIfOffline) throw error;
+    console.warn("Firestore bulk delete operators failed (queued offline):", error);
+  }
+}
+
 export async function bulkSyncOperatorsToCloud(
   operators: Operator[],
   shouldQueueIfOffline = true,

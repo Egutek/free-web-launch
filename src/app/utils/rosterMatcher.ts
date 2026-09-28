@@ -1,4 +1,4 @@
-import { Operator, RosterMember, ShiftCode, TeamLeaderRole } from "../types";
+import { AbsenceReason, DepartmentId, Operator, RosterMember, ShiftCode, TeamLeaderRole } from "../types";
 import { ExtractedOperator } from "../services/aiServerFn";
 
 /**

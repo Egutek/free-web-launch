@@ -11,6 +11,7 @@ import {
   AbsenceReason,
   Department,
   DepartmentId,
+  MachineType,
   MoveHistoryRecord,
   Operator,
   OperatorStatus,
@@ -86,6 +87,7 @@ import {
   subscribeToRoster,
   syncRosterMemberToCloud,
   bulkSyncRosterToCloud,
+  replaceRosterInCloud,
   deleteRosterMemberFromCloud,
   bulkDeleteRosterMembersFromCloud,
 } from "./services/firestoreSync";
