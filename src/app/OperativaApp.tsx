@@ -39,6 +39,7 @@ import { DepartmentColumn } from "./components/DepartmentColumn";
 import { TableView } from "./components/TableView";
 import { WidgetView } from "./components/WidgetView";
 import { OfflineIndicator } from "./components/OfflineIndicator";
+import { OperationsInsights } from "./components/OperationsInsights";
 import { QuickMoveModal } from "./components/QuickMoveModal";
 import { BossReportModal } from "./components/BossReportModal";
 import { AddEditOperatorModal } from "./components/AddEditOperatorModal";
@@ -1937,6 +1938,20 @@ export default function App() {
           activeShift={activeShift}
           onOpenReportModal={() => setIsReportModalOpen(true)}
           onOpenKmenModal={() => setIsKmenModalOpen(true)}
+        />
+
+        <OperationsInsights
+          operators={shiftOperators}
+          departments={allDepartments}
+          history={history}
+          activeShift={activeShift}
+          isCloudConnected={isCloudConnected}
+          isCloudSyncing={isCloudSyncing}
+          onOpenHistory={() => setIsHistoryModalOpen(true)}
+          onOpenRoster={() => setIsKmenModalOpen(true)}
+          onOpenReport={() => setIsReportModalOpen(true)}
+          onSetView={setViewMode}
+          onEditOperator={(operator) => setAddEditOperator({ operator })}
         />
 
         {/* View Mode 1: Department Columns (Board) */}
