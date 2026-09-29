@@ -84,6 +84,12 @@ interface ParsedBulkEntry {
   existingId?: string;
 }
 
+const teamLeaderMeta: Record<TeamLeaderRole, { name: string; team: string; className: string }> = {
+  transport: { name: "Lukáš Hemzáček", team: "Transport", className: "bg-blue-50 text-blue-900 dark:bg-blue-950/40 dark:text-blue-200" },
+  vna: { name: "Oto Pukančík", team: "VNA", className: "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" },
+  other: { name: "Jiný Team Leader", team: "Ostatní", className: "bg-slate-50 text-slate-900 dark:bg-slate-800 dark:text-slate-200" },
+};
+
 export const KmenModal: React.FC<KmenModalProps> = ({
   isOpen,
   onClose,
@@ -230,6 +236,16 @@ export const KmenModal: React.FC<KmenModalProps> = ({
     searchQuery,
     shiftOperatorMatchMap,
   ]);
+
+  const orderedFilteredMembers = useMemo(
+    () =>
+      [...filteredMembers].sort(
+        (a, b) =>
+          (a.teamLeader === "transport" ? 0 : a.teamLeader === "vna" ? 1 : 2) -
+          (b.teamLeader === "transport" ? 0 : b.teamLeader === "vna" ? 1 : 2),
+      ),
+    [filteredMembers],
+  );
 
   // Counts by department for quick filter badges
   const departmentCounts = useMemo(() => {
@@ -1189,7 +1205,7 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {filteredMembers.length === 0 ? (
+                      {orderedFilteredMembers.length === 0 ? (
                         <tr>
                           <td
                             colSpan={7}
@@ -1199,15 +1215,25 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                           </td>
                         </tr>
                       ) : (
-                        filteredMembers.map((member) => {
+                        orderedFilteredMembers.map((member, index) => {
                           const isEditing = editingMemberId === member.id;
                           const isSelected = selectedMemberIds.has(member.id);
                           const dept = getDepartmentById(member.defaultDepartmentId || "hovc");
                           const opOnShift = shiftOperatorMatchMap.get(member.id);
+                          const leader = teamLeaderMeta[member.teamLeader || "other"];
+                          const previousLeader = orderedFilteredMembers[index - 1]?.teamLeader;
 
                           if (isEditing) {
                             return (
-                              <tr key={member.id} className="bg-blue-50/50 dark:bg-blue-950/30 p-2">
+                              <React.Fragment key={member.id}>
+                                {previousLeader !== member.teamLeader && (
+                                  <tr className={leader.className}>
+                                    <td colSpan={7} className="px-3 py-2 text-xs font-black">
+                                      Team Leader: {leader.name} · {leader.team}
+                                    </td>
+                                  </tr>
+                                )}
+                                <tr className="bg-blue-50/50 dark:bg-blue-950/30 p-2">
                                 <td className="p-2 text-center">
                                   <Edit2 className="w-3.5 h-3.5 text-blue-500 mx-auto" />
                                 </td>
@@ -1271,14 +1297,22 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                                     </button>
                                   </div>
                                 </td>
-                              </tr>
+                                </tr>
+                              </React.Fragment>
                             );
                           }
 
                           return (
-                            <tr
-                              key={member.id}
-                              className={`transition-colors cursor-pointer ${
+                            <React.Fragment key={member.id}>
+                              {previousLeader !== member.teamLeader && (
+                                <tr className={leader.className}>
+                                  <td colSpan={7} className="px-3 py-2 text-xs font-black">
+                                    Team Leader: {leader.name} · {leader.team}
+                                  </td>
+                                </tr>
+                              )}
+                              <tr
+                                className={`transition-colors cursor-pointer ${
                                 isSelected
                                   ? "bg-blue-50/70 dark:bg-blue-950/40"
                                   : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
@@ -1518,7 +1552,8 @@ export const KmenModal: React.FC<KmenModalProps> = ({
                                   </button>
                                 </div>
                               </td>
-                            </tr>
+                              </tr>
+                            </React.Fragment>
                           );
                         })
                       )}
