@@ -53,7 +53,7 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   const [showAIDetails, setShowAIDetails] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
-      const stored = localStorage.getItem("zf_boss_card_collapsed");
+      const stored = localStorage.getItem("zf_boss_card_compact_v2");
       if (stored !== null) return stored === "true";
         return true;
     } catch {
@@ -65,7 +65,7 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
     setIsCollapsed((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem("zf_boss_card_collapsed", String(next));
+          localStorage.setItem("zf_boss_card_compact_v2", String(next));
       } catch {
         // ignore
       }
