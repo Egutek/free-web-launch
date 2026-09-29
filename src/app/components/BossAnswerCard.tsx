@@ -55,7 +55,7 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
     try {
       const stored = localStorage.getItem("zf_boss_card_collapsed");
       if (stored !== null) return stored === "true";
-      return false; // Default expanded for great overview
+        return true;
     } catch {
       return false;
     }
