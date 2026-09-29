@@ -157,6 +157,18 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
 
   const customDeptIds = new Set(customDepartments.map((d) => d.id));
   const activeExtraOps = activeOps.filter((op) => customDeptIds.has(op.departmentId));
+  const rosterGroups = ([
+    ["transport", "Team Leader: Lukáš Hemzáček", "Transport"],
+    ["vna", "Team Leader: Oto Pukančík", "VNA"],
+  ] as const).map(([team, leader, label]) => ({
+    leader,
+    label,
+    members: shiftRoster.filter((member) => (team === "vna") === isVnaRosterMember(member)).map((member) => {
+      const operator = operators.find((op) => matchOperatorWithRoster(op.name, [member]).confidence >= 0.8);
+      const status = !operator ? "MOŽNÁ CHYBA" : operator.departmentId === "unassigned" || operator.status === "absence" ? operator.absenceReason || "Absence" : operator.departmentId === "vna" ? "VNA · na hale" : "Transport · na hale";
+      return { member, status, problem: !operator };
+    }),
+  }));
 
   // 7. AI learning data stats
   const learnedMap = loadLearnedProfiles();
@@ -188,6 +200,19 @@ export const BossAnswerCard: React.FC<BossAnswerCardProps> = ({
   // ==========================================
   // 1. COLLAPSED BAR VIEW
   // ==========================================
+  if (isCollapsed) return (
+    <div id="boss-pick-card-collapsed" className="bg-slate-900 border border-slate-700/80 rounded-2xl p-3 sm:p-4 text-white shadow-md space-y-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-baseline gap-2"><h2 className="text-xl sm:text-2xl font-black">V provozu na hale: <span className="text-emerald-400">{activeOps.length} lidí</span></h2><span className="text-sm text-slate-400">/ {operators.length} celkem</span></div>
+        <div className="flex gap-1.5 text-xs font-bold"><span className="px-2 py-1 rounded-lg bg-amber-950/70 border border-amber-700/60 text-amber-300">{activeLL}x LL</span><span className="px-2 py-1 rounded-lg bg-blue-950/80 border border-blue-700/60 text-blue-300">{activeRTR}x RTR</span><span className="px-2 py-1 rounded-lg bg-emerald-950/80 border border-emerald-700/60 text-emerald-300">{activeVNA}x VNA</span></div>
+      </div>
+      <div className="flex gap-2 flex-wrap text-xs font-bold"><span className="px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-700/60 text-rose-200">Absence: {absenceOps.length}</span><span className="px-2.5 py-1 rounded-lg bg-blue-950/80 border border-blue-700/60 text-blue-200">Transport: {transportActiveOps.length}/{transportRosterCount}</span><span className="px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-700/60 text-emerald-200">VNA: {vnaActiveOps.length}/{vnaRosterCount}</span></div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {rosterGroups.map((group) => <section key={group.label} className="space-y-1.5"><h3 className="px-2 py-1 text-xs font-black rounded-lg bg-slate-800 text-slate-200 border border-slate-700">{group.leader} · {group.label}</h3>{group.members.map(({ member, status, problem }) => <div key={member.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-slate-950/60 text-sm"><span className="truncate">{member.name}</span><span className={`shrink-0 text-xs ${problem ? "text-amber-300" : status === "Absence" || status === "PN" || status === "Dovolená" ? "text-slate-500" : "text-emerald-300"}`}>{problem && <AlertTriangle className="inline w-3 h-3 mr-1" />}{status}</span></div>)}</section>)}
+      </div>
+      <div className="flex gap-1.5"><button id="copy-pick-answer-collapsed-btn" onClick={copyPickSummary} className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700">{copied ? "Zkopírováno" : "Kopírovat"}</button><button id="open-report-collapsed-btn" onClick={onOpenReportModal} className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white">Report</button><button id="expand-boss-card-btn" onClick={toggleCollapse} className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white border border-slate-700">Přehled</button></div>
+    </div>
+  );
   if (isCollapsed) {
     return (
       <div
