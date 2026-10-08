@@ -1,0 +1,4 @@
+import{describe,it,expect}from'vitest';import{detectBoardQuad,detectMagnetRects}from'./vision';
+function image(w:number,h:number,bg=245){const d=new Uint8ClampedArray(w*h*4);for(let i=0;i<d.length;i+=4)d[i]=d[i+1]=d[i+2]=bg,d[i+3]=255;return {data:d,width:w,height:h} as ImageData}
+function rect(im:ImageData,x0:number,y0:number,w:number,h:number,v=20){for(let y=y0;y<y0+h;y++)for(let x=x0;x<x0+w;x++){const i=(y*im.width+x)*4;im.data[i]=im.data[i+1]=im.data[i+2]=v}}
+describe('vision',()=>{it('finds strong board-like edge envelope',()=>{const im=image(600,400);rect(im,55,45,490,6);rect(im,55,345,490,6);rect(im,55,45,6,306);rect(im,539,45,6,306);expect(detectBoardQuad(im)).not.toBeNull()});it('does not hallucinate board on blank image',()=>expect(detectBoardQuad(image(500,300))).toBeNull());it('returns array for magnet candidates',()=>{const im=image(700,400);rect(im,120,120,120,25);const r=detectMagnetRects(im);expect(Array.isArray(r)).toBe(true)})})
