@@ -1,0 +1,1 @@
+Tests are located under src/*.test.ts so Vitest resolves TypeScript with project config.
