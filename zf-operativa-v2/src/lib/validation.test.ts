@@ -1,0 +1,3 @@
+import {describe,it,expect} from 'vitest';import {validate,duplicates,parseRoster} from './validation';
+describe('validation',()=>{it('matches missing diacritics',()=>{expect(validate('NOVAK JAN',['NOVÁK JAN'],.95,'TRANSPORT').matched).toBe('NOVÁK JAN')});it('rejects unrelated name',()=>{expect(validate('XYZ',['NOVÁK JAN'],.95,'TRANSPORT').matched).toBeUndefined()});it('finds duplicates',()=>{expect(duplicates([{raw:'a',matched:'A',area:'TRANSPORT',confidence:1},{raw:'a',matched:'A',area:'VNA',confidence:1}])).toEqual(['A'])})})
+describe('roster input',()=>{it('deduplicates names with formatting differences',()=>{expect(parseRoster('Novak Jan\nNOVAK JAN\nSvoboda Petr')).toEqual({names:['Novak Jan','Svoboda Petr'],duplicates:['Novak Jan']})})})
