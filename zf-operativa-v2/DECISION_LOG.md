@@ -1,5 +1,11 @@
 # Decision log
 
+## 2026-10-08 – isolated local pilot
+
+- V2 uses its own `zf.v2.pilot.*` browser-storage keys and no longer reads or migrates legacy shift keys.
+- Reset removes only V2 pilot storage, then restores the local starter roster and department setup.
+- Problem solvers persist locally with the pilot and stay separate from department operators.
+
 ## 2026-10-08 – safe department dialogs
 
 - Browser prompt and confirm windows were replaced by an accessible in-app dialog matching the visual system.

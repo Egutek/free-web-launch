@@ -1,8 +1,8 @@
-import type { Area, Movement } from '../types';
+import type { Area, Movement, ProblemSolver } from '../types';
 import type { ShiftState } from './shifts';
+import { PILOT_STORAGE } from './pilotStorage';
 
-const KEY = 'zf.shift.v1';
-const LEGACY_KEY = 'shift';
+const KEY = PILOT_STORAGE.shift;
 function isArea(value: unknown): value is Area {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -30,7 +30,6 @@ export function saveShift(shift: ShiftState | null): void {
   try {
     if (shift) localStorage.setItem(KEY, JSON.stringify(shift));
     else localStorage.removeItem(KEY);
-    localStorage.removeItem(LEGACY_KEY);
   } catch (error) {
     console.warn('Shift could not be persisted:', error);
   }
@@ -38,18 +37,15 @@ export function saveShift(shift: ShiftState | null): void {
 
 export function loadShift(): ShiftState | null {
   try {
-    const canonical = localStorage.getItem(KEY);
-    const isLegacy = canonical === null;
-    const serialized = canonical ?? localStorage.getItem(LEGACY_KEY);
+    const serialized = localStorage.getItem(KEY);
     if (!serialized) return null;
 
     const parsed: unknown = JSON.parse(serialized);
     if (!isShiftState(parsed)) {
-      localStorage.removeItem(isLegacy ? LEGACY_KEY : KEY);
+      localStorage.removeItem(KEY);
       return null;
     }
 
-    if (isLegacy) saveShift(parsed);
     return parsed;
   } catch {
     return null;
@@ -65,3 +61,12 @@ export function exportShift(shift: ShiftState): void {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
+
+export function loadProblemSolvers(): ProblemSolver[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(PILOT_STORAGE.problemSolvers) ?? 'null');
+    return Array.isArray(value) ? value.filter((solver): solver is ProblemSolver => isRecord(solver) && typeof solver.name === 'string' && solver.name.trim().length > 0 && (solver.area === 'TRANSPORT' || solver.area === 'HOVS/ML')) : [];
+  } catch { return []; }
+}
+
+export function saveProblemSolvers(solvers: ProblemSolver[]): void { try { localStorage.setItem(PILOT_STORAGE.problemSolvers, JSON.stringify(solvers)); } catch {} }

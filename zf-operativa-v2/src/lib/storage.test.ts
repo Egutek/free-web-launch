@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createShift } from './shifts';
-import { isShiftState, loadShift, saveShift } from './storage';
+import { isShiftState, loadShift, saveProblemSolvers, saveShift } from './storage';
+import { PILOT_STORAGE } from './pilotStorage';
 
 describe('shift persistence', () => {
   beforeEach(() => localStorage.clear());
@@ -10,23 +11,16 @@ describe('shift persistence', () => {
     saveShift(shift);
 
     expect(loadShift()).toEqual(shift);
-    expect(localStorage.getItem('zf.shift.v1')).not.toBeNull();
+    expect(localStorage.getItem(PILOT_STORAGE.shift)).not.toBeNull();
   });
 
   it('rejects malformed persisted state', () => {
-    localStorage.setItem('zf.shift.v1', JSON.stringify({ operators: [{ name: 'UNKNOWN' }] }));
+    localStorage.setItem(PILOT_STORAGE.shift, JSON.stringify({ operators: [{ name: 'UNKNOWN' }] }));
 
     expect(loadShift()).toBeNull();
-    expect(localStorage.getItem('zf.shift.v1')).toBeNull();
+    expect(localStorage.getItem(PILOT_STORAGE.shift)).toBeNull();
     expect(isShiftState({ operators: [] })).toBe(false);
   });
 
-  it('migrates a valid shift from the previous storage key', () => {
-    const shift = createShift([{ name: 'SVOBODA PETR', area: 'OUTBOUND' }]);
-    localStorage.setItem('shift', JSON.stringify(shift));
-
-    expect(loadShift()).toEqual(shift);
-    expect(localStorage.getItem('zf.shift.v1')).not.toBeNull();
-    expect(localStorage.getItem('shift')).toBeNull();
-  });
+  it('keeps pilot data isolated from legacy keys', () => { const shift = createShift([{ name: 'SVOBODA PETR', area: 'OUTBOUND' }]); localStorage.setItem('zf.shift.v1', JSON.stringify(shift)); expect(loadShift()).toBeNull(); saveProblemSolvers([{ name: 'PAVELKA', area: 'TRANSPORT' }]); expect(localStorage.getItem(PILOT_STORAGE.problemSolvers)).not.toBeNull(); });
 });

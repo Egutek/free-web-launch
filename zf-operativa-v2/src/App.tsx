@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { addOperatorToShift, createShift, moveOperator, moveOperators, movedOnly, returnOperatorsToStart, returnToStart, type ShiftState } from './lib/shifts';
-import { exportShift, loadShift, saveShift } from './lib/storage';
+import { exportShift, loadProblemSolvers, loadShift, saveProblemSolvers, saveShift } from './lib/storage';
 import { filterOperators } from './lib/search';
 import { type Area, type BoardAnalysisResult, type Detection, type ImageQuality, type ProblemSolver } from './types';
 import { analyzeBoardPhoto } from './ocr/pipeline';
@@ -10,7 +10,8 @@ import { duplicates, normalizeName, parseRoster, sanitizeEmployeeCandidate } fro
 import { UnusableImageError } from './lib/image';
 import { isAutomaticallyConfirmed, isReviewRequired } from './lib/board';
 import { loadRoster, saveRoster, type PermanentTeam, type RosterMember, type ShiftCode } from './lib/roster';
-import { addDepartment, loadDepartments, renameDepartment, saveDepartments, UNASSIGNED, type Department } from './lib/departments';
+import { addDepartment, DEFAULT_DEPARTMENTS, loadDepartments, renameDepartment, saveDepartments, UNASSIGNED, type Department } from './lib/departments';
+import { resetPilotStorage } from './lib/pilotStorage';
 import './style.css';
 
 const DEFAULT_ROSTER: RosterMember[] = [{ name: 'NOVAK JAN', team: 'TRANSPORT', shift: 'A' }, { name: 'SVOBODA PETR', team: 'TRANSPORT', shift: 'A' }, { name: 'DVORAK MARTIN', team: 'VNA', shift: 'A' }];
@@ -33,6 +34,7 @@ export default function App() {
   const [departments, setDepartments] = useState<Department[]>(loadDepartments);
   const [departmentEntry, setDepartmentEntry] = useState('');
   const [departmentDialog, setDepartmentDialog] = useState<DepartmentDialog | null>(null);
+  const [resetDialog, setResetDialog] = useState(false);
   const [rosterEntry, setRosterEntry] = useState('');
   const [rosterTeam, setRosterTeam] = useState<PermanentTeam>('TRANSPORT');
   const [rosterShift, setRosterShift] = useState<ShiftCode>('A');
@@ -62,8 +64,8 @@ export default function App() {
   const [resolvedRows, setResolvedRows] = useState<Set<number>>(() => new Set());
   const [reviewNotice, setReviewNotice] = useState('');
   const [reviewApproved, setReviewApproved] = useState(false);
-  const [problemSolverNames, setProblemSolverNames] = useState<string[]>([]);
-  const [problemSolverAreas, setProblemSolverAreas] = useState<ProblemSolver['area'][]>([]);
+  const [problemSolverNames, setProblemSolverNames] = useState<string[]>(() => loadProblemSolvers().map((solver) => solver.name));
+  const [problemSolverAreas, setProblemSolverAreas] = useState<ProblemSolver['area'][]>(() => loadProblemSolvers().map((solver) => solver.area));
 
   useEffect(() => {
     saveShift(shift);
@@ -71,6 +73,7 @@ export default function App() {
 
   useEffect(() => { saveRoster(rosterMembers); }, [rosterMembers]);
   useEffect(() => { saveDepartments(departments); }, [departments]);
+  useEffect(() => { saveProblemSolvers(getProblemSolvers()); }, [problemSolverNames, problemSolverAreas]);
 
   const visibleAreas = departments.filter((department) => !department.hidden).map((department) => department.name);
   const occupiedHiddenAreas = [...new Set(shift?.operators.map((operator) => operator.current).filter((area) => !visibleAreas.includes(area)) ?? [])];
@@ -173,4 +176,159 @@ export default function App() {
       const moved = moveOperators(shift, shift.operators.filter((operator) => operator.current === name).map((operator) => operator.name), UNASSIGNED);
       setShift({ ...moved, operators: moved.operators.map((operator) => ({ ...operator, home: operator.home === name ? UNASSIGNED : operator.home, start: operator.start === name ? UNASSIGNED : operator.start })) });
     }
-    setDepartments((items) => iwm¯ﬂ€hëÈÏ∂ªßq´^u–ÒÕ—…•πú¯†§ÌçΩπÕ–ÅΩ¡ï…Ö—Ω…ÃıÖÕÕ•ùπµïπ—Ãπô•±—ï»°‡Ù˘ÌçΩπÕ–Å≠ï‰ıπÖµï-ï‰°‡ππÖµî§Ì•ò°Õïï∏π°ÖÃ°≠ï‰§•…ï—’…∏ÅôÖ±ÕîÌÕïï∏πÖëê°≠ï‰§Ì…ï—’…∏Å—…’ïÙ§πµÖ¿°‡Ù¯°ÌπÖµîÈ‡ππÖµîπ—…•¥†§±°ΩµîÈ‡πÖ…ïÑ±Õ—Ö…–È‡πÖ…ïÑ±ç’……ïπ–È‡πÖ…ïÖÙ§§Ì…ï—’…πÌÕ—Ö…—ïë–Èπï‹ÅÖ—î†§π—Ω%M=M—…•πú†§±Ω¡ï…Ö—Ω…Ã±µΩŸïµïπ—ÃÈmt±¡…Ωâ±ïµMΩ±Ÿï…ÕıÙ)ï·¡Ω…–Åô’πç—•Ω∏ÅÖëë=¡ï…Ö—Ω…QΩM°•ô–°Õ—Ö—îÈM°•ô—M—Ö—î±πÖµîÈÕ—…•πú±Ö…ïÑÈ…ïÑ§ÈM°•ô—M—Ö—ïÌ•ò°Õ—Ö—îπΩ¡ï…Ö—Ω…ÃπÕΩµî°Ω¡ï…Ö—Ω»Ù˘πÖµï-ï‰°Ω¡ï…Ö—Ω»ππÖµî§ÙÙıπÖµï-ï‰°πÖµî§§•…ï—’…∏ÅÕ—Ö—îÌ…ï—’…πÏ∏∏πÕ—Ö—î±Ω¡ï…Ö—Ω…ÃÈl∏∏πÕ—Ö—îπΩ¡ï…Ö—Ω…Ã±ÌπÖµîÈπÖµîπ—…•¥†§±°ΩµîÈÖ…ïÑ±Õ—Ö…–ÈÖ…ïÑ±ç’……ïπ–ÈÖ…ïÖıuıÙ)ï·¡Ω…–Åô’πç—•Ω∏ÅµΩŸï=¡ï…Ö—Ω»°Õ—Ö—îÈM°•ô—M—Ö—î±πÖµîÈÕ—…•πú±—ºÈ…ïÑ±Ö–ıπï‹ÅÖ—î†§π—Ω%M=M—…•πú†§§ÈM°•ô—M—Ö—ïÌçΩπÕ–ÅΩ¿ıÕ—Ö—îπΩ¡ï…Ö—Ω…Ãπô•πê°‡Ù˘‡ππÖµîÙÙıπÖµî§Ì•ò†ÖΩ¡ÒÒΩ¿πç’……ïπ–ÙÙı—º•…ï—’…∏ÅÕ—Ö—îÌçΩπÕ–Åô…Ω¥ıΩ¿πç’……ïπ–Ì…ï—’…πÏ∏∏πÕ—Ö—î±Ω¡ï…Ö—Ω…ÃÈÕ—Ö—îπΩ¡ï…Ö—Ω…ÃπµÖ¿°‡Ù˘‡ππÖµîÙÙıπÖµî˝Ï∏∏π‡±ç’……ïπ–È—ΩÙÈ‡§±µΩŸïµïπ—ÃÈl∏∏πÕ—Ö—îπµΩŸïµïπ—Ã±Ì¡ï…ÕΩ∏ÈπÖµî±ô…Ω¥±—º±Ö—ıuıÙ)ï·¡Ω…–Åô’πç—•Ω∏ÅµΩŸï=¡ï…Ö—Ω…Ã°Õ—Ö—îÈM°•ô—M—Ö—î±πÖµïÃÈÕ—…•πùmt±—ºÈ…ïÑ±Ö–ıπï‹ÅÖ—î†§π—Ω%M=M—…•πú†§§ÈM°•ô—M—Ö—ïÌçΩπÕ–ÅÕï±ïç—ïêıπï‹ÅMï–°πÖµïÃπµÖ¿°πÖµï-ï‰§§Ì…ï—’…∏ÅÕ—Ö—îπΩ¡ï…Ö—Ω…Ãπ…ïë’çî†°ç’……ïπ–±Ω¡ï…Ö—Ω»§Ù˘Õï±ïç—ïêπ°ÖÃ°πÖµï-ï‰°Ω¡ï…Ö—Ω»ππÖµî§§˝µΩŸï=¡ï…Ö—Ω»°ç’……ïπ–±Ω¡ï…Ö—Ω»ππÖµî±—º±Ö–§Èç’……ïπ–±Õ—Ö—î•Ù)ï·¡Ω…–Åô’πç—•Ω∏ÅµΩŸïë=π±‰°ÃÈM°•ô—M—Ö—î•Ì…ï—’…∏ÅÃπΩ¡ï…Ö—Ω…Ãπô•±—ï»°‡Ù˘‡πç’……ïπ–ÑÙı‡πÕ—Ö…–•Ù)ï·¡Ω…–Åô’πç—•Ω∏ÅÖ…ïÖΩ’π—Ã°ÃÈM°•ô—M—Ö—î•Ì…ï—’…∏ÅÃπΩ¡ï…Ö—Ω…Ãπ…ïë’çîÒIïçΩ…êÒÕ—…•πú±π’µâï»¯¯†°Ñ±‡§Ù¯°Öm‡πç’……ïπ—tÙ°Öm‡πç’……ïπ—uÒ¿§¨ƒ±Ñ§±ÌÙ•Ù)ï·¡Ω…–Åô’πç—•Ω∏Å…ï—’…πQΩM—Ö…–°ÃÈM°•ô—M—Ö—î±πÖµîÈÕ—…•πú•ÌçΩπÕ–ÅΩ¿ıÃπΩ¡ï…Ö—Ω…Ãπô•πê°‡Ù˘‡ππÖµîÙÙıπÖµî§Ì…ï—’…∏ÅΩ¿˝µΩŸï=¡ï…Ö—Ω»°Ã±πÖµî±Ω¿πÕ—Ö…–§ÈÕÙ)ï·¡Ω…–Åô’πç—•Ω∏Å…ï—’…π=¡ï…Ö—Ω…ÕQΩM—Ö…–°Õ—Ö—îÈM°•ô—M—Ö—î±πÖµïÃÈÕ—…•πùmt±Ö–ıπï‹ÅÖ—î†§π—Ω%M=M—…•πú†§§ÈM°•ô—M—Ö—ïÌçΩπÕ–ÅÕï±ïç—ïêıπï‹ÅMï–°πÖµïÃπµÖ¿°πÖµï-ï‰§§Ì…ï—’…∏ÅÕ—Ö—îπΩ¡ï…Ö—Ω…Ãπ…ïë’çî†°ç’……ïπ–±Ω¡ï…Ö—Ω»§Ù˘Õï±ïç—ïêπ°ÖÃ°πÖµï-ï‰°Ω¡ï…Ö—Ω»ππÖµî§§˝µΩŸï=¡ï…Ö—Ω»°ç’……ïπ–±Ω¡ï…Ö—Ω»ππÖµî±Ω¡ï…Ö—Ω»πÕ—Ö…–±Ö–§Èç’……ïπ–±Õ—Ö—î•Ù(
+    setDepartments((items) => items.filter((item) => item.name !== name));
+    setDepartmentDialog(null);
+  }
+
+  function moveDepartment(name: string, direction: -1 | 1): void {
+    setDepartments((items) => { const index = items.findIndex((item) => item.name === name); const target = index + direction; if (index < 0 || target < 0 || target >= items.length) return items; const next = [...items]; [next[index], next[target]] = [next[target], next[index]]; return next; });
+  }
+
+  function toggleOperator(name: string): void {
+    setSelectedOperators((selected) => {
+      const next = new Set(selected);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  }
+
+  function toggleAreaSelection(area: Exclude<Area, 'UNKNOWN'>): void {
+    if (!shift) return;
+    const areaNames = shift.operators.filter((operator) => operator.current === area).map((operator) => operator.name);
+    setSelectedOperators((selected) => areaNames.every((name) => selected.has(name)) ? new Set([...selected].filter((name) => !areaNames.includes(name))) : new Set([...selected, ...areaNames]));
+  }
+
+  function moveSelectedOperators(): void {
+    if (!shift || selectedOperators.size === 0) return;
+    setLastShiftBeforeAction(shift);
+    setShift(moveOperators(shift, [...selectedOperators], bulkArea));
+    setSelectedOperators(new Set());
+    setConfirmBulkAction(null);
+  }
+
+  function dropOperator(area: Exclude<Area, 'UNKNOWN'>): void {
+    if (!shift || !draggedOperator) return;
+    const names = selectedOperators.has(draggedOperator) ? [...selectedOperators] : [draggedOperator];
+    setLastShiftBeforeAction(shift);
+    setShift(moveOperators(shift, names, area));
+    setSelectedOperators(new Set());
+    setDraggedOperator('');
+  }
+
+  function returnSelectedOperators(): void {
+    if (!shift || selectedOperators.size === 0) return;
+    setLastShiftBeforeAction(shift);
+    setShift(returnOperatorsToStart(shift, [...selectedOperators]));
+    setSelectedOperators(new Set());
+    setConfirmBulkAction(null);
+  }
+
+  function undoLastAction(): void {
+    if (!lastShiftBeforeAction) return;
+    setShift(lastShiftBeforeAction);
+    setLastShiftBeforeAction(null);
+  }
+
+  async function loadPhoto(file: File): Promise<void> {
+    setBusy(true);
+    setProgress('P≈ôipravuji fotografii');
+    setError('');
+    setAnalysis(null);
+    setQuality(null);
+    setPreviewUrl('');
+    setOverlayUrl('');
+    setReviewDrafts({});
+    setResolvedRows(new Set());
+    setReviewNotice('');
+    setReviewApproved(false);
+
+    try {
+      const result = await analyzeBoardPhoto(
+        file,
+        rosterNames,
+        undefined,
+        [],
+        (current, total) => setProgress(`OCR ${Math.min(current + 1, total)} / ${total}`)
+      );
+      setAnalysis(result);
+      setQuality(result.imageQuality ?? null);
+      setPreviewUrl(result.imageUrl ?? '');
+      setOverlayUrl(result.overlayUrl ?? '');
+      setProgress('Anal√Ωza dokonƒçena');
+    } catch (caught) {
+      if (caught instanceof UnusableImageError) {
+        setQuality(caught.quality);
+        setPreviewUrl(caught.previewUrl ?? '');
+        setOverlayUrl(caught.overlayUrl ?? '');
+        setError(caught.message);
+      } else {
+        setError(caught instanceof Error ? caught.message : 'Anal√Ωza fotografie selhala.');
+      }
+      setProgress('Anal√Ωza zastavena');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startShift(): void {
+    if (confirmedOperators.length === 0) return;
+    setShift(createShift(confirmedOperators.map(({ name, area }) => ({ name, area })), getProblemSolvers()));
+  }
+
+  function startEmptyShift(): void {
+    setShift(createShift([], getProblemSolvers()));
+    setActivePage('board');
+  }
+
+  function addManualOperator(): void {
+    if (!manualName) return;
+    setShift((current) => current ? addOperatorToShift(current, manualName, manualArea) : current);
+    setManualName('');
+  }
+
+  function updateReviewDraft(index: number, row: Detection, change: Partial<ReviewDraft>): void {
+    const current = reviewDrafts[index] ?? {
+      name: row.matched ?? '',
+      area: row.area === 'UNKNOWN' ? '' : row.area,
+    };
+    setReviewDrafts((drafts) => ({ ...drafts, [index]: { ...current, ...change } }));
+ .∫ﬂªhëÈÏ∂ªßq´^ume="department-grid" aria-label="Oddƒõlen√≠ smƒõny">
+            {areas.map((area) => {
+              const operators = filterOperators(shift.operators, query, transportOnly).filter((operator) => operator.current === area);
+              return <article className={`department-card${draggedOperator ? ' drop-ready' : ''}`} key={area} onDragOver={(event) => event.preventDefault()} onDrop={() => dropOperator(area)}>
+                <header><div><span>{area}</span><b>{shift.operators.filter((operator) => operator.current === area).length}</b></div><div className="department-tools"><small>{operators.length ? `${operators.length} zobrazeno` : 'Bez obsazen√≠'}</small>{shift.operators.some((operator) => operator.current === area) && <button type="button" className="header-action" onClick={() => toggleAreaSelection(area)}>{shift.operators.filter((operator) => operator.current === area).every((operator) => selectedOperators.has(operator.name)) ? 'Zru≈°it' : 'Vybrat v≈°e'}</button>}</div></header>
+                <div className="operator-list">{operators.length ? operators.map((operator) => <article className={`operator-card${selectedOperators.has(operator.name) ? ' selected' : ''}`} key={operator.name} draggable onDragStart={() => setDraggedOperator(operator.name)} onDragEnd={() => setDraggedOperator('')}><label className="operator-select"><input type="checkbox" checked={selectedOperators.has(operator.name)} onChange={() => toggleOperator(operator.name)} /><span><strong>{operator.name}</strong><small>{operator.home !== operator.current ? `${operator.home} ‚Üí ${operator.current}` : operator.home}</small></span></label><select aria-label={`Pracovi≈°tƒõ ${operator.name}`} value={operator.current} onChange={(event) => setShift((current) => current ? moveOperator(current, operator.name, event.target.value) : current)}>{areas.map((target) => <option key={target} value={target}>{target}</option>)}</select>{operator.current !== operator.start && <button type="button" className="tiny" onClick={() => setShift((current) => current ? returnToStart(current, operator.name) : current)}>Vr√°tit</button>}</article>) : <p className="empty-department">P≈ôidejte ƒçlovƒõka nebo jej sem p≈ôesu≈àte.</p>}</div>
+              </article>;
+            })}
+          </section>
+
+        </>
+      ) : <section className="panel empty-page"><h1>Nejd≈ô√≠v zalo≈æte smƒõnu</h1><button type="button" onClick={() => setActivePage('board')}>Zpƒõt na p≈ôehled</button></section>}
+
+      {departmentDialog && <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDepartmentDialog(null); }}>
+        <section className="action-dialog" role="dialog" aria-modal="true" aria-labelledby="department-dialog-title">
+          <span className={`dialog-icon ${departmentDialog.type === 'remove' ? 'danger' : ''}`}>{departmentDialog.type === 'remove' ? '!' : '‚úé'}</span>
+          <div>
+            <span className="eyebrow">Spr√°va oddƒõlen√≠</span>
+            <h2 id="department-dialog-title">{departmentDialog.type === 'remove' ? `Odebrat ${departmentDialog.name}?` : `P≈ôejmenovat ${departmentDialog.name}`}</h2>
+          </div>
+          {departmentDialog.type === 'rename' ? <label>Nov√Ω n√°zev<input autoFocus value={departmentDialog.value} onChange={(event) => setDepartmentDialog({ ...departmentDialog, value: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter') confirmDepartmentRename(); if (event.key === 'Escape') setDepartmentDialog(null); }} /></label> : <p>V≈°ichni OP z tohoto oddƒõlen√≠ budou p≈ôevedeni do <strong>{UNASSIGNED}</strong>. Zmƒõnu m≈Ø≈æete jednou vr√°tit na smƒõnov√© tabuli.</p>}
+          <div className="dialog-actions"><button type="button" className="secondary" onClick={() => setDepartmentDialog(null)}>Zru≈°it</button><button type="button" className={departmentDialog.type === 'remove' ? 'danger' : ''} onClick={departmentDialog.type === 'remove' ? confirmDepartmentRemoval : confirmDepartmentRename}>{departmentDialog.type === 'remove' ? 'Odebrat oddƒõlen√≠' : 'Ulo≈æit n√°zev'}</button></div>
+        </section>
+      </div>}
+
+      {resetDialog && <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setResetDialog(false); }}>
+        <section className="action-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-dialog-title">
+          <span className="dialog-icon danger">!</span><div><span className="eyebrow">Lok√°ln√≠ pilot</span><h2 id="reset-dialog-title">Vymazat data pilotu?</h2></div>
+          <p>Odstran√≠ se pouze smƒõna, kmen, oddƒõlen√≠ a problem solve≈ôi ulo≈æen√© v t√©to V2 aplikaci. P≈Øvodn√≠ aplikace a Firebase data z≈Østanou beze zmƒõny.</p>
+          <div className="dialog-actions"><button type="button" className="secondary" onClick={() => setResetDialog(false)}>Zru≈°it</button><button type="button" className="danger" onClick={resetPilot}>Vymazat data</button></div>
+        </section>
+      </div>}
+
+      <nav className="mobile-nav" aria-label="Mobiln√≠ navigace">
+        {([['board', 'Smƒõna'], ['roster', 'Stav'], ['import', 'Import']] as [AppPage, string][]).map(([page, label]) => <button type="button" key={page} className={activePage === page ? 'nav-active' : 'secondary'} onClick={() => setActivePage(page)}>{label}</button>)}
+      </nav>
+
+    </main>
+  );
+}
