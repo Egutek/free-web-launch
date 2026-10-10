@@ -39,6 +39,8 @@ import { DepartmentColumn } from "./components/DepartmentColumn";
 import { TableView } from "./components/TableView";
 import { WidgetView } from "./components/WidgetView";
 import { OfflineIndicator } from "./components/OfflineIndicator";
+import { OperationsInsights } from "./components/OperationsInsights";
+import { DistributionAssistant } from "./components/DistributionAssistant";
 import { QuickMoveModal } from "./components/QuickMoveModal";
 import { BossReportModal } from "./components/BossReportModal";
 import { AddEditOperatorModal } from "./components/AddEditOperatorModal";
@@ -301,6 +303,7 @@ export default function App() {
       },
       (err) => {
         setIsCloudSyncing(false);
+        setIsCloudConnected(false);
         console.warn("Firestore subscription error:", err);
       },
     );
@@ -318,6 +321,9 @@ export default function App() {
           console.warn("Initial cloud roster seed failed:", err),
         );
       }
+    }, (err) => {
+      setIsCloudConnected(false);
+      console.warn("Firestore roster subscription error:", err);
     });
     return () => unsub();
   }, []);
@@ -329,6 +335,9 @@ export default function App() {
         setHistory(cloudHistory);
         saveHistory(cloudHistory);
       }
+    }, (err) => {
+      setIsCloudConnected(false);
+      console.warn("Firestore history subscription error:", err);
     });
     return () => unsub();
   }, []);
@@ -338,6 +347,9 @@ export default function App() {
     const unsub = subscribeToCustomDepartments((cloudCustomDepts) => {
       setCustomDepartments(cloudCustomDepts);
       saveCustomDepartments(cloudCustomDepts);
+    }, (err) => {
+      setIsCloudConnected(false);
+      console.warn("Firestore custom department subscription error:", err);
     });
     return () => unsub();
   }, []);
@@ -349,6 +361,14 @@ export default function App() {
     } catch {
       // ignore
     }
+  }, [viewMode]);
+
+  // Keep the current view shareable and restorable via the URL.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", viewMode);
+    window.history.replaceState({}, "", url);
   }, [viewMode]);
 
   // Flush persistence synchronously before window closes / unloads
@@ -363,12 +383,24 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
-  // Keyboard shortcut listener (Esc deselects everything)
+  // Keyboard shortcuts keep the board usable without reaching for the mouse.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT";
       if (e.key === "Escape") {
         setSelectedOperatorId(null);
         setBulkSelectedIds(new Set());
+        return;
+      }
+      if (isTyping || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === "1") setViewMode("board");
+      if (e.key === "2") setViewMode("table");
+      if (e.key === "3") setViewMode("widget");
+      if (e.key === "/") {
+        e.preventDefault();
+        document.querySelector<HTMLInputElement>('input[placeholder="Vyhledat člověka podle jména..."]')?.focus();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -1937,6 +1969,36 @@ export default function App() {
           activeShift={activeShift}
           onOpenReportModal={() => setIsReportModalOpen(true)}
           onOpenKmenModal={() => setIsKmenModalOpen(true)}
+        />
+
+        <OperationsInsights
+          operators={shiftOperators}
+          departments={allDepartments}
+          history={history}
+          activeShift={activeShift}
+          isCloudConnected={isCloudConnected}
+          isCloudSyncing={isCloudSyncing}
+          onOpenHistory={() => setIsHistoryModalOpen(true)}
+          onOpenRoster={() => setIsKmenModalOpen(true)}
+          onOpenReport={() => setIsReportModalOpen(true)}
+          onSetView={setViewMode}
+          onFocusDepartment={(departmentId) => {
+            setViewMode("board");
+            window.setTimeout(() => scrollToDepartment(departmentId), 50);
+          }}
+          onEditOperator={(operator) => setAddEditOperator({ operator })}
+        />
+
+        <DistributionAssistant
+          operators={shiftOperators}
+          departments={allDepartments}
+          onMoveOperator={(operatorId, targetDepartmentId) =>
+            handleMoveOperator(operatorId, targetDepartmentId)
+          }
+          onFocusDepartment={(departmentId) => {
+            setViewMode("board");
+            window.setTimeout(() => scrollToDepartment(departmentId), 50);
+          }}
         />
 
         {/* View Mode 1: Department Columns (Board) */}
